@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   Building2, Calendar, DollarSign, TrendingUp, TrendingDown,
   Minus, CheckCircle, Clock, AlertTriangle, ChevronLeft,
-  Users, Activity, GitMerge, Shield
+  Users, Activity, GitMerge, Shield, QrCode, LogIn, LogOut
 } from "lucide-react"
 import { CircularProgress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
@@ -18,6 +18,15 @@ type Proyecto = {
   fecha_inicio_plan: string; fecha_fin_plan: string
   fecha_inicio_real: string | null; fecha_fin_forecast: string | null
   presupuesto_base: number; presupuesto_venta: number; margen_objetivo: number
+  qr_token: string | null
+}
+
+type RegistroAsistenciaQR = {
+  id: string
+  tipo: "entrada" | "salida"
+  hora: string
+  nombre_manual: string | null
+  trabajador: { nombre_completo: string } | null
 }
 
 type Proceso = {
@@ -66,15 +75,17 @@ async function getData(id: string) {
     .select(`
       id, codigo, nombre, cliente, ubicacion, estado,
       fecha_inicio_plan, fecha_fin_plan, fecha_inicio_real, fecha_fin_forecast,
-      presupuesto_base, presupuesto_venta, margen_objetivo
+      presupuesto_base, presupuesto_venta, margen_objetivo, qr_token
     `)
     .eq("id", id)
     .single()
 
   if (!proyecto) notFound()
 
+  const hoy = new Date().toISOString().split("T")[0]
+
   // Queries paralelas
-  const [procesosRes, iidpRes, alertasRes, coRes, costosRes] = await Promise.all([
+  const [procesosRes, iidpRes, alertasRes, coRes, costosRes, asistenciaRes] = await Promise.all([
     supabase
       .from("procesos")
       .select(`
@@ -113,6 +124,14 @@ async function getData(id: string) {
       .from("costos_reales")
       .select("tipo_recurso, monto")
       .eq("proyecto_id", id),
+
+    supabase
+      .from("registros_asistencia_qr")
+      .select("id, tipo, hora, nombre_manual, trabajador:trabajador_id(nombre_completo)")
+      .eq("proyecto_id", id)
+      .eq("fecha", hoy)
+      .order("hora", { ascending: false })
+      .limit(20),
   ])
 
   return {
@@ -122,6 +141,7 @@ async function getData(id: string) {
     alertas: (alertasRes.data ?? []) as unknown as Alerta[],
     changeOrders: (coRes.data ?? []) as unknown as ChangeOrder[],
     costos: (costosRes.data ?? []) as unknown as CostoReal[],
+    asistenciaHoy: (asistenciaRes.data ?? []) as unknown as RegistroAsistenciaQR[],
   }
 }
 
@@ -182,7 +202,7 @@ function TendIcon({ t }: { t: string | null }) {
 
 export default async function ProyectoDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { proyecto, procesos, iidp, alertas, changeOrders, costos } = await getData(id)
+  const { proyecto, procesos, iidp, alertas, changeOrders, costos, asistenciaHoy } = await getData(id)
 
   const ultimoIIDP = iidp[0] ?? null
 
@@ -553,6 +573,83 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
                   </div>
                 </div>
               ))}
+            </div>
+          </section>
+        )}
+
+        {/* ── QR Asistencia ── */}
+        {proyecto.qr_token && (
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <QrCode className="h-4 w-4 text-slate-400" />
+              <h2 className="text-sm font-semibold text-slate-700">Control de asistencia QR</h2>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-xl p-5">
+              <div className="flex flex-col sm:flex-row gap-6 items-start">
+                {/* QR Code */}
+                <div className="shrink-0 flex flex-col items-center gap-2">
+                  <div className="bg-white border-2 border-slate-200 rounded-xl p-3 shadow-sm">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(
+                        `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/check-in/${proyecto.qr_token}`
+                      )}&size=160x160&bgcolor=ffffff&color=0f172a&margin=4`}
+                      alt="QR de asistencia"
+                      width={160}
+                      height={160}
+                      className="rounded"
+                    />
+                  </div>
+                  <p className="text-xs text-slate-400 text-center max-w-[160px]">
+                    Los trabajadores escanean este código al llegar y salir
+                  </p>
+                  <a
+                    href={`/check-in/${proyecto.qr_token}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    Abrir página de check-in ↗
+                  </a>
+                </div>
+
+                {/* Asistencia de hoy */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                    Registros de hoy ({asistenciaHoy.length})
+                  </p>
+                  {asistenciaHoy.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400">
+                      <QrCode className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">Sin registros por hoy</p>
+                      <p className="text-xs mt-0.5">Los trabajadores verán este panel al escanear</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                      {asistenciaHoy.map((r) => {
+                        const nombre = (r.trabajador as any)?.nombre_completo ?? r.nombre_manual ?? "Sin nombre"
+                        return (
+                          <div key={r.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-50">
+                            <span className={cn(
+                              "h-6 w-6 rounded-full flex items-center justify-center shrink-0",
+                              r.tipo === "entrada" ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600"
+                            )}>
+                              {r.tipo === "entrada"
+                                ? <LogIn className="h-3 w-3" />
+                                : <LogOut className="h-3 w-3" />
+                              }
+                            </span>
+                            <span className="flex-1 text-sm font-medium text-slate-700 truncate">{nombre}</span>
+                            <span className="text-xs text-slate-400 font-mono shrink-0">
+                              {r.hora?.substring(0, 5) ?? "—"}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </section>
         )}

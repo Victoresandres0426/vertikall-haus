@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   Search, MapPin, Calendar, TrendingDown, TrendingUp,
   AlertTriangle, Trash2, X, Plus,
@@ -130,6 +130,7 @@ function formatMXN(n: number) {
 // Componente
 // ──────────────────────────────────────────────
 export function ProyectosClient({ proyectos: raw }: { proyectos: ProyectoFromDB[] }) {
+  const router = useRouter()
   const [busqueda, setBusqueda] = useState("")
   const [filtroEstado, setFiltroEstado] = useState<"todos" | "activo" | "completado">("todos")
   const [proyectoAEliminar, setProyectoAEliminar] = useState<Proyecto | null>(null)
@@ -297,9 +298,13 @@ export function ProyectosClient({ proyectos: raw }: { proyectos: ProyectoFromDB[
 
                     {/* Acciones */}
                     <div className="shrink-0 flex flex-col gap-2">
-                      <Link href={`/proyectos/${p.id}`}>
-                        <Button size="sm" variant="outline">Ver detalle</Button>
-                      </Link>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => router.push(`/proyectos/${p.id}`)}
+                      >
+                        Ver detalle
+                      </Button>
                       {p.estado === "activo" && p.alertas_rojas + p.alertas_amarillas > 0 && (
                         <Button size="sm" variant="ghost" className="text-slate-500">
                           <AlertTriangle className="h-3.5 w-3.5" />

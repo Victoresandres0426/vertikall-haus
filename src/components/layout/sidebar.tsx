@@ -9,6 +9,7 @@ import {
   ClipboardList,
   BellRing,
   Users,
+  UserCheck,
   Package,
   TrendingUp,
   Settings,
@@ -35,6 +36,7 @@ const navItems = [
     items: [
       { href: "/reporte-diario", label: "Reporte Diario", icon: ClipboardList },
       { href: "/actividades", label: "Actividades", icon: Wrench },
+      { href: "/personal", label: "Personal", icon: UserCheck },
       { href: "/recursos", label: "Recursos", icon: Users },
       { href: "/materiales", label: "Materiales", icon: Package },
     ],

@@ -174,7 +174,7 @@ export function InvitarUsuarioButton({ appUrl, puedeInvitar }: { appUrl: string;
                   </div>
                   <div className="text-center">
                     <p className="text-sm font-semibold text-slate-900 mb-0.5">¡Invitación creada!</p>
-                    <p className="text-xs text-slate-500">Envía este link a {result.email}</p>
+                    <p className="text-xs text-slate-500">Envía este link a {result?.email}</p>
                   </div>
 
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
