@@ -16,6 +16,13 @@ import { evaluarCronograma, evaluarCosto, type ActividadParaMotor } from "./regl
 import { calcularIIDP, calcularTendencia, type IIDPInputs } from "./iidp"
 import { umbralesDesdeConfig, pesosDesdeConfig, type ConfiguracionEmpresa } from "./types"
 import { calcularRutaCritica, type ActividadCPM, type DependenciaCPM } from "./cpm"
+import {
+  evaluarDecision,
+  mejorAlternativaConocida,
+  calcularConfianza,
+  type DecisionParaEvaluar,
+  type EstadisticaAlternativa,
+} from "./conocimiento"
 import type { AlertaGenerada } from "./types"
 
 // Los clientes de Supabase (server.ts / client.ts) no se generan aquí
@@ -30,6 +37,7 @@ export type ResultadoMotor = {
   alertas_resueltas: number
   iidp: { score_total: number; tendencia: string } | null
   ruta_critica: { actividades_criticas: number; actividades_actualizadas: number } | null
+  conocimiento: { decisiones_evaluadas: number } | null
   errores: string[]
 }
 
@@ -49,6 +57,7 @@ export async function ejecutarMotorDiario(
     alertas_resueltas: 0,
     iidp: null,
     ruta_critica: null,
+    conocimiento: null,
     errores,
   }
 
@@ -191,13 +200,40 @@ export async function ejecutarMotorDiario(
     a.bloqueos_recientes = s?.bloqueos ?? null
   }
 
+  // ── 3b. Conocimiento histórico: ¿qué alternativa le ha funcionado a
+  // ESTA empresa en el pasado para cada tipo de alerta? (spec §9) ────
+  let mejorCronograma: string | null = null
+  let mejorCosto: string | null = null
+  try {
+    const { data: conocimientoRaw } = await supabase
+      .from("conocimiento_historico")
+      .select("datos")
+      .eq("empresa_id", proyecto.empresa_id)
+      .eq("tipo", "efectividad_alternativa")
+
+    const estadisticas: EstadisticaAlternativa[] = ((conocimientoRaw ?? []) as any[])
+      .map((c: any) => c.datos)
+      .filter((d: any) => d && d.tipo_alerta && d.alternativa)
+      .map((d: any) => ({
+        tipo_alerta: d.tipo_alerta,
+        alternativa: d.alternativa,
+        exitos: Number(d.exitos ?? 0),
+        total: Number(d.total ?? 0),
+      }))
+
+    mejorCronograma = mejorAlternativaConocida(estadisticas, "cronograma")
+    mejorCosto = mejorAlternativaConocida(estadisticas, "costo")
+  } catch (e) {
+    errores.push(`Error leyendo conocimiento histórico: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
   // ── 4. Evaluar cada actividad y armar el conjunto de alertas vigentes ─
   const alertasVigentes: AlertaGenerada[] = []
   for (const a of actividades) {
-    const alertaCronograma = evaluarCronograma(a, fecha, umbrales)
+    const alertaCronograma = evaluarCronograma(a, fecha, umbrales, mejorCronograma)
     if (alertaCronograma) alertasVigentes.push(alertaCronograma)
 
-    const alertaCosto = evaluarCosto(a, umbrales)
+    const alertaCosto = evaluarCosto(a, umbrales, mejorCosto)
     if (alertaCosto) alertasVigentes.push(alertaCosto)
   }
 
@@ -272,6 +308,110 @@ export async function ejecutarMotorDiario(
       if (error) errores.push(`Error resolviendo alerta: ${error.message}`)
       else resultado.alertas_resueltas++
     }
+  }
+
+  // ── 5b. Evaluar decisiones pendientes y alimentar el conocimiento
+  // histórico con el resultado (spec §9 — cierra el loop de aprendizaje) ─
+  try {
+    const { data: decisionesPendientesRaw } = await supabase
+      .from("decisiones")
+      .select("id, fecha_decision, alternativa_seleccionada, alerta_id, alertas ( tipo, estado )")
+      .eq("proyecto_id", proyectoId)
+      .is("resultado_fecha", null)
+
+    let decisionesEvaluadas = 0
+    const cambiosConocimiento = new Map<string, { tipo_alerta: string; alternativa: string; exito: boolean }[]>()
+
+    for (const d of (decisionesPendientesRaw ?? []) as any[]) {
+      if (!d.alertas || !d.alternativa_seleccionada) continue
+      const paraEvaluar: DecisionParaEvaluar = {
+        id: d.id,
+        fecha_decision: d.fecha_decision,
+        alternativa_seleccionada: d.alternativa_seleccionada,
+        tipo_alerta: d.alertas.tipo,
+        alerta_estado: d.alertas.estado,
+      }
+      const resultado_ = evaluarDecision(paraEvaluar, fecha)
+      if (!resultado_) continue // todavía es pronto, o la alerta fue descartada
+
+      const { error: errUpdDecision } = await supabase
+        .from("decisiones")
+        .update({
+          resultado_observado: resultado_.resultado_observado,
+          resultado_fecha: resultado_.resultado_fecha,
+          prediccion_fue_correcta: resultado_.prediccion_fue_correcta,
+          aprendizaje: resultado_.aprendizaje,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", d.id)
+
+      if (errUpdDecision) {
+        errores.push(`Error actualizando decisión: ${errUpdDecision.message}`)
+        continue
+      }
+      decisionesEvaluadas++
+
+      const clave_ = `${d.alertas.tipo}::${d.alternativa_seleccionada}`
+      if (!cambiosConocimiento.has(clave_)) cambiosConocimiento.set(clave_, [])
+      cambiosConocimiento.get(clave_)!.push({
+        tipo_alerta: d.alertas.tipo,
+        alternativa: d.alternativa_seleccionada,
+        exito: resultado_.prediccion_fue_correcta,
+      })
+    }
+
+    if (cambiosConocimiento.size > 0) {
+      const { data: existentesRaw } = await supabase
+        .from("conocimiento_historico")
+        .select("id, datos")
+        .eq("empresa_id", proyecto.empresa_id)
+        .eq("tipo", "efectividad_alternativa")
+
+      const existentes = (existentesRaw ?? []) as any[]
+
+      for (const [, cambios] of cambiosConocimiento) {
+        const { tipo_alerta, alternativa } = cambios[0]
+        const nuevosExitos = cambios.filter((c) => c.exito).length
+        const nuevoTotal = cambios.length
+
+        const existente = existentes.find(
+          (e: any) => e.datos?.tipo_alerta === tipo_alerta && e.datos?.alternativa === alternativa
+        )
+
+        if (existente) {
+          const exitos = Number(existente.datos.exitos ?? 0) + nuevosExitos
+          const total = Number(existente.datos.total ?? 0) + nuevoTotal
+          const { error: errUpdConoc } = await supabase
+            .from("conocimiento_historico")
+            .update({
+              datos: { tipo_alerta, alternativa, exitos, total },
+              confianza: calcularConfianza(exitos, total),
+              veces_observado: total,
+              ultima_observacion: hoyISO(fecha),
+              descripcion: `Alternativa "${alternativa}" para alertas de ${tipo_alerta}: ${exitos}/${total} casos exitosos.`,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existente.id)
+          if (errUpdConoc) errores.push(`Error actualizando conocimiento histórico: ${errUpdConoc.message}`)
+        } else {
+          const { error: errInsConoc } = await supabase.from("conocimiento_historico").insert({
+            empresa_id: proyecto.empresa_id,
+            tipo: "efectividad_alternativa",
+            entidad_tipo: "alternativa",
+            descripcion: `Alternativa "${alternativa}" para alertas de ${tipo_alerta}: ${nuevosExitos}/${nuevoTotal} casos exitosos.`,
+            datos: { tipo_alerta, alternativa, exitos: nuevosExitos, total: nuevoTotal },
+            confianza: calcularConfianza(nuevosExitos, nuevoTotal),
+            veces_observado: nuevoTotal,
+            ultima_observacion: hoyISO(fecha),
+          })
+          if (errInsConoc) errores.push(`Error creando conocimiento histórico: ${errInsConoc.message}`)
+        }
+      }
+    }
+
+    resultado.conocimiento = { decisiones_evaluadas: decisionesEvaluadas }
+  } catch (e) {
+    errores.push(`Error evaluando decisiones/conocimiento: ${e instanceof Error ? e.message : String(e)}`)
   }
 
   // ── 6. Calcular IIDP del día ───────────────────────────────────

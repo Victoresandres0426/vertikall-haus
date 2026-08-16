@@ -12,6 +12,7 @@
 export type NivelAlerta = "verde" | "amarillo" | "rojo"
 
 export type Alternativa = {
+  tipo: string // identificador estable (agregar_recurso, horas_extra, no_intervenir, renegociar, absorber, escalar_dueno) — usado por el motor de conocimiento histórico (spec §9) para saber qué funcionó en el pasado
   descripcion: string
   costo: number
   dias: number

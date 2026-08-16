@@ -66,13 +66,15 @@ function costoDiarioProxy(actividad: ActividadParaMotor): number {
 /** Genera alternativas de recuperación estilo spec §14 (agregar recurso / horas extra / no intervenir). */
 export function generarAlternativasCronograma(
   actividad: ActividadParaMotor,
-  atrasoPct: number
+  atrasoPct: number,
+  mejorConocida?: string | null
 ): Alternativa[] {
   const dias = diasARaiz(actividad)
   const diasAtraso = Math.max(1, Math.round((atrasoPct / 100) * dias))
   const costoDiario = costoDiarioProxy(actividad)
 
   const agregarRecurso: Alternativa = {
+    tipo: "agregar_recurso",
     descripcion: `Agregar un recurso adicional durante ${diasAtraso} día${diasAtraso !== 1 ? "s" : ""}`,
     costo: Math.round(costoDiario * diasAtraso * 0.5),
     dias: -diasAtraso, // días que se recuperan (negativo = reduce atraso)
@@ -81,6 +83,7 @@ export function generarAlternativasCronograma(
   }
 
   const horasExtra: Alternativa = {
+    tipo: "horas_extra",
     descripcion: `Autorizar horas extra por ${diasAtraso} día${diasAtraso !== 1 ? "s" : ""}`,
     costo: Math.round(actividad.costo_presupuesto * 0.1),
     dias: -Math.max(1, Math.round(diasAtraso * 0.5)),
@@ -89,6 +92,7 @@ export function generarAlternativasCronograma(
   }
 
   const noIntervenir: Alternativa = {
+    tipo: "no_intervenir",
     descripcion: "No intervenir por ahora",
     costo: 0,
     dias: 0,
@@ -98,22 +102,32 @@ export function generarAlternativasCronograma(
     recomendada: false,
   }
 
-  // Regla simple de recomendación: atraso pequeño y no crítica → horas extra;
-  // atraso grande o actividad crítica → agregar recurso; si el atraso es
-  // mínimo y hay holgura, no intervenir es razonable.
-  if (diasAtraso <= 1 && !actividad.es_critica) {
+  const opciones = [agregarRecurso, horasExtra, noIntervenir]
+
+  if (mejorConocida && opciones.some((o) => o.tipo === mejorConocida)) {
+    // El motor de conocimiento histórico (spec §9) ya vio suficientes
+    // casos en ESTA empresa como para confiar en cuál alternativa
+    // funciona mejor para este tipo de alerta — se usa esa en vez de
+    // la regla fija por defecto.
+    opciones.forEach((o) => (o.recomendada = o.tipo === mejorConocida))
+  } else if (diasAtraso <= 1 && !actividad.es_critica) {
     horasExtra.recomendada = true
   } else {
     agregarRecurso.recomendada = true
   }
 
-  return [agregarRecurso, horasExtra, noIntervenir]
+  return opciones
 }
 
-export function generarAlternativasCosto(actividad: ActividadParaMotor, desviacionPct: number): Alternativa[] {
+export function generarAlternativasCosto(
+  actividad: ActividadParaMotor,
+  desviacionPct: number,
+  mejorConocida?: string | null
+): Alternativa[] {
   const excesoActual = actividad.costo_real - actividad.costo_presupuesto
-  return [
+  const opciones: Alternativa[] = [
     {
+      tipo: "renegociar",
       descripcion: "Renegociar con proveedor/subcontratista o buscar alternativa más económica",
       costo: -Math.round(excesoActual * 0.4),
       dias: 0,
@@ -121,6 +135,7 @@ export function generarAlternativasCosto(actividad: ActividadParaMotor, desviaci
       recomendada: true,
     },
     {
+      tipo: "absorber",
       descripcion: "Absorber la desviación dentro del margen del proyecto",
       costo: 0,
       dias: 0,
@@ -128,13 +143,23 @@ export function generarAlternativasCosto(actividad: ActividadParaMotor, desviaci
       recomendada: false,
     },
     {
+      tipo: "escalar_dueno",
       descripcion: "Escalar a dueño para autorizar sobrecosto o generar change order",
       costo: Math.round(excesoActual),
       dias: 0,
       impacto: "Formaliza el sobrecosto; si es atribuible a alcance adicional, puede facturarse al cliente.",
-      recomendada: desviacionPct >= 10,
+      recomendada: false,
     },
   ]
+
+  if (mejorConocida && opciones.some((o) => o.tipo === mejorConocida)) {
+    opciones.forEach((o) => (o.recomendada = o.tipo === mejorConocida))
+  } else {
+    opciones[0].recomendada = true
+    opciones[2].recomendada = desviacionPct >= 10
+  }
+
+  return opciones
 }
 
 /**
@@ -144,7 +169,8 @@ export function generarAlternativasCosto(actividad: ActividadParaMotor, desviaci
 export function evaluarCronograma(
   actividad: ActividadParaMotor,
   fecha: Date,
-  umbrales: UmbralesDesviacion = UMBRALES_DEFAULT
+  umbrales: UmbralesDesviacion = UMBRALES_DEFAULT,
+  mejorConocida?: string | null
 ): AlertaGenerada | null {
   if (actividad.estado === "completada" || actividad.estado === "cancelada") return null
 
@@ -156,7 +182,7 @@ export function evaluarCronograma(
   const nivel = escalarSiCritica(nivelBase, actividad.es_critica)
   if (nivel === "verde") return null
 
-  const alternativas = generarAlternativasCronograma(actividad, atraso)
+  const alternativas = generarAlternativasCronograma(actividad, atraso, mejorConocida)
   const recomendada = alternativas.find((a) => a.recomendada)
 
   const causaProbable =
@@ -189,7 +215,8 @@ export function evaluarCronograma(
 
 export function evaluarCosto(
   actividad: ActividadParaMotor,
-  umbrales: UmbralesDesviacion = UMBRALES_DEFAULT
+  umbrales: UmbralesDesviacion = UMBRALES_DEFAULT,
+  mejorConocida?: string | null
 ): AlertaGenerada | null {
   if (actividad.costo_presupuesto <= 0) return null
   const desviacionPct = ((actividad.costo_real - actividad.costo_presupuesto) / actividad.costo_presupuesto) * 100
@@ -198,7 +225,7 @@ export function evaluarCosto(
   const nivel = clasificar(desviacionPct, umbrales.costo_amarillo, umbrales.costo_rojo)
   if (nivel === "verde") return null
 
-  const alternativas = generarAlternativasCosto(actividad, desviacionPct)
+  const alternativas = generarAlternativasCosto(actividad, desviacionPct, mejorConocida)
   const recomendada = alternativas.find((a) => a.recomendada)
 
   return {
