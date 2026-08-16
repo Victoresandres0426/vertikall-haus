@@ -155,6 +155,7 @@ export type FacturaGenerada = {
   proyecto_codigo: string
   numero_generado: string
   monto_generado: number
+  amortizacion_generada: number
 }
 
 // Dispara la generación de estimaciones de avance para todos los

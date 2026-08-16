@@ -21,6 +21,7 @@ export type FacturaCliente = {
   hito_asociado: string | null
   monto: number
   retencion: number
+  amortizacion_anticipo: number
   fecha_emision: string | null
   fecha_vencimiento: string | null
   fecha_cobro: string | null
@@ -243,12 +244,19 @@ function ModalGenerarAutomatico({ onClose }: { onClose: () => void }) {
           <>
             <div className="space-y-2 mb-4">
               {resultado.map((f) => (
-                <div key={f.numero_generado} className="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm">
-                  <div>
-                    <p className="font-medium text-emerald-800">{f.numero_generado}</p>
-                    <p className="text-xs text-emerald-600">{f.proyecto_codigo}</p>
+                <div key={f.numero_generado} className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-emerald-800">{f.numero_generado}</p>
+                      <p className="text-xs text-emerald-600">{f.proyecto_codigo}</p>
+                    </div>
+                    <p className="font-semibold text-emerald-700">{formatMXN(f.monto_generado)}</p>
                   </div>
-                  <p className="font-semibold text-emerald-700">{formatMXN(f.monto_generado)}</p>
+                  {f.amortizacion_generada > 0 && (
+                    <p className="text-[11px] text-emerald-600 mt-1">
+                      Incluye {formatMXN(f.amortizacion_generada)} descontado por amortización de anticipo
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
@@ -290,7 +298,14 @@ function FilaCliente({ f }: { f: FacturaCliente }) {
         <span className="font-mono text-[10px] text-slate-400 mr-1">{f.proyectos?.codigo}</span>
         <span className="text-slate-700">{f.proyectos?.nombre}</span>
       </td>
-      <td className="px-3 py-2.5 text-slate-600">{f.descripcion ?? f.numero ?? "—"}</td>
+      <td className="px-3 py-2.5 text-slate-600">
+        {f.descripcion ?? f.numero ?? "—"}
+        {f.amortizacion_anticipo > 0 && (
+          <span className="block text-[10px] text-amber-600 mt-0.5">
+            −{formatMXN(f.amortizacion_anticipo)} amortización de anticipo
+          </span>
+        )}
+      </td>
       <td className="px-3 py-2.5 text-slate-500">{f.fecha_vencimiento ?? "—"}</td>
       <td className="px-3 py-2.5 text-right text-slate-700">{formatMXN(f.monto)}</td>
       <td className="px-3 py-2.5 text-right text-emerald-600">{formatMXN(f.monto_cobrado)}</td>
@@ -391,6 +406,7 @@ function ModalFacturaCliente({ proyectos, onClose }: { proyectos: ProyectoOpcion
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Número</label>
               <input name="numero" placeholder="Ej. F-001" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+              <p className="text-[10px] text-slate-400 mt-1">Si es un anticipo, usa un número que empiece con &quot;ANT-&quot; (ej. ANT-{"{"}proyecto{"}"}) para que la facturación automática lo detecte y lo descuente de las estimaciones futuras.</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Monto *</label>

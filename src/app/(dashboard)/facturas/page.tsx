@@ -25,7 +25,7 @@ async function getData() {
     supabase
       .from("facturas_cliente")
       .select(`
-        id, numero, descripcion, hito_asociado, monto, retencion,
+        id, numero, descripcion, hito_asociado, monto, retencion, amortizacion_anticipo,
         fecha_emision, fecha_vencimiento, fecha_cobro, estado, monto_cobrado,
         proyectos ( nombre, codigo )
       `)
