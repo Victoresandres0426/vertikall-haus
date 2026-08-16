@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import Link from "next/link"
 import {
   Search, MapPin, Calendar, TrendingDown, TrendingUp,
   AlertTriangle, Trash2, X, Plus,
@@ -296,7 +297,9 @@ export function ProyectosClient({ proyectos: raw }: { proyectos: ProyectoFromDB[
 
                     {/* Acciones */}
                     <div className="shrink-0 flex flex-col gap-2">
-                      <Button size="sm" variant="outline">Ver detalle</Button>
+                      <Link href={`/proyectos/${p.id}`}>
+                        <Button size="sm" variant="outline">Ver detalle</Button>
+                      </Link>
                       {p.estado === "activo" && p.alertas_rojas + p.alertas_amarillas > 0 && (
                         <Button size="sm" variant="ghost" className="text-slate-500">
                           <AlertTriangle className="h-3.5 w-3.5" />

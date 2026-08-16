@@ -1,8 +1,9 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { Header } from "@/components/layout/header"
-import { Building2, Users, Settings, Bell, Shield } from "lucide-react"
+import { Building2, Users, Settings, Bell, Shield, UserPlus } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { InvitarUsuarioButton, InvitacionesPendientes } from "./invitar-client"
 
 type Empresa = {
   id: string
@@ -20,6 +21,17 @@ type Perfil = {
   rol: string
   activo: boolean
   configuracion_notificaciones: { email: boolean; push: boolean }
+}
+
+type Invitacion = {
+  id: string
+  email: string
+  nombre_completo: string
+  rol: string
+  created_at: string
+  expires_at: string
+  used_at: string | null
+  activa: boolean
 }
 
 async function getData() {
@@ -48,10 +60,18 @@ async function getData() {
     .order("rol")
     .order("nombre_completo")
 
+  const { data: invitaciones } = await supabase
+    .from("invitaciones")
+    .select("id, email, nombre_completo, rol, created_at, expires_at, used_at, activa")
+    .eq("empresa_id", perfil.empresa_id)
+    .order("created_at", { ascending: false })
+    .limit(20)
+
   return {
     empresa: empresa as Empresa,
     perfil: perfil as Perfil & { empresa_id: string },
     equipo: (equipo ?? []) as Perfil[],
+    invitaciones: (invitaciones ?? []) as Invitacion[],
   }
 }
 
@@ -72,7 +92,9 @@ const rolColor: Record<string, string> = {
 }
 
 export default async function ConfiguracionPage() {
-  const { empresa, perfil, equipo } = await getData()
+  const { empresa, perfil, equipo, invitaciones } = await getData()
+  const puedeInvitar = ["dueno", "superadmin", "administrador"].includes(perfil.rol)
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ""
 
   return (
     <div>
@@ -182,6 +204,9 @@ export default async function ConfiguracionPage() {
             <Users className="h-4 w-4 text-slate-400" />
             <h2 className="text-sm font-semibold text-slate-700">Equipo</h2>
             <span className="text-xs text-slate-400">· {equipo.length} usuarios</span>
+            <div className="ml-auto">
+              <InvitarUsuarioButton appUrl={appUrl} puedeInvitar={puedeInvitar} />
+            </div>
           </div>
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
             <div className="divide-y divide-slate-50">
@@ -211,6 +236,13 @@ export default async function ConfiguracionPage() {
               ))}
             </div>
           </div>
+
+          {/* Invitaciones */}
+          {puedeInvitar && invitaciones.length > 0 && (
+            <div className="mt-4">
+              <InvitacionesPendientes invitaciones={invitaciones} />
+            </div>
+          )}
         </section>
 
         {/* ── Sobre el sistema ── */}
