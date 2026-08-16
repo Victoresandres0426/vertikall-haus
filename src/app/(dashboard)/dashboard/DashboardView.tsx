@@ -24,7 +24,7 @@ import type { Proyecto } from "@/types/database"
 function formatFecha(iso: string | null | undefined): string {
   if (!iso) return "—"
   const d = new Date(iso)
-  return d.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" })
+  return d.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
 }
 
 function formatMoneda(n: number): string {

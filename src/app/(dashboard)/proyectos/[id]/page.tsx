@@ -225,7 +225,7 @@ function formatMXN(n: number) {
 
 function formatDate(d: string | null) {
   if (!d) return "—"
-  return new Date(d).toLocaleDateString("es-MX", { year: "numeric", month: "short", day: "numeric" })
+  return new Date(d).toLocaleDateString("es-MX", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })
 }
 
 const estadoColor: Record<string, string> = {

@@ -100,7 +100,7 @@ export function FlujoCajaClient({
                   {alertasLiquidez.length} semana{alertasLiquidez.length !== 1 ? "s" : ""} con alerta de liquidez
                 </p>
                 <p className="text-xs text-red-700 mt-0.5">
-                  Semanas: {alertasLiquidez.map((p) => new Date(p.semana).toLocaleDateString("es-MX", { month: "short", day: "numeric" })).join(", ")}
+                  Semanas: {alertasLiquidez.map((p) => new Date(p.semana).toLocaleDateString("es-MX", { month: "short", day: "numeric", timeZone: "UTC" })).join(", ")}
                 </p>
               </div>
             </div>
@@ -143,7 +143,7 @@ export function FlujoCajaClient({
                   <tbody className="divide-y divide-slate-50">
                     {proy.semanas.map((sem) => {
                       const fecha = new Date(sem.semana)
-                      const label = fecha.toLocaleDateString("es-MX", { month: "short", day: "numeric" })
+                      const label = fecha.toLocaleDateString("es-MX", { month: "short", day: "numeric", timeZone: "UTC" })
                       const saldoNeg = (sem.saldo_proyectado ?? 0) < 0
                       return (
                         <tr key={sem.id} className={cn("hover:bg-slate-50 transition-colors", sem.alerta_liquidez ? "bg-red-50" : "")}>

@@ -236,7 +236,7 @@ export function PersonalClient({
                     {t.fecha_ingreso && (
                       <div className="flex items-center gap-1.5">
                         <Calendar className="h-3 w-3 text-slate-400 shrink-0" />
-                        <span>Desde {new Date(t.fecha_ingreso).toLocaleDateString("es-MX", { year: "numeric", month: "short", day: "numeric" })}</span>
+                        <span>Desde {new Date(t.fecha_ingreso).toLocaleDateString("es-MX", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })}</span>
                       </div>
                     )}
                   </div>

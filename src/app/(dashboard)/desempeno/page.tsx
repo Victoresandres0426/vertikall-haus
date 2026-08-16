@@ -125,7 +125,7 @@ export default async function DesempenoPage() {
                       </div>
                       <h3 className="text-sm font-semibold text-slate-800 truncate">{nombre}</h3>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        {new Date(ultimo.fecha).toLocaleDateString("es-MX", { year: "numeric", month: "short", day: "numeric" })}
+                        {new Date(ultimo.fecha).toLocaleDateString("es-MX", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })}
                       </p>
                     </div>
                     <CircularProgress value={Math.round(ultimo.score_total)} size={64} strokeWidth={6} />
@@ -180,7 +180,7 @@ export default async function DesempenoPage() {
                       {proy.snapshots.map((snap) => (
                         <tr key={snap.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">
-                            {new Date(snap.fecha).toLocaleDateString("es-MX", { month: "short", day: "numeric", year: "numeric" })}
+                            {new Date(snap.fecha).toLocaleDateString("es-MX", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}
                           </td>
                           <td className="px-3 py-2.5 text-center">
                             <span className={cn("font-bold text-sm", scoreColor(Math.round(snap.score_total)))}>
