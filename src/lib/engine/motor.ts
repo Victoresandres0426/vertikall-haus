@@ -313,11 +313,21 @@ export async function ejecutarMotorDiario(
   // ── 5b. Evaluar decisiones pendientes y alimentar el conocimiento
   // histórico con el resultado (spec §9 — cierra el loop de aprendizaje) ─
   try {
-    const { data: decisionesPendientesRaw } = await supabase
+    // OJO: "decisiones" y "alertas" tienen DOS relaciones cruzadas
+    // (decisiones.alerta_id -> alertas.id, y alertas.decision_tomada_id
+    // -> decisiones.id). Sin el hint "!alerta_id", PostgREST no sabe
+    // cuál de las dos usar para el embed y la consulta falla con
+    // "more than one relationship found" -- por eso se especifica
+    // explícitamente la columna de la relación que se quiere seguir.
+    const { data: decisionesPendientesRaw, error: errDecisiones } = await supabase
       .from("decisiones")
-      .select("id, fecha_decision, alternativa_seleccionada, alerta_id, alertas ( tipo, estado )")
+      .select("id, fecha_decision, alternativa_seleccionada, alerta_id, alertas!alerta_id ( tipo, estado )")
       .eq("proyecto_id", proyectoId)
       .is("resultado_fecha", null)
+
+    if (errDecisiones) {
+      errores.push(`Error leyendo decisiones pendientes: ${errDecisiones.message}`)
+    }
 
     let decisionesEvaluadas = 0
     const cambiosConocimiento = new Map<string, { tipo_alerta: string; alternativa: string; exito: boolean }[]>()
