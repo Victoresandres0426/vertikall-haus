@@ -15,12 +15,13 @@ import { registrarDecision } from "./actions"
 // ──────────────────────────────────────────────
 // Tipos
 // ──────────────────────────────────────────────
+// Debe coincidir con el tipo Alternativa de src/lib/engine/types.ts
+// (lo que realmente escribe el motor en alertas.alternativas JSONB).
 type Alternativa = {
-  id?: string
-  label: string
+  tipo: string
   descripcion: string
-  costo_extra?: number
-  dias_recuperados?: number
+  costo: number
+  dias: number // negativo = días que se recuperan (reduce el atraso)
   impacto?: string
   recomendada?: boolean
 }
@@ -54,10 +55,10 @@ function AlertaCard({ alerta }: { alerta: AlertaDB }) {
 
   const handleAprobar = () => {
     if (!altSeleccionada) return
-    const alt = alerta.alternativas.find((a) => (a.id ?? a.label) === altSeleccionada)
+    const alt = alerta.alternativas.find((a) => a.tipo === altSeleccionada)
     setAprobando(true)
     startTransition(async () => {
-      await registrarDecision(alerta.id, altSeleccionada, alt?.label ?? altSeleccionada)
+      await registrarDecision(alerta.id, altSeleccionada, alt?.descripcion ?? altSeleccionada)
       setAprobando(false)
       setAprobada(true)
     })
@@ -161,8 +162,11 @@ function AlertaCard({ alerta }: { alerta: AlertaDB }) {
                 </p>
                 <div className="space-y-2">
                   {alts.map((alt, idx) => {
-                    const key = alt.id ?? alt.label ?? String(idx)
+                    const key = alt.tipo ?? String(idx)
                     const sel = altSeleccionada === key
+                    // dias en el motor: negativo = días que se recuperan.
+                    // Se muestra en positivo como "días recuperados".
+                    const diasRecuperados = -(alt.dias ?? 0)
                     return (
                       <button
                         key={key}
@@ -183,43 +187,34 @@ function AlertaCard({ alerta }: { alerta: AlertaDB }) {
                                 sel ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700")}>
                                 Opción {String.fromCharCode(65 + idx)}
                               </span>
-                              <span className="text-sm font-semibold">{alt.label}</span>
+                              <span className="text-sm font-semibold">{alt.descripcion}</span>
                               {alt.recomendada && !sel && (
                                 <span className="text-xs bg-emerald-600 text-white px-1.5 py-0.5 rounded">Recomendada</span>
                               )}
                             </div>
-                            {alt.descripcion && (
-                              <p className={cn("text-xs mt-1", sel ? "text-white/80" : "text-slate-600")}>
-                                {alt.descripcion}
-                              </p>
-                            )}
                             {alt.impacto && (
-                              <p className={cn("text-xs mt-1 font-medium", sel ? "text-white/90" : "text-slate-700")}>
+                              <p className={cn("text-xs mt-1", sel ? "text-white/90" : "text-slate-700")}>
                                 {alt.impacto}
                               </p>
                             )}
                           </div>
-                          {((alt.costo_extra ?? 0) !== 0 || (alt.dias_recuperados ?? 0) !== 0) && (
+                          {((alt.costo ?? 0) !== 0 || diasRecuperados !== 0) && (
                             <div className="text-right shrink-0">
-                              {alt.costo_extra !== undefined && (
-                                <>
-                                  <p className={cn("text-xs", sel ? "text-white/60" : "text-slate-400")}>Costo extra</p>
-                                  <p className={cn("text-sm font-bold",
-                                    alt.costo_extra > 0
-                                      ? sel ? "text-amber-300" : "text-amber-600"
-                                      : sel ? "text-emerald-300" : "text-emerald-600")}>
-                                    {alt.costo_extra > 0 ? `+$${alt.costo_extra.toLocaleString()}` : "Sin costo"}
-                                  </p>
-                                </>
-                              )}
-                              {alt.dias_recuperados !== undefined && (
+                              <p className={cn("text-xs", sel ? "text-white/60" : "text-slate-400")}>Costo</p>
+                              <p className={cn("text-sm font-bold",
+                                (alt.costo ?? 0) > 0
+                                  ? sel ? "text-amber-300" : "text-amber-600"
+                                  : sel ? "text-emerald-300" : "text-emerald-600")}>
+                                {(alt.costo ?? 0) > 0 ? `+$${alt.costo.toLocaleString()}` : (alt.costo ?? 0) < 0 ? `-$${Math.abs(alt.costo).toLocaleString()}` : "Sin costo"}
+                              </p>
+                              {diasRecuperados !== 0 && (
                                 <>
                                   <p className={cn("text-xs mt-0.5", sel ? "text-white/60" : "text-slate-400")}>Días</p>
                                   <p className={cn("text-sm font-bold",
-                                    (alt.dias_recuperados ?? 0) > 0
+                                    diasRecuperados > 0
                                       ? sel ? "text-emerald-300" : "text-emerald-600"
                                       : sel ? "text-red-300" : "text-red-500")}>
-                                    {(alt.dias_recuperados ?? 0) > 0 ? `+${alt.dias_recuperados}d` : `${alt.dias_recuperados}d`}
+                                    {diasRecuperados > 0 ? `+${diasRecuperados}d` : `${diasRecuperados}d`}
                                   </p>
                                 </>
                               )}
@@ -238,7 +233,7 @@ function AlertaCard({ alerta }: { alerta: AlertaDB }) {
               <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3.5">
                 <div>
                   <p className="text-sm font-semibold text-white">
-                    Confirmar: {alts.find((a) => (a.id ?? a.label) === altSeleccionada)?.label}
+                    Confirmar: {alts.find((a) => a.tipo === altSeleccionada)?.descripcion}
                   </p>
                   <p className="text-xs text-slate-400 mt-0.5">La decisión quedará registrada con tu nombre, rol y fecha.</p>
                 </div>
