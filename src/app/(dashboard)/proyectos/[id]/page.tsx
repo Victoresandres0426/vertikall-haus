@@ -10,11 +10,13 @@ import {
 import { CircularProgress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import { EquipoProyecto, type TrabajadorEquipo } from "./equipo-proyecto"
+import { ClienteEmail } from "./cliente-email"
 
 // ── Tipos ────────────────────────────────────────────────────
 
 type Proyecto = {
   id: string; codigo: string; nombre: string; cliente: string | null
+  cliente_email: string | null
   ubicacion: string | null; estado: string
   fecha_inicio_plan: string; fecha_fin_plan: string
   fecha_inicio_real: string | null; fecha_fin_forecast: string | null
@@ -73,7 +75,7 @@ async function getData(id: string) {
   const { data: proyecto } = await supabase
     .from("proyectos")
     .select(`
-      id, codigo, nombre, cliente, ubicacion, estado,
+      id, codigo, nombre, cliente, cliente_email, ubicacion, estado,
       fecha_inicio_plan, fecha_fin_plan, fecha_inicio_real, fecha_fin_forecast,
       presupuesto_base, presupuesto_venta, margen_objetivo
     `)
@@ -157,6 +159,9 @@ async function getData(id: string) {
   const ROLES_GESTION = ['capataz', 'project_manager', 'administrador', 'dueno', 'superadmin']
   const puedeGestionarEquipo = !!perfil && ROLES_GESTION.includes(perfil.rol)
 
+  const ROLES_CLIENTE = ['project_manager', 'administrador', 'dueno', 'superadmin']
+  const puedeEditarCliente = !!perfil && ROLES_CLIENTE.includes(perfil.rol)
+
   // ── Equipo autorizado (requiere migration 009) ────────────────
   let equipoAuth: TrabajadorEquipo[] = []
   let equipoDisponibles: TrabajadorEquipo[] = []
@@ -212,6 +217,7 @@ async function getData(id: string) {
     equipoAuth,
     equipoDisponibles,
     puedeGestionarEquipo,
+    puedeEditarCliente,
   }
 }
 
@@ -272,7 +278,7 @@ function TendIcon({ t }: { t: string | null }) {
 
 export default async function ProyectoDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { proyecto, procesos, iidp, alertas, changeOrders, costos, qrToken, asistenciaHoy, equipoAuth, equipoDisponibles, puedeGestionarEquipo } = await getData(id)
+  const { proyecto, procesos, iidp, alertas, changeOrders, costos, qrToken, asistenciaHoy, equipoAuth, equipoDisponibles, puedeGestionarEquipo, puedeEditarCliente } = await getData(id)
 
   const ultimoIIDP = iidp[0] ?? null
 
@@ -331,6 +337,9 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
             </div>
             <h1 className="text-xl font-bold text-slate-900">{proyecto.nombre}</h1>
             {proyecto.cliente && <p className="text-sm text-slate-500 mt-0.5">{proyecto.cliente}</p>}
+            <div className="mt-1">
+              <ClienteEmail proyectoId={proyecto.id} emailInicial={proyecto.cliente_email} puedeEditar={puedeEditarCliente} />
+            </div>
           </div>
           {ultimoIIDP && (
             <div className="shrink-0 flex items-center gap-3">
