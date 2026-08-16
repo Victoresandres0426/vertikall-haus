@@ -9,6 +9,7 @@ import {
 } from "lucide-react"
 import { CircularProgress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
+import { EquipoProyecto, type TrabajadorEquipo } from "./equipo-proyecto"
 
 // ── Tipos ────────────────────────────────────────────────────
 
@@ -146,6 +147,59 @@ async function getData(id: string) {
     } catch { /* migración no aplicada aún */ }
   }
 
+  // ── Perfil del usuario (para gestión de equipo) ─────────────
+  const { data: perfil } = await supabase
+    .from("perfiles_usuario")
+    .select("rol, empresa_id")
+    .eq("id", user.id)
+    .single()
+
+  const ROLES_GESTION = ['capataz', 'project_manager', 'administrador', 'dueno', 'superadmin']
+  const puedeGestionarEquipo = !!perfil && ROLES_GESTION.includes(perfil.rol)
+
+  // ── Equipo autorizado (requiere migration 009) ────────────────
+  let equipoAuth: TrabajadorEquipo[] = []
+  let equipoDisponibles: TrabajadorEquipo[] = []
+
+  const eqRes = await supabase
+    .from("proyecto_trabajadores")
+    .select("trabajador:trabajador_id(id, nombre_completo, rol_obra, especialidad)")
+    .eq("proyecto_id", id)
+    .eq("autorizado", true)
+
+  if (!eqRes.error && eqRes.data) {
+    equipoAuth = (eqRes.data as unknown as Array<{ trabajador: TrabajadorEquipo | null }>)
+      .filter(pt => pt.trabajador != null)
+      .map(pt => ({
+        id: pt.trabajador!.id,
+        nombre_completo: pt.trabajador!.nombre_completo,
+        rol_obra: pt.trabajador!.rol_obra ?? null,
+        especialidad: pt.trabajador!.especialidad ?? null,
+      }))
+
+    // Workers in the empresa not yet in this project
+    if (perfil?.empresa_id) {
+      const autorizadosIds = new Set(equipoAuth.map(e => e.id))
+      const todosRes = await supabase
+        .from("trabajadores")
+        .select("id, nombre_completo, rol_obra, especialidad")
+        .eq("empresa_id", perfil.empresa_id)
+        .eq("activo", true)
+        .order("nombre_completo")
+
+      if (!todosRes.error && todosRes.data) {
+        equipoDisponibles = todosRes.data
+          .filter(t => !autorizadosIds.has(t.id))
+          .map(t => ({
+            id: t.id,
+            nombre_completo: t.nombre_completo,
+            rol_obra: (t.rol_obra as string | null) ?? null,
+            especialidad: (t.especialidad as string | null) ?? null,
+          }))
+      }
+    }
+  }
+
   return {
     proyecto: proyecto as Proyecto,
     procesos: (procesosRes.data ?? []) as unknown as Proceso[],
@@ -155,6 +209,9 @@ async function getData(id: string) {
     costos: (costosRes.data ?? []) as unknown as CostoReal[],
     qrToken,
     asistenciaHoy: asistenciaHoyData,
+    equipoAuth,
+    equipoDisponibles,
+    puedeGestionarEquipo,
   }
 }
 
@@ -215,7 +272,7 @@ function TendIcon({ t }: { t: string | null }) {
 
 export default async function ProyectoDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { proyecto, procesos, iidp, alertas, changeOrders, costos, qrToken, asistenciaHoy } = await getData(id)
+  const { proyecto, procesos, iidp, alertas, changeOrders, costos, qrToken, asistenciaHoy, equipoAuth, equipoDisponibles, puedeGestionarEquipo } = await getData(id)
 
   const ultimoIIDP = iidp[0] ?? null
 
@@ -589,6 +646,14 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
             </div>
           </section>
         )}
+
+        {/* ── Equipo en obra ── */}
+        <EquipoProyecto
+          proyectoId={proyecto.id}
+          equipo={equipoAuth}
+          disponibles={equipoDisponibles}
+          puedeGestionar={puedeGestionarEquipo}
+        />
 
         {/* ── QR Asistencia ── */}
         {qrToken && (

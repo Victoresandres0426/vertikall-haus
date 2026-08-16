@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { ejecutarMotorDiario } from "@/lib/engine/motor"
 
 type EntradaAvance = {
   actividad_id: string
@@ -92,9 +93,23 @@ export async function crearReporteDiario(input: {
     }
   }
 
+  // ── Motor de reglas: recalcula desviaciones, alertas e IIDP ──
+  // No debe romper el guardado del reporte si falla: el capataz ya
+  // guardó sus datos, que es lo crítico. Los errores quedan en logs.
+  try {
+    const motor = await ejecutarMotorDiario(supabase, input.proyecto_id, new Date(input.fecha))
+    if (motor.errores.length > 0) {
+      console.error("Motor de reglas terminó con errores:", motor.errores)
+    }
+  } catch (e) {
+    console.error("Motor de reglas falló:", e)
+  }
+
   revalidatePath("/reporte-diario")
   revalidatePath("/actividades")
   revalidatePath("/dashboard")
+  revalidatePath("/alertas")
+  revalidatePath("/desempeno")
 
   return { id: reporte.id }
 }

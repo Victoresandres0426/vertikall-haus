@@ -58,7 +58,7 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
       }
       setProyecto(proy)
 
-      // Load trabajadores of this company
+      // Load empresa_id from project
       const { data: empresa_proy } = await supabase
         .from("proyectos")
         .select("empresa_id")
@@ -66,13 +66,29 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
         .single()
 
       if (empresa_proy) {
-        const { data: trabs } = await supabase
-          .from("trabajadores")
-          .select("id, nombre_completo, rol_obra")
-          .eq("empresa_id", empresa_proy.empresa_id)
-          .eq("activo", true)
-          .order("nombre_completo")
-        setTrabajadores(trabs ?? [])
+        // Intentar obtener solo los trabajadores autorizados para este proyecto
+        const { data: ptData, error: ptError } = await supabase
+          .from("proyecto_trabajadores")
+          .select("trabajador:trabajador_id(id, nombre_completo, rol_obra)")
+          .eq("proyecto_id", proy.id)
+          .eq("autorizado", true)
+
+        if (!ptError && ptData && ptData.length > 0) {
+          // Solo los autorizados por el capataz
+          const autorizados = (ptData as unknown as Array<{ trabajador: Trabajador | null }>)
+            .map(pt => pt.trabajador)
+            .filter((t): t is Trabajador => t != null)
+          setTrabajadores(autorizados)
+        } else {
+          // Sin equipo configurado aún → mostrar todos los de la empresa
+          const { data: trabs } = await supabase
+            .from("trabajadores")
+            .select("id, nombre_completo, rol_obra")
+            .eq("empresa_id", empresa_proy.empresa_id)
+            .eq("activo", true)
+            .order("nombre_completo")
+          setTrabajadores(trabs ?? [])
+        }
       }
 
       setIsLoading(false)
