@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Badge, AlertaBadge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { registrarDecision } from "./actions"
+import { simularEscenario, CRITERIOS, type CriterioSimulacion } from "@/lib/engine/simulacion"
 
 // ──────────────────────────────────────────────
 // Tipos
@@ -51,6 +52,7 @@ function AlertaCard({ alerta }: { alerta: AlertaDB }) {
   const [altSeleccionada, setAltSeleccionada] = useState<string | null>(null)
   const [aprobando, setAprobando] = useState(false)
   const [aprobada, setAprobada] = useState(alerta.estado === "en_revision")
+  const [criterio, setCriterio] = useState<CriterioSimulacion | null>(null)
   const [, startTransition] = useTransition()
 
   const handleAprobar = () => {
@@ -155,15 +157,39 @@ function AlertaCard({ alerta }: { alerta: AlertaDB }) {
             {/* Alternativas */}
             {alts.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                  <Zap className="h-3.5 w-3.5 text-amber-500" />
-                  Alternativas de acción
-                  {alerta.rol_que_decide && ` · Decide: ${alerta.rol_que_decide.replace("_", " ")}`}
-                </p>
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5 text-amber-500" />
+                    Alternativas de acción
+                    {alerta.rol_que_decide && ` · Decide: ${alerta.rol_que_decide.replace("_", " ")}`}
+                  </p>
+                  {alts.length > 1 && (
+                    <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-0.5">
+                      <span className="text-[10px] text-slate-400 px-1.5">Priorizar:</span>
+                      {CRITERIOS.map((c) => (
+                        <button
+                          key={c.valor}
+                          type="button"
+                          title={c.descripcion}
+                          onClick={() => setCriterio(criterio === c.valor ? null : c.valor)}
+                          className={cn(
+                            "text-[11px] px-2 py-1 rounded-md font-medium transition-colors",
+                            criterio === c.valor
+                              ? "bg-slate-900 text-white"
+                              : "text-slate-500 hover:bg-slate-100"
+                          )}
+                        >
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <div className="space-y-2">
-                  {alts.map((alt, idx) => {
+                  {(criterio ? simularEscenario(alts, criterio) : alts).map((alt, idx) => {
                     const key = alt.tipo ?? String(idx)
                     const sel = altSeleccionada === key
+                    const esMejorSimulada = criterio && idx === 0
                     // dias en el motor: negativo = días que se recuperan.
                     // Se muestra en positivo como "días recuperados".
                     const diasRecuperados = -(alt.dias ?? 0)
@@ -175,20 +201,27 @@ function AlertaCard({ alerta }: { alerta: AlertaDB }) {
                           "w-full text-left rounded-lg border p-3.5 transition-all",
                           sel
                             ? "border-slate-900 bg-slate-900 text-white"
-                            : alt.recomendada
-                              ? "border-emerald-300 bg-emerald-50 hover:bg-emerald-100"
-                              : "border-slate-200 bg-white hover:bg-slate-50"
+                            : esMejorSimulada
+                              ? "border-blue-300 bg-blue-50 hover:bg-blue-100"
+                              : alt.recomendada
+                                ? "border-emerald-300 bg-emerald-50 hover:bg-emerald-100"
+                                : "border-slate-200 bg-white hover:bg-slate-50"
                         )}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <span className={cn("text-xs font-bold px-1.5 py-0.5 rounded",
                                 sel ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700")}>
                                 Opción {String.fromCharCode(65 + idx)}
                               </span>
                               <span className="text-sm font-semibold">{alt.descripcion}</span>
-                              {alt.recomendada && !sel && (
+                              {esMejorSimulada && !sel && (
+                                <span className="text-xs bg-blue-600 text-white px-1.5 py-0.5 rounded">
+                                  Mejor en {CRITERIOS.find((c) => c.valor === criterio)?.label.toLowerCase()}
+                                </span>
+                              )}
+                              {alt.recomendada && !sel && !esMejorSimulada && (
                                 <span className="text-xs bg-emerald-600 text-white px-1.5 py-0.5 rounded">Recomendada</span>
                               )}
                             </div>
