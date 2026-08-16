@@ -188,9 +188,9 @@ async function getData(id: string) {
         .order("nombre_completo")
 
       if (!todosRes.error && todosRes.data) {
-        equipoDisponibles = todosRes.data
-          .filter(t => !autorizadosIds.has(t.id))
-          .map(t => ({
+        equipoDisponibles = (todosRes.data as any[])
+          .filter((t: any) => !autorizadosIds.has(t.id))
+          .map((t: any) => ({
             id: t.id,
             nombre_completo: t.nombre_completo,
             rol_obra: (t.rol_obra as string | null) ?? null,

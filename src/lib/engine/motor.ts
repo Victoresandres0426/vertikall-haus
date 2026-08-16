@@ -86,7 +86,7 @@ export async function ejecutarMotorDiario(
     return resultado
   }
 
-  const actividades: ActividadParaMotor[] = (actividadesRaw ?? []).map((a) => ({
+  const actividades: ActividadParaMotor[] = ((actividadesRaw ?? []) as any[]).map((a: any) => ({
     id: a.id,
     proyecto_id: a.proyecto_id,
     codigo: a.codigo,
@@ -108,7 +108,7 @@ export async function ejecutarMotorDiario(
     .eq("proyecto_id", proyectoId)
     .eq("fecha", hoyISO(fecha))
 
-  const reporteIds = (reporteHoy ?? []).map((r) => r.id)
+  const reporteIds = ((reporteHoy ?? []) as any[]).map((r: any) => r.id)
   const señalesPorActividad = new Map<string, { incidencias?: string; bloqueos?: string }>()
 
   if (reporteIds.length > 0) {
@@ -117,7 +117,7 @@ export async function ejecutarMotorDiario(
       .select("actividad_id, incidencias, bloqueos")
       .in("reporte_id", reporteIds)
 
-    for (const av of avancesHoy ?? []) {
+    for (const av of (avancesHoy ?? []) as any[]) {
       señalesPorActividad.set(av.actividad_id, {
         incidencias: av.incidencias ?? undefined,
         bloqueos: av.bloqueos ?? undefined,
@@ -148,9 +148,11 @@ export async function ejecutarMotorDiario(
     .eq("proyecto_id", proyectoId)
     .in("estado", ["activa", "en_revision"])
 
-  const alertasActivas = alertasActivasRaw ?? []
+  const alertasActivas = (alertasActivasRaw ?? []) as any[]
   const clave = (actividadId: string, tipo: string) => `${actividadId}::${tipo}`
-  const activasPorClave = new Map(alertasActivas.map((al) => [clave(al.actividad_id, al.tipo), al]))
+  const activasPorClave = new Map<string, any>(
+    alertasActivas.map((al: any) => [clave(al.actividad_id, al.tipo), al])
+  )
   const vigentesClaves = new Set(alertasVigentes.map((al) => clave(al.actividad_id, al.tipo)))
 
   for (const nueva of alertasVigentes) {
@@ -268,7 +270,7 @@ async function construirInputsIIDP(
     .eq("proyecto_id", proyectoId)
     .eq("fecha", hoyISO(fecha))
 
-  const reporteIdsHoy = (reportesHoy ?? []).map((r) => r.id)
+  const reporteIdsHoy = ((reportesHoy ?? []) as any[]).map((r: any) => r.id)
   let horasProductivasHoy = 0
   let horasImproductivasHoy = 0
 
@@ -278,7 +280,7 @@ async function construirInputsIIDP(
       .select("horas_productivas, horas_improductivas, horas_regulares, horas_extra")
       .in("reporte_id", reporteIdsHoy)
 
-    for (const a of asistencia ?? []) {
+    for (const a of (asistencia ?? []) as any[]) {
       const productivas = a.horas_productivas ?? (a.horas_regulares ?? 0) + (a.horas_extra ?? 0)
       horasProductivasHoy += Number(productivas ?? 0)
       horasImproductivasHoy += Number(a.horas_improductivas ?? 0)
@@ -294,7 +296,7 @@ async function construirInputsIIDP(
     .gte("fecha", hoyISO(hace7dias))
     .lte("fecha", hoyISO(fecha))
 
-  const reporteIds7d = (reportes7d ?? []).map((r) => r.id)
+  const reporteIds7d = ((reportes7d ?? []) as any[]).map((r: any) => r.id)
   let horasRetrabajo7d = 0
   let horasTrabajadas7d = 0
 
@@ -304,7 +306,7 @@ async function construirInputsIIDP(
       .select("retrabajo_horas, horas_trabajadas")
       .in("reporte_id", reporteIds7d)
 
-    for (const av of avances7d ?? []) {
+    for (const av of (avances7d ?? []) as any[]) {
       horasRetrabajo7d += Number(av.retrabajo_horas ?? 0)
       horasTrabajadas7d += Number(av.horas_trabajadas ?? 0)
     }
@@ -317,8 +319,8 @@ async function construirInputsIIDP(
     .eq("empresa_id", empresaId)
 
   const materialesTotal = materiales?.length ?? 0
-  const materialesBajoStock = (materiales ?? []).filter(
-    (m) => m.stock_actual != null && m.stock_minimo != null && m.stock_actual <= m.stock_minimo
+  const materialesBajoStock = ((materiales ?? []) as any[]).filter(
+    (m: any) => m.stock_actual != null && m.stock_minimo != null && m.stock_actual <= m.stock_minimo
   ).length
 
   // Gestión: alertas con fecha límite ya vencida/hoy, cuántas tienen decisión
@@ -330,7 +332,7 @@ async function construirInputsIIDP(
     .lte("fecha_limite_accion", hoyISO(fecha))
 
   const alertasConFechaLimite = alertasConLimite?.length ?? 0
-  const alertasAtendidasATiempo = (alertasConLimite ?? []).filter((al) =>
+  const alertasAtendidasATiempo = ((alertasConLimite ?? []) as any[]).filter((al: any) =>
     ["en_revision", "resuelta"].includes(al.estado)
   ).length
 

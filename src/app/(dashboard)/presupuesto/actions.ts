@@ -108,7 +108,7 @@ export async function crearPartida(formData: FormData): Promise<{ error?: string
     .select("monto_presupuestado")
     .eq("presupuesto_id", presupuesto_id)
 
-  const nuevoTotal = (partidas ?? []).reduce((s, p) => s + (p.monto_presupuestado ?? 0), 0)
+  const nuevoTotal = ((partidas ?? []) as any[]).reduce((s: number, p: any) => s + (p.monto_presupuestado ?? 0), 0)
 
   await supabase.from("presupuestos").update({ total: nuevoTotal }).eq("id", presupuesto_id)
 
