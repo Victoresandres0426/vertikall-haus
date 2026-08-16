@@ -44,52 +44,32 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
 
   useEffect(() => {
     async function load() {
-      // Find project by qr_token
-      const { data: proy } = await supabase
-        .from("proyectos")
-        .select("id, nombre, codigo, ubicacion")
-        .eq("qr_token", token)
-        .single()
+      // Find project by qr_token — vía función pública (RLS bloquea la
+      // tabla proyectos para usuarios sin sesión, así que se usa un RPC
+      // que solo devuelve las columnas necesarias para el check-in).
+      const { data: proyData, error: proyError } = await supabase
+        .rpc("checkin_datos_proyecto", { p_qr_token: token })
 
-      if (!proy) {
+      const proy = proyData?.[0] as { proyecto_id: string; nombre: string; codigo: string; ubicacion: string | null } | undefined
+
+      if (proyError || !proy) {
         setNotFound(true)
         setIsLoading(false)
         return
       }
-      setProyecto(proy)
+      setProyecto({ id: proy.proyecto_id, nombre: proy.nombre, codigo: proy.codigo, ubicacion: proy.ubicacion })
 
-      // Load empresa_id from project
-      const { data: empresa_proy } = await supabase
-        .from("proyectos")
-        .select("empresa_id")
-        .eq("id", proy.id)
-        .single()
+      // Lista de trabajadores (autorizados del proyecto, o todos los de
+      // la empresa si aún no hay equipo configurado) — también vía RPC.
+      const { data: trabsData } = await supabase
+        .rpc("checkin_trabajadores_disponibles", { p_qr_token: token })
 
-      if (empresa_proy) {
-        // Intentar obtener solo los trabajadores autorizados para este proyecto
-        const { data: ptData, error: ptError } = await supabase
-          .from("proyecto_trabajadores")
-          .select("trabajador:trabajador_id(id, nombre_completo, rol_obra)")
-          .eq("proyecto_id", proy.id)
-          .eq("autorizado", true)
-
-        if (!ptError && ptData && ptData.length > 0) {
-          // Solo los autorizados por el capataz
-          const autorizados = (ptData as unknown as Array<{ trabajador: Trabajador | null }>)
-            .map(pt => pt.trabajador)
-            .filter((t): t is Trabajador => t != null)
-          setTrabajadores(autorizados)
-        } else {
-          // Sin equipo configurado aún → mostrar todos los de la empresa
-          const { data: trabs } = await supabase
-            .from("trabajadores")
-            .select("id, nombre_completo, rol_obra")
-            .eq("empresa_id", empresa_proy.empresa_id)
-            .eq("activo", true)
-            .order("nombre_completo")
-          setTrabajadores(trabs ?? [])
-        }
-      }
+      const trabs = (trabsData ?? []).map((t: { trabajador_id: string; nombre_completo: string; rol_obra: string | null }) => ({
+        id: t.trabajador_id,
+        nombre_completo: t.nombre_completo,
+        rol_obra: t.rol_obra,
+      }))
+      setTrabajadores(trabs)
 
       setIsLoading(false)
     }
