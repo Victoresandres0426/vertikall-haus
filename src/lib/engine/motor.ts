@@ -7,15 +7,15 @@
 // recalcula desviaciones, genera/actualiza alertas y guarda un
 // snapshot de IIDP para el proyecto.
 //
-// Es una v1 basada en reglas explícitas (spec §19). Todavía NO
-// calcula ruta crítica dinámica (spec §4) — eso requiere un
-// algoritmo CPM sobre dependencias_actividad y queda fuera de
-// esta ronda; el campo actividades.es_critica se usa tal cual
-// está en la base de datos hoy.
+// Es una v1 basada en reglas explícitas (spec §19). Incluye cálculo
+// de ruta crítica (CPM) sobre dependencias_actividad: en cada corrida
+// se recalculan es_critica/holgura_dias de todas las actividades del
+// proyecto y se guardan de vuelta en la tabla (ver cpm.ts).
 
 import { evaluarCronograma, evaluarCosto, type ActividadParaMotor } from "./reglas"
 import { calcularIIDP, calcularTendencia, type IIDPInputs } from "./iidp"
 import { umbralesDesdeConfig, pesosDesdeConfig, type ConfiguracionEmpresa } from "./types"
+import { calcularRutaCritica, type ActividadCPM, type DependenciaCPM } from "./cpm"
 import type { AlertaGenerada } from "./types"
 
 // Los clientes de Supabase (server.ts / client.ts) no se generan aquí
@@ -29,6 +29,7 @@ export type ResultadoMotor = {
   alertas_actualizadas: number
   alertas_resueltas: number
   iidp: { score_total: number; tendencia: string } | null
+  ruta_critica: { actividades_criticas: number; actividades_actualizadas: number } | null
   errores: string[]
 }
 
@@ -47,6 +48,7 @@ export async function ejecutarMotorDiario(
     alertas_actualizadas: 0,
     alertas_resueltas: 0,
     iidp: null,
+    ruta_critica: null,
     errores,
   }
 
@@ -100,6 +102,64 @@ export async function ejecutarMotorDiario(
     es_critica: !!a.es_critica,
     estado: a.estado,
   }))
+
+  // ── 2b. Ruta crítica (CPM) sobre las dependencias del proyecto ────
+  try {
+    const actividadIds = actividades.map((a) => a.id)
+    const { data: depsRaw, error: errDeps } = await supabase
+      .from("dependencias_actividad")
+      .select("actividad_id, predecesora_id, tipo, lag_dias")
+      .in("actividad_id", actividadIds)
+
+    if (errDeps) {
+      errores.push(`Error leyendo dependencias para ruta crítica: ${errDeps.message}`)
+    } else {
+      const actividadesCPM: ActividadCPM[] = actividades.map((a) => ({
+        id: a.id,
+        fecha_inicio_plan: a.fecha_inicio_plan,
+        fecha_fin_plan: a.fecha_fin_plan,
+        duracion_plan_dias: a.duracion_plan_dias,
+      }))
+      const dependenciasCPM: DependenciaCPM[] = ((depsRaw ?? []) as any[]).map((d: any) => ({
+        actividad_id: d.actividad_id,
+        predecesora_id: d.predecesora_id,
+        tipo: d.tipo,
+        lag_dias: d.lag_dias ?? 0,
+      }))
+
+      const cpm = calcularRutaCritica(actividadesCPM, dependenciasCPM)
+
+      let criticas = 0
+      let actualizadas = 0
+      for (const a of actividades) {
+        const r = cpm.get(a.id)
+        if (!r) continue
+        if (r.es_critica) criticas++
+        // Sobrescribe es_critica en memoria para que las alertas de este
+        // mismo ciclo usen el valor recién calculado (no el que traía la BD).
+        const cambioEstado = a.es_critica !== r.es_critica
+        a.es_critica = r.es_critica
+
+        if (cambioEstado) {
+          const { error: errUpd } = await supabase
+            .from("actividades")
+            .update({ es_critica: r.es_critica, holgura_dias: r.holgura_dias })
+            .eq("id", a.id)
+          if (errUpd) errores.push(`Error guardando ruta crítica de ${a.codigo}: ${errUpd.message}`)
+          else actualizadas++
+        } else {
+          const { error: errUpd } = await supabase
+            .from("actividades")
+            .update({ holgura_dias: r.holgura_dias })
+            .eq("id", a.id)
+          if (errUpd) errores.push(`Error guardando holgura de ${a.codigo}: ${errUpd.message}`)
+        }
+      }
+      resultado.ruta_critica = { actividades_criticas: criticas, actividades_actualizadas: actualizadas }
+    }
+  } catch (e) {
+    errores.push(`Error calculando ruta crítica: ${e instanceof Error ? e.message : String(e)}`)
+  }
 
   // ── 3. Señales cualitativas del reporte de hoy (incidencias/bloqueos) ─
   const { data: reporteHoy } = await supabase
