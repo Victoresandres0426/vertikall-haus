@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { TrendingUp, TrendingDown, Banknote, AlertTriangle, Plus, X } from "lucide-react"
+import { TrendingUp, TrendingDown, Banknote, AlertTriangle, Plus, X, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { crearProyeccionSemanal } from "./actions"
+import { crearProyeccionSemanal, recalcularFlujoCajaAutomatico } from "./actions"
 
 export type Proyeccion = {
   id: string
@@ -37,6 +37,7 @@ export function FlujoCajaClient({
 }) {
   const [proyecciones] = useState<Proyeccion[]>(proyeccionesIniciales)
   const [showModal, setShowModal] = useState(false)
+  const [showModalAuto, setShowModalAuto] = useState(false)
 
   const alertasLiquidez = proyecciones.filter((p) => p.alerta_liquidez)
   const ingresosPlanTotal = proyecciones.reduce((s, p) => s + (p.ingresos_plan ?? 0), 0)
@@ -56,7 +57,10 @@ export function FlujoCajaClient({
   return (
     <div className="p-6 space-y-6">
       {puedeCrear && (
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setShowModalAuto(true)}>
+            <RefreshCw className="h-4 w-4 mr-1" /> Recalcular desde facturas
+          </Button>
           <Button onClick={() => setShowModal(true)}>
             <Plus className="h-4 w-4 mr-1" /> Cargar semana
           </Button>
@@ -176,6 +180,63 @@ export function FlujoCajaClient({
       {showModal && (
         <ModalCargarSemana proyectos={proyectos} onClose={() => setShowModal(false)} />
       )}
+      {showModalAuto && (
+        <ModalRecalcularAutomatico proyectos={proyectos} onClose={() => setShowModalAuto(false)} />
+      )}
+    </div>
+  )
+}
+
+function ModalRecalcularAutomatico({ proyectos, onClose }: { proyectos: ProyectoOpcion[]; onClose: () => void }) {
+  const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState("")
+  const [proyectoId, setProyectoId] = useState("")
+
+  const handleRecalcular = () => {
+    setError("")
+    if (!proyectoId) {
+      setError("Selecciona un proyecto")
+      return
+    }
+    startTransition(async () => {
+      const result = await recalcularFlujoCajaAutomatico(proyectoId)
+      if (result.error) setError(result.error)
+      else { onClose(); window.location.reload() }
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget && !isPending) onClose() }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+        <button className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 disabled:opacity-50" onClick={onClose} disabled={isPending}>
+          <X className="h-5 w-5" />
+        </button>
+        <h3 className="text-lg font-semibold text-slate-900 mb-1">Recalcular desde facturas y nómina</h3>
+        <p className="text-xs text-slate-400 mb-5">
+          Agrupa por semana las facturas de cliente (CxC), facturas de proveedor (CxP) y la
+          porción de nómina asignada a este proyecto, y recalcula el saldo acumulado semana a semana.
+        </p>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Proyecto *</label>
+            <select
+              value={proyectoId}
+              onChange={(e) => setProyectoId(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+            >
+              <option value="">Selecciona un proyecto</option>
+              {proyectos.map((p) => (
+                <option key={p.id} value={p.id}>{p.codigo} — {p.nombre}</option>
+              ))}
+            </select>
+          </div>
+          {error && <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-600">{error}</div>}
+          <div className="flex gap-3 pt-1">
+            <Button type="button" variant="outline" className="flex-1" onClick={onClose} disabled={isPending}>Cancelar</Button>
+            <Button type="button" className="flex-1" isLoading={isPending} onClick={handleRecalcular}>Recalcular</Button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

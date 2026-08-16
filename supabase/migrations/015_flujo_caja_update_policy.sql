@@ -1,0 +1,3 @@
+-- DEPRECADO: este archivo se reemplazó por 015_flujo_caja_facturas_update.sql
+-- (mismo número de migración, contenido consolidado). No ejecutar este
+-- archivo; usa 015_flujo_caja_facturas_update.sql en su lugar.

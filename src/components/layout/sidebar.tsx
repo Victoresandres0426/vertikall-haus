@@ -19,6 +19,7 @@ import {
   Wrench,
   DollarSign,
   FileText,
+  Receipt,
   ChevronRight,
 } from "lucide-react"
 
@@ -46,6 +47,7 @@ const navItems = [
     items: [
       { href: "/presupuesto", label: "Presupuesto", icon: DollarSign },
       { href: "/change-orders", label: "Change Orders", icon: FileText },
+      { href: "/facturas", label: "Facturas", icon: Receipt },
       { href: "/flujo-caja", label: "Flujo de Caja", icon: TrendingUp },
     ],
   },
