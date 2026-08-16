@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
 import { Building2, Eye, EyeOff, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
@@ -18,10 +18,10 @@ const rolLabel: Record<string, string> = {
   dueno: "Dueño",
 }
 
-export default function InvitacionPage({ params }: { params: { token: string } }) {
+export default function InvitacionPage({ params }: { params: Promise<{ token: string }> }) {
   const router = useRouter()
   const supabase = createClient()
-  const { token } = params
+  const { token } = use(params)
 
   const [invite, setInvite] = useState<InvitacionInfo | null>(null)
   const [notFound, setNotFound] = useState(false)

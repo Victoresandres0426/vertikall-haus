@@ -180,8 +180,9 @@ function TendIcon({ t }: { t: string | null }) {
 
 // ── Page ─────────────────────────────────────────────────────
 
-export default async function ProyectoDetallePage({ params }: { params: { id: string } }) {
-  const { proyecto, procesos, iidp, alertas, changeOrders, costos } = await getData(params.id)
+export default async function ProyectoDetallePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const { proyecto, procesos, iidp, alertas, changeOrders, costos } = await getData(id)
 
   const ultimoIIDP = iidp[0] ?? null
 
