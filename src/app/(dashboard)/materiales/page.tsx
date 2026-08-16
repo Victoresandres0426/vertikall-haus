@@ -25,7 +25,8 @@ async function getData() {
     supabase
       .from("materiales_actividad")
       .select(`
-        id, cantidad_plan, cantidad_recibida, cantidad_en_transito, costo_unitario,
+        id, cantidad_plan, cantidad_recibida, cantidad_en_transito,
+        costo_unitario:precio_unitario,
         material_id,
         actividades ( nombre, codigo ),
         materiales_catalogo ( nombre, unidad )
