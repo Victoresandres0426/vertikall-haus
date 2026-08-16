@@ -6,7 +6,7 @@ import type { ActividadDB, TrabajadorDB, ProyectoSimple } from "./reporte-client
 async function getData(): Promise<{
   proyectos: ProyectoSimple[]
   actividadesPorProyecto: Record<string, ActividadDB[]>
-  trabajadores: TrabajadorDB[]
+  trabajadoresPorProyecto: Record<string, TrabajadorDB[]>
 }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -44,26 +44,44 @@ async function getData(): Promise<{
     }
   }
 
-  // Trabajadores de la empresa (si existen)
-  const { data: trabajadoresRaw } = await supabase
-    .from("trabajadores")
-    .select("id, nombre_completo, rol_obra, especialidad")
-    .eq("activa" as never, true)
-    .order("nombre_completo")
+  // Trabajadores autorizados por proyecto (equipo asignado en la ficha del proyecto)
+  const trabajadoresPorProyecto: Record<string, TrabajadorDB[]> = {}
 
-  const trabajadores: TrabajadorDB[] = (trabajadoresRaw ?? []) as TrabajadorDB[]
+  if (proyectoIds.length > 0) {
+    const { data: asignacionesRaw } = await supabase
+      .from("proyecto_trabajadores")
+      .select(`
+        proyecto_id,
+        trabajadores ( id, nombre_completo, rol_obra, especialidad, activo )
+      `)
+      .in("proyecto_id", proyectoIds)
+      .eq("autorizado", true)
 
-  return { proyectos, actividadesPorProyecto, trabajadores }
+    for (const asign of (asignacionesRaw ?? []) as unknown as {
+      proyecto_id: string
+      trabajadores: (TrabajadorDB & { activo: boolean }) | null
+    }[]) {
+      if (!asign.trabajadores || asign.trabajadores.activo === false) continue
+      if (!trabajadoresPorProyecto[asign.proyecto_id]) trabajadoresPorProyecto[asign.proyecto_id] = []
+      const { activo: _activo, ...trabajador } = asign.trabajadores
+      trabajadoresPorProyecto[asign.proyecto_id].push(trabajador)
+    }
+    for (const pid of Object.keys(trabajadoresPorProyecto)) {
+      trabajadoresPorProyecto[pid].sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo))
+    }
+  }
+
+  return { proyectos, actividadesPorProyecto, trabajadoresPorProyecto }
 }
 
 export default async function ReporteDiarioPage() {
-  const { proyectos, actividadesPorProyecto, trabajadores } = await getData()
+  const { proyectos, actividadesPorProyecto, trabajadoresPorProyecto } = await getData()
 
   return (
     <ReporteClient
       proyectos={proyectos}
       actividadesPorProyecto={actividadesPorProyecto}
-      trabajadores={trabajadores}
+      trabajadoresPorProyecto={trabajadoresPorProyecto}
     />
   )
 }

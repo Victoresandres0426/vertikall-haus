@@ -75,11 +75,11 @@ function fechaHoyLabel() {
 export function ReporteClient({
   proyectos,
   actividadesPorProyecto,
-  trabajadores: trabajadoresDB,
+  trabajadoresPorProyecto,
 }: {
   proyectos: ProyectoSimple[]
   actividadesPorProyecto: Record<string, ActividadDB[]>
-  trabajadores: TrabajadorDB[]
+  trabajadoresPorProyecto: Record<string, TrabajadorDB[]>
 }) {
   const [proyectoId, setProyectoId] = useState(proyectos[0]?.id ?? "")
   const [paso, setPaso] = useState(1)
@@ -90,7 +90,7 @@ export function ReporteClient({
   const [isPending, startTransition] = useTransition()
 
   const [trabajadores, setTrabajadores] = useState<TrabajadorLocal[]>(
-    trabajadoresDB.map((t) => ({
+    (trabajadoresPorProyecto[proyectos[0]?.id ?? ""] ?? []).map((t) => ({
       ...t,
       asistencia: "presente" as AsistenciaState,
       horas: 8,
@@ -116,6 +116,14 @@ export function ReporteClient({
         ...a,
         cantidad_hoy: 0,
         incidencias: "",
+      }))
+    )
+    setTrabajadores(
+      (trabajadoresPorProyecto[id] ?? []).map((t) => ({
+        ...t,
+        asistencia: "presente" as AsistenciaState,
+        horas: 8,
+        extra: 0,
       }))
     )
     setPaso(1)
