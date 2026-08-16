@@ -20,9 +20,10 @@ async function getData() {
     supabase
       .from("presupuestos")
       .select(`
-        id, version, nombre_version, es_baseline_actual, monto_total,
+        id, version, nombre_version, es_baseline_actual,
+        monto_total:total,
         proyectos ( nombre, codigo ),
-        partidas_presupuesto (
+        partidas:partidas_presupuesto (
           id, codigo, descripcion, tipo_recurso,
           cantidad, unidad, precio_unitario,
           monto_presupuestado, monto_comprometido, monto_ejercido,
