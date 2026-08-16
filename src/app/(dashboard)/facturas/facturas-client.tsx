@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Plus, X, CheckCircle2, Receipt } from "lucide-react"
+import { Plus, X, CheckCircle2, Receipt, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,6 +10,8 @@ import {
   crearProveedorRapido,
   marcarFacturaClienteCobrada,
   marcarFacturaProveedorPagada,
+  generarFacturacionAutomatica,
+  type FacturaGenerada,
 } from "./actions"
 
 export type FacturaCliente = {
@@ -77,6 +79,7 @@ export function FacturasClient({
   const [facturasProveedor] = useState(facturasProveedorIniciales)
   const [showModalCliente, setShowModalCliente] = useState(false)
   const [showModalProveedor, setShowModalProveedor] = useState(false)
+  const [showModalAuto, setShowModalAuto] = useState(false)
 
   const totalCxC = facturasCliente.reduce((s, f) => s + f.monto, 0)
   const totalCobrado = facturasCliente.reduce((s, f) => s + f.monto_cobrado, 0)
@@ -117,9 +120,14 @@ export function FacturasClient({
           </button>
         </div>
         {puedeCrear && (
-          <Button onClick={() => (tab === "cliente" ? setShowModalCliente(true) : setShowModalProveedor(true))}>
-            <Plus className="h-4 w-4 mr-1" /> Nueva factura
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowModalAuto(true)}>
+              <Zap className="h-4 w-4 mr-1" /> Generar estimación semanal
+            </Button>
+            <Button onClick={() => (tab === "cliente" ? setShowModalCliente(true) : setShowModalProveedor(true))}>
+              <Plus className="h-4 w-4 mr-1" /> Nueva factura
+            </Button>
+          </div>
         )}
       </div>
 
@@ -179,6 +187,75 @@ export function FacturasClient({
       {showModalProveedor && (
         <ModalFacturaProveedor proyectos={proyectos} proveedores={proveedores} onClose={() => setShowModalProveedor(false)} />
       )}
+      {showModalAuto && (
+        <ModalGenerarAutomatico onClose={() => setShowModalAuto(false)} />
+      )}
+    </div>
+  )
+}
+
+function ModalGenerarAutomatico({ onClose }: { onClose: () => void }) {
+  const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState("")
+  const [resultado, setResultado] = useState<FacturaGenerada[] | null>(null)
+
+  const handleGenerar = () => {
+    setError("")
+    startTransition(async () => {
+      const result = await generarFacturacionAutomatica()
+      if (result.error) setError(result.error)
+      else setResultado(result.facturas ?? [])
+    })
+  }
+
+  const handleCerrar = () => {
+    if (resultado && resultado.length > 0) window.location.reload()
+    else onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget && !isPending) handleCerrar() }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">
+        <button className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 disabled:opacity-50" onClick={handleCerrar} disabled={isPending}>
+          <X className="h-5 w-5" />
+        </button>
+        <h3 className="text-lg font-semibold text-slate-900 mb-2">Generar estimación semanal</h3>
+        <p className="text-sm text-slate-500 mb-5">
+          Calcula el avance real de cada proyecto activo (ponderado por presupuesto) y genera una factura por la diferencia contra lo ya facturado como estimación. Esto mismo corre solo cada lunes; este botón sirve para generarlo ahora o para forzar una corrida puntual.
+        </p>
+
+        {resultado === null ? (
+          <>
+            {error && <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-600 mb-4">{error}</div>}
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={onClose} disabled={isPending}>Cancelar</Button>
+              <Button type="button" className="flex-1" isLoading={isPending} onClick={handleGenerar}>Generar ahora</Button>
+            </div>
+          </>
+        ) : resultado.length === 0 ? (
+          <>
+            <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-600 mb-4">
+              No había avance nuevo que facturar en ningún proyecto (o ya se generó una estimación reciente).
+            </div>
+            <Button type="button" className="w-full" onClick={handleCerrar}>Cerrar</Button>
+          </>
+        ) : (
+          <>
+            <div className="space-y-2 mb-4">
+              {resultado.map((f) => (
+                <div key={f.numero_generado} className="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm">
+                  <div>
+                    <p className="font-medium text-emerald-800">{f.numero_generado}</p>
+                    <p className="text-xs text-emerald-600">{f.proyecto_codigo}</p>
+                  </div>
+                  <p className="font-semibold text-emerald-700">{formatMXN(f.monto_generado)}</p>
+                </div>
+              ))}
+            </div>
+            <Button type="button" className="w-full" onClick={handleCerrar}>Listo</Button>
+          </>
+        )}
+      </div>
     </div>
   )
 }

@@ -150,6 +150,34 @@ export async function marcarFacturaClienteCobrada(facturaId: string, montoCobrad
   return {}
 }
 
+export type FacturaGenerada = {
+  proyecto_id: string
+  proyecto_codigo: string
+  numero_generado: string
+  monto_generado: number
+}
+
+// Dispara la generación de estimaciones de avance para todos los
+// proyectos activos de la empresa (misma lógica que corre sola cada
+// lunes vía pg_cron). Solo genera lo que corresponda: si un proyecto
+// no tiene avance nuevo desde su última estimación, no crea nada.
+export async function generarFacturacionAutomatica(): Promise<{ error?: string; facturas?: FacturaGenerada[] }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  const { data, error } = await supabase.rpc("generar_facturas_semanales")
+
+  if (error) {
+    console.error("generarFacturacionAutomatica error:", error)
+    return { error: error.message || "Error al generar la facturación automática." }
+  }
+
+  revalidatePath("/facturas")
+  revalidatePath("/flujo-caja")
+  return { facturas: (data ?? []) as FacturaGenerada[] }
+}
+
 export async function marcarFacturaProveedorPagada(facturaId: string, montoPagado: number): Promise<{ error?: string }> {
   const supabase = await createClient()
   const acceso = await verificarAcceso(supabase)
