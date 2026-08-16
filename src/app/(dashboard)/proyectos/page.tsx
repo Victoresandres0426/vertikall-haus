@@ -19,12 +19,11 @@ async function getProyectos(): Promise<ProyectoFromDB[]> {
       `
       id, codigo, nombre, cliente, ubicacion, estado,
       fecha_fin_plan, fecha_fin_forecast,
-      avance_plan, avance_real,
-      presupuesto, costo_actual,
-      margen_objetivo, margen_forecast,
-      responsable,
-      iidp_snapshots ( iidp_global, fecha ),
-      alertas ( nivel, estado )
+      presupuesto_venta, presupuesto_base, margen_objetivo,
+      iidp_snapshots ( score_total, fecha ),
+      alertas ( nivel, estado ),
+      actividades ( avance_porcentaje, costo_real, costo_presupuesto,
+                    fecha_inicio_plan, fecha_fin_plan )
     `
     )
     .eq("activo", true)

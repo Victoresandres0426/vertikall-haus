@@ -1,223 +1,225 @@
-"use client"
-
-import { useState } from "react"
-import { ChevronRight, Clock, AlertTriangle, CheckCircle, Circle, Ban, Play } from "lucide-react"
+import { createClient } from "@/lib/supabase/server"
+import { redirect } from "next/navigation"
+import { CheckCircle, Clock, Play, Ban, Circle, ChevronRight, AlertTriangle } from "lucide-react"
 import { Header } from "@/components/layout/header"
 import { Badge, AlertaBadge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
-import type { EstadoActividad, NivelAlerta } from "@/types/database"
 
-const procesosDemo = [
-  {
-    id: "1",
-    codigo: "P-01",
-    nombre: "Cimentación",
-    actividades: [
-      { id: "a1", codigo: "C-01", nombre: "Excavación y nivelación", estado: "completada" as EstadoActividad, avance: 100, plan: 100, riesgo: "verde" as NivelAlerta, critica: false, inicio: "2026-05-01", fin: "2026-05-05", holgura: 0 },
-      { id: "a2", codigo: "C-02", nombre: "Trazo y replanteo", estado: "completada" as EstadoActividad, avance: 100, plan: 100, riesgo: "verde" as NivelAlerta, critica: false, inicio: "2026-05-06", fin: "2026-05-07", holgura: 2 },
-      { id: "a3", codigo: "C-03", nombre: "Armado y colado de cimentación", estado: "completada" as EstadoActividad, avance: 100, plan: 100, riesgo: "verde" as NivelAlerta, critica: true, inicio: "2026-05-08", fin: "2026-05-20", holgura: 0 },
-    ]
-  },
-  {
-    id: "2",
-    codigo: "P-02",
-    nombre: "Estructura",
-    actividades: [
-      { id: "a4", codigo: "E-01", nombre: "Columnas y trabes primer nivel", estado: "completada" as EstadoActividad, avance: 100, plan: 100, riesgo: "verde" as NivelAlerta, critica: true, inicio: "2026-05-21", fin: "2026-06-05", holgura: 0 },
-      { id: "a5", codigo: "E-02", nombre: "Losa de entrepiso", estado: "completada" as EstadoActividad, avance: 100, plan: 100, riesgo: "amarillo" as NivelAlerta, critica: true, inicio: "2026-06-06", fin: "2026-06-20", holgura: 0 },
-      { id: "a6", codigo: "E-03", nombre: "Muros de mampostería", estado: "en_progreso" as EstadoActividad, avance: 78, plan: 85, riesgo: "amarillo" as NivelAlerta, critica: false, inicio: "2026-07-01", fin: "2026-08-20", holgura: 4 },
-    ]
-  },
-  {
-    id: "3",
-    codigo: "P-03",
-    nombre: "Instalaciones",
-    actividades: [
-      { id: "a7", codigo: "I-01", nombre: "Plomería hidráulica", estado: "en_progreso" as EstadoActividad, avance: 45, plan: 50, riesgo: "verde" as NivelAlerta, critica: false, inicio: "2026-07-15", fin: "2026-09-10", holgura: 7 },
-      { id: "a8", codigo: "E-04", nombre: "Instalación eléctrica y canaleta", estado: "en_progreso" as EstadoActividad, avance: 32, plan: 47, riesgo: "rojo" as NivelAlerta, critica: true, inicio: "2026-07-15", fin: "2026-08-17", holgura: 0 },
-      { id: "a9", codigo: "I-03", nombre: "Instalación de gas", estado: "no_iniciada" as EstadoActividad, avance: 0, plan: 0, riesgo: "verde" as NivelAlerta, critica: false, inicio: "2026-09-01", fin: "2026-09-20", holgura: 5 },
-    ]
-  },
-  {
-    id: "4",
-    codigo: "P-04",
-    nombre: "Acabados",
-    actividades: [
-      { id: "a10", codigo: "A-01", nombre: "Ventanería de cristal templado", estado: "no_iniciada" as EstadoActividad, avance: 0, plan: 0, riesgo: "amarillo" as NivelAlerta, critica: true, inicio: "2026-09-05", fin: "2026-09-25", holgura: 0 },
-      { id: "a11", codigo: "A-08", nombre: "Drywall y cancelería", estado: "en_progreso" as EstadoActividad, avance: 62, plan: 70, riesgo: "verde" as NivelAlerta, critica: false, inicio: "2026-08-01", fin: "2026-09-15", holgura: 3 },
-      { id: "a12", codigo: "A-12", nombre: "Pintura primer y acabado", estado: "no_iniciada" as EstadoActividad, avance: 0, plan: 0, riesgo: "verde" as NivelAlerta, critica: false, inicio: "2026-10-01", fin: "2026-10-30", holgura: 5 },
-    ]
-  },
-]
+type Actividad = {
+  id: string
+  codigo: string
+  nombre: string
+  estado: string
+  avance_porcentaje: number
+  es_critica: boolean
+  riesgo_nivel: string
+  fecha_inicio_plan: string | null
+  fecha_fin_plan: string | null
+  holgura_dias: number
+  costo_presupuesto: number
+  costo_real: number
+}
 
-const EstadoIcon = ({ estado }: { estado: EstadoActividad }) => {
-  const props = { className: "h-4 w-4 shrink-0" }
+type Proceso = {
+  id: string
+  codigo: string
+  nombre: string
+  orden: number
+  actividades: Actividad[]
+}
+
+type Proyecto = {
+  id: string
+  codigo: string
+  nombre: string
+  procesos: Proceso[]
+}
+
+function EstadoIcon({ estado }: { estado: string }) {
+  const cls = "h-4 w-4 shrink-0"
   switch (estado) {
-    case "completada": return <CheckCircle {...props} className={cn(props.className, "text-emerald-600")} />
-    case "en_progreso": return <Play {...props} className={cn(props.className, "text-blue-600")} />
-    case "bloqueada": return <Ban {...props} className={cn(props.className, "text-red-600")} />
-    case "no_iniciada": return <Circle {...props} className={cn(props.className, "text-slate-300")} />
-    case "cancelada": return <Ban {...props} className={cn(props.className, "text-slate-400")} />
+    case "completada":   return <CheckCircle className={cn(cls, "text-emerald-600")} />
+    case "en_progreso":  return <Play        className={cn(cls, "text-blue-600")} />
+    case "bloqueada":    return <Ban         className={cn(cls, "text-red-600")} />
+    case "cancelada":    return <Ban         className={cn(cls, "text-slate-400")} />
+    default:             return <Circle      className={cn(cls, "text-slate-300")} />
   }
 }
 
-export default function ActividadesPage() {
-  const [procesosExpandidos, setProcesosExpandidos] = useState<Set<string>>(new Set(["2", "3"]))
+function estadoLabel(e: string) {
+  const m: Record<string, string> = {
+    completada: "Completada", en_progreso: "En progreso",
+    bloqueada: "Bloqueada", cancelada: "Cancelada", no_iniciada: "No iniciada",
+  }
+  return m[e] ?? e
+}
 
-  const toggleProceso = (id: string) => {
-    setProcesosExpandidos(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
+function estadoVariant(e: string): "default" | "success" | "secondary" | "destructive" {
+  if (e === "completada") return "success"
+  if (e === "en_progreso") return "default"
+  if (e === "bloqueada") return "destructive"
+  return "secondary"
+}
+
+async function getProyectosConActividades(): Promise<Proyecto[]> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect("/login")
+
+  const { data, error } = await supabase
+    .from("proyectos")
+    .select(`
+      id, codigo, nombre,
+      procesos (
+        id, codigo, nombre, orden,
+        actividades (
+          id, codigo, nombre, estado,
+          avance_porcentaje, es_critica, riesgo_nivel,
+          fecha_inicio_plan, fecha_fin_plan, holgura_dias,
+          costo_presupuesto, costo_real
+        )
+      )
+    `)
+    .eq("activo", true)
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("Error cargando actividades:", error.message)
+    return []
   }
 
-  const totalActividades = procesosDemo.flatMap(p => p.actividades)
-  const criticas = totalActividades.filter(a => a.critica)
-  const enRiesgo = totalActividades.filter(a => a.riesgo !== "verde")
+  // Ordenar procesos y actividades
+  return ((data ?? []) as unknown as Proyecto[]).map((proy) => ({
+    ...proy,
+    procesos: (proy.procesos ?? [])
+      .sort((a, b) => a.orden - b.orden)
+      .map((proc) => ({
+        ...proc,
+        actividades: (proc.actividades ?? []).sort(
+          (a, b) => a.codigo.localeCompare(b.codigo)
+        ),
+      })),
+  }))
+}
+
+export default async function ActividadesPage() {
+  const proyectos = await getProyectosConActividades()
+
+  const totalActs = proyectos.flatMap((p) => p.procesos.flatMap((pr) => pr.actividades))
+  const enProgreso = totalActs.filter((a) => a.estado === "en_progreso").length
+  const completadas = totalActs.filter((a) => a.estado === "completada").length
+  const bloqueadas = totalActs.filter((a) => a.estado === "bloqueada").length
 
   return (
     <div>
       <Header
         titulo="Actividades"
-        subtitulo="Vista jerárquica — Proyecto: Residencia Lomas Fase II"
-        acciones={
-          <Button size="sm">
-            + Nueva actividad
-          </Button>
-        }
+        subtitulo={`${totalActs.length} actividades · ${enProgreso} en progreso · ${completadas} completadas`}
       />
 
-      <div className="p-6 space-y-4">
-        {/* Resumen ruta crítica */}
-        <div className="bg-slate-900 rounded-xl p-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-white font-semibold text-sm">Ruta crítica del proyecto</p>
-            <p className="text-slate-400 text-xs mt-0.5">
-              {criticas.length} actividades críticas · 0 días de holgura
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-center">
-              <p className="text-xl font-bold text-white">{enRiesgo.length}</p>
-              <p className="text-xs text-slate-400">En riesgo</p>
+      <div className="p-6 space-y-6">
+        {/* Resumen */}
+        <div className="grid grid-cols-4 gap-3">
+          {[
+            { label: "Total", val: totalActs.length, color: "text-slate-900" },
+            { label: "En progreso", val: enProgreso, color: "text-blue-600" },
+            { label: "Completadas", val: completadas, color: "text-emerald-600" },
+            { label: "Bloqueadas", val: bloqueadas, color: "text-red-600" },
+          ].map((s) => (
+            <div key={s.label} className="bg-white rounded-xl border border-slate-200 p-4 text-center">
+              <p className={cn("text-2xl font-bold", s.color)}>{s.val}</p>
+              <p className="text-sm text-slate-500 mt-0.5">{s.label}</p>
             </div>
-            <div className="text-center">
-              <p className="text-xl font-bold text-amber-400">+14 días</p>
-              <p className="text-xs text-slate-400">Forecast vs. plan</p>
-            </div>
-            <Button size="sm" variant="outline" className="text-white border-white/30 hover:bg-white/10">
-              Ver Gantt
-            </Button>
-          </div>
+          ))}
         </div>
 
-        {/* Lista jerárquica Proceso → Actividad */}
-        <div className="space-y-2">
-          {procesosDemo.map((proceso) => {
-            const expandido = procesosExpandidos.has(proceso.id)
-            const actCompletadas = proceso.actividades.filter(a => a.estado === "completada").length
-            const pctProceso = Math.round((actCompletadas / proceso.actividades.length) * 100)
+        {/* Actividades por proyecto */}
+        {proyectos.length === 0 ? (
+          <div className="text-center py-16 text-slate-400 border border-dashed border-slate-200 rounded-xl">
+            <p className="text-lg font-medium">Sin actividades</p>
+            <p className="text-sm mt-1">Crea un proyecto y agrega actividades</p>
+          </div>
+        ) : (
+          proyectos.map((proy) => (
+            <div key={proy.id}>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="font-mono text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">{proy.codigo}</span>
+                <h2 className="text-base font-semibold text-slate-900">{proy.nombre}</h2>
+              </div>
 
-            return (
-              <div key={proceso.id} className="rounded-xl overflow-hidden border border-slate-200">
-                {/* Header del proceso */}
-                <button
-                  onClick={() => toggleProceso(proceso.id)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
-                >
-                  <ChevronRight className={cn(
-                    "h-4 w-4 text-slate-400 transition-transform shrink-0",
-                    expandido && "rotate-90"
-                  )} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-slate-400">{proceso.codigo}</span>
-                      <span className="font-semibold text-slate-900 text-sm">{proceso.nombre}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4 text-xs text-slate-500">
-                    <span>{actCompletadas}/{proceso.actividades.length} completadas</span>
-                    <div className="w-24">
-                      <Progress value={pctProceso} size="sm" />
-                    </div>
-                    <span className="font-semibold text-slate-700">{pctProceso}%</span>
-                  </div>
-                </button>
+              <div className="space-y-3">
+                {proy.procesos.map((proc) => {
+                  const acts = proc.actividades
+                  const promedioAvance = acts.length > 0
+                    ? Math.round(acts.reduce((s, a) => s + (a.avance_porcentaje ?? 0), 0) / acts.length)
+                    : 0
 
-                {/* Actividades del proceso */}
-                {expandido && (
-                  <div className="divide-y divide-slate-100">
-                    {proceso.actividades.map((act) => (
-                      <div
-                        key={act.id}
-                        className={cn(
-                          "flex items-center gap-4 px-4 py-3 hover:bg-slate-50 transition-colors",
-                          act.critica && "border-l-2 border-l-orange-500"
-                        )}
-                      >
-                        <div className="w-6 flex justify-center shrink-0">
-                          <EstadoIcon estado={act.estado} />
+                  return (
+                    <div key={proc.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                      {/* Header proceso */}
+                      <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs text-slate-500">{proc.codigo}</span>
+                          <h3 className="text-sm font-semibold text-slate-800">{proc.nombre}</h3>
+                          <span className="text-xs text-slate-400">· {acts.length} actividad{acts.length !== 1 ? "es" : ""}</span>
                         </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-xs text-slate-400">{act.codigo}</span>
-                            <span className="text-sm font-medium text-slate-800">{act.nombre}</span>
-                            {act.critica && (
-                              <Badge variant="destructive" className="text-[10px] py-0">
-                                Crítica
-                              </Badge>
-                            )}
-                            {act.riesgo !== "verde" && (
-                              <AlertaBadge nivel={act.riesgo} />
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
-                            <span>{act.inicio} → {act.fin}</span>
-                            {act.holgura > 0 && <span className="text-emerald-600">+{act.holgura}d holgura</span>}
-                            {act.holgura === 0 && act.estado !== "completada" && (
-                              <span className="text-red-500 font-medium">Sin holgura</span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-4 shrink-0">
-                          {act.estado !== "completada" && act.estado !== "no_iniciada" && (
-                            <div className="flex items-center gap-2 w-40">
-                              <Progress
-                                value={act.avance}
-                                colorClass={act.avance < act.plan ? "bg-red-500" : "bg-emerald-500"}
-                                size="sm"
-                              />
-                              <span className={cn(
-                                "text-xs font-semibold w-14 text-right",
-                                act.avance < act.plan ? "text-red-600" : "text-emerald-600"
-                              )}>
-                                {act.avance}% / {act.plan}%
-                              </span>
-                            </div>
-                          )}
-                          {act.estado === "completada" && (
-                            <Badge variant="success">✓ Completada</Badge>
-                          )}
-                          {act.estado === "no_iniciada" && (
-                            <Badge variant="secondary">Pendiente</Badge>
-                          )}
-                          <Button size="sm" variant="ghost" className="text-xs">
-                            Ver
-                          </Button>
+                        <div className="flex items-center gap-2">
+                          <Progress value={promedioAvance} className="w-20 h-1.5" />
+                          <span className="text-xs font-medium text-slate-600">{promedioAvance}%</span>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
+
+                      {/* Lista de actividades */}
+                      <div className="divide-y divide-slate-50">
+                        {acts.map((act) => (
+                          <div key={act.id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors">
+                            <EstadoIcon estado={act.estado} />
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-xs text-slate-400">{act.codigo}</span>
+                                <span className="text-sm font-medium text-slate-800 truncate">{act.nombre}</span>
+                                {act.es_critica && (
+                                  <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-medium">
+                                    Crítica
+                                  </span>
+                                )}
+                                {act.riesgo_nivel === "rojo" && <AlertaBadge nivel="rojo" />}
+                                {act.riesgo_nivel === "amarillo" && <AlertaBadge nivel="amarillo" />}
+                              </div>
+
+                              <div className="flex items-center gap-3 mt-1">
+                                <Progress value={act.avance_porcentaje ?? 0} className="w-24 h-1" />
+                                <span className="text-xs text-slate-500">{act.avance_porcentaje ?? 0}%</span>
+                                {act.fecha_fin_plan && (
+                                  <span className="text-xs text-slate-400">
+                                    Fin plan: {act.fecha_fin_plan}
+                                  </span>
+                                )}
+                                {(act.holgura_dias ?? 0) > 0 && (
+                                  <span className="text-xs text-slate-400">
+                                    Holgura: {act.holgura_dias}d
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="shrink-0 text-right hidden sm:block">
+                              <Badge variant={estadoVariant(act.estado)} className="text-xs">
+                                {estadoLabel(act.estado)}
+                              </Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-            )
-          })}
-        </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   )
