@@ -29,6 +29,11 @@
 
 ALTER TABLE facturas_cliente ADD COLUMN IF NOT EXISTS amortizacion_anticipo DECIMAL(15,2) DEFAULT 0;
 
+-- Postgres no permite CREATE OR REPLACE cuando cambian las columnas de
+-- retorno (aquí se agrega amortizacion_generada) -- hay que soltar la
+-- función anterior primero.
+DROP FUNCTION IF EXISTS generar_facturas_semanales(UUID);
+
 CREATE OR REPLACE FUNCTION generar_facturas_semanales(p_empresa_id UUID DEFAULT NULL)
 RETURNS TABLE(
   proyecto_id UUID,
