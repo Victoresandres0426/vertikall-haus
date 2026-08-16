@@ -40,7 +40,7 @@ export async function crearReporteDiario(input: {
       capataz_id: user.id,
       fecha: input.fecha,
       clima: input.clima ?? null,
-      observaciones: input.observaciones ?? null,
+      observaciones_generales: input.observaciones ?? null,
     })
     .select("id")
     .single()
