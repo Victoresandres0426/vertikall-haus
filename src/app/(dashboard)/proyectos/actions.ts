@@ -228,6 +228,69 @@ export async function crearProyecto(formData: FormData): Promise<{ error?: strin
   return { id: data.id }
 }
 
+export async function registrarArchivoProyecto(
+  proyectoId: string,
+  categoria: string,
+  storagePath: string,
+  nombreArchivo: string,
+  tamanoBytes: number
+): Promise<{ error?: string; id?: string }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  const categoriasValidas = ["planos", "fotos", "contratos", "otros"]
+  if (!categoriasValidas.includes(categoria)) return { error: "Categoría inválida" }
+
+  const { data, error } = await supabase
+    .from("proyecto_archivos")
+    .insert({
+      proyecto_id: proyectoId,
+      categoria,
+      storage_path: storagePath,
+      nombre_archivo: nombreArchivo,
+      tamano_bytes: tamanoBytes,
+      subido_por: user.id,
+    })
+    .select("id")
+    .single()
+
+  if (error) {
+    console.error("registrarArchivoProyecto error:", error)
+    return { error: "Error al guardar el archivo." }
+  }
+
+  revalidatePath(`/proyectos/${proyectoId}`)
+  return { id: data.id }
+}
+
+export async function eliminarArchivoProyecto(
+  archivoId: string,
+  storagePath: string,
+  proyectoId: string
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  const { error: storageError } = await supabase.storage.from("proyecto-archivos").remove([storagePath])
+  if (storageError) {
+    console.error("eliminarArchivoProyecto storage error:", storageError)
+    return { error: "Error al borrar el archivo." }
+  }
+
+  const { error } = await supabase.from("proyecto_archivos").delete().eq("id", archivoId)
+  if (error) {
+    console.error("eliminarArchivoProyecto db error:", error)
+    return { error: "Error al borrar el registro del archivo." }
+  }
+
+  revalidatePath(`/proyectos/${proyectoId}`)
+  return {}
+}
+
 export async function eliminarProyecto(proyectoId: string): Promise<{ error?: string }> {
   const supabase = await createClient()
 

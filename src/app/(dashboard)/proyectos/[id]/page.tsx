@@ -14,6 +14,7 @@ import { ClienteEmail } from "./cliente-email"
 import { TelefonoCliente } from "./telefono-cliente"
 import { CoordenadasObra } from "./coordenadas-obra"
 import { HoraEntrada } from "./hora-entrada"
+import { ArchivosProyecto, type ArchivoProyecto } from "./archivos-proyecto"
 
 // ── Tipos ────────────────────────────────────────────────────
 
@@ -219,8 +220,32 @@ async function getData(id: string) {
       }))
   }
 
+  // Archivos del proyecto (requiere migración 037; si no existe, no rompe la página)
+  let archivos: ArchivoProyecto[] = []
+  try {
+    const archivosRes = await supabase
+      .from("proyecto_archivos")
+      .select("id, categoria, nombre_archivo, storage_path, tamano_bytes, subido_por, created_at, perfiles_usuario ( nombre_completo )")
+      .eq("proyecto_id", id)
+      .order("created_at", { ascending: false })
+    if (!archivosRes.error && archivosRes.data) {
+      archivos = (archivosRes.data as any[]).map((a) => ({
+        id: a.id,
+        categoria: a.categoria,
+        nombre_archivo: a.nombre_archivo,
+        storage_path: a.storage_path,
+        tamano_bytes: a.tamano_bytes,
+        subido_por: a.subido_por,
+        subido_por_nombre: a.perfiles_usuario?.nombre_completo ?? null,
+        created_at: a.created_at,
+      }))
+    }
+  } catch { /* migración no aplicada aún */ }
+
   return {
     proyecto: proyecto as Proyecto,
+    archivos,
+    usuarioId: user.id,
     procesos: (procesosRes.data ?? []) as unknown as Proceso[],
     iidp: (iidpRes.data ?? []) as unknown as IIDPSnapshot[],
     alertas: (alertasRes.data ?? []) as unknown as Alerta[],
@@ -292,7 +317,7 @@ function TendIcon({ t }: { t: string | null }) {
 
 export default async function ProyectoDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { proyecto, procesos, iidp, alertas, changeOrders, costos, qrToken, asistenciaHoy, equipoAuth, equipoDisponibles, puedeGestionarEquipo, puedeEditarCliente } = await getData(id)
+  const { proyecto, archivos, usuarioId, procesos, iidp, alertas, changeOrders, costos, qrToken, asistenciaHoy, equipoAuth, equipoDisponibles, puedeGestionarEquipo, puedeEditarCliente } = await getData(id)
 
   const ultimoIIDP = iidp[0] ?? null
 
@@ -679,6 +704,14 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
           equipo={equipoAuth}
           disponibles={equipoDisponibles}
           puedeGestionar={puedeGestionarEquipo}
+        />
+
+        {/* ── Archivos del proyecto ── */}
+        <ArchivosProyecto
+          proyectoId={proyecto.id}
+          archivosIniciales={archivos}
+          usuarioId={usuarioId}
+          puedeGestionar={puedeEditarCliente}
         />
 
         {/* ── QR Asistencia ── */}
