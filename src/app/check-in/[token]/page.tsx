@@ -19,6 +19,18 @@ type Trabajador = {
 
 type TipoRegistro = "entrada" | "salida"
 
+const DEVICE_TOKEN_KEY = "vh_checkin_device_token"
+
+function obtenerDeviceToken(): string {
+  if (typeof window === "undefined") return ""
+  let token = window.localStorage.getItem(DEVICE_TOKEN_KEY)
+  if (!token) {
+    token = crypto.randomUUID()
+    window.localStorage.setItem(DEVICE_TOKEN_KEY, token)
+  }
+  return token
+}
+
 export default function CheckInPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
   const supabase = createClient()
@@ -34,6 +46,10 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState("")
+
+  // Este celular ya quedó vinculado a un trabajador en un check-in
+  // anterior — si es así, se bloquea la selección de cualquier otro nombre.
+  const [dispositivoVinculado, setDispositivoVinculado] = useState<{ id: string; nombre: string } | null>(null)
 
   const hoy = new Date().toLocaleDateString("es-MX", {
     weekday: "long", year: "numeric", month: "long", day: "numeric"
@@ -71,6 +87,16 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
       }))
       setTrabajadores(trabs)
 
+      // ¿Este celular ya está vinculado a alguien de un check-in previo?
+      const deviceToken = obtenerDeviceToken()
+      const { data: vinculoData } = await supabase
+        .rpc("checkin_dispositivo_vinculado", { p_device_token: deviceToken })
+      const vinculo = vinculoData?.[0] as { trabajador_id: string; nombre_completo: string } | undefined
+      if (vinculo) {
+        setDispositivoVinculado({ id: vinculo.trabajador_id, nombre: vinculo.nombre_completo })
+        setTrabajadorId(vinculo.trabajador_id)
+      }
+
       setIsLoading(false)
     }
     load()
@@ -91,33 +117,28 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
 
     setSubmitting(true)
 
-    const payload: Record<string, unknown> = {
-      proyecto_id: proyecto!.id,
-      tipo,
-      // Fecha y hora en el timezone LOCAL del dispositivo (no UTC) para
-      // que ambas queden consistentes entre sí — toISOString() da la
-      // fecha en UTC, que en México puede ya ser el día siguiente.
-      fecha: (() => {
-        const d = new Date()
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-      })(),
-      hora: new Date().toTimeString().split(" ")[0].substring(0, 5),
-    }
+    const deviceToken = obtenerDeviceToken()
 
-    if (usandoManual) {
-      payload.nombre_manual = nombreManual.trim()
-    } else {
-      payload.trabajador_id = trabajadorId
-    }
+    const { error: rpcError } = await supabase.rpc("checkin_registrar", {
+      p_qr_token: token,
+      p_device_token: deviceToken,
+      p_trabajador_id: usandoManual ? null : trabajadorId,
+      p_nombre_manual: usandoManual ? nombreManual.trim() : null,
+      p_tipo: tipo,
+    })
 
-    const { error: insertError } = await supabase
-      .from("registros_asistencia_qr")
-      .insert(payload)
-
-    if (insertError) {
-      setError("Error al registrar. Intenta de nuevo.")
+    if (rpcError) {
+      if (rpcError.message?.includes("dispositivo_vinculado_a_otro")) {
+        setError("Este celular ya está registrado para otro trabajador. Si cambiaste de celular, pídele a tu supervisor que lo actualice.")
+      } else {
+        setError("Error al registrar. Intenta de nuevo.")
+      }
       setSubmitting(false)
       return
+    }
+
+    if (!usandoManual) {
+      setDispositivoVinculado({ id: trabajadorId, nombre: trabajadores.find(t => t.id === trabajadorId)?.nombre_completo ?? "" })
     }
 
     setSuccess(true)
@@ -236,7 +257,22 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
         <div className="space-y-3">
           <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider">¿Quién eres?</label>
 
-          {trabajadores.length > 0 ? (
+          {dispositivoVinculado ? (
+            <div className="space-y-2">
+              <div className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-emerald-400/40 bg-emerald-500/10 text-white">
+                <div className="h-8 w-8 rounded-full bg-emerald-400 text-slate-900 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                  {dispositivoVinculado.nombre.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium text-sm truncate">{dispositivoVinculado.nombre}</p>
+                  <p className="text-xs text-emerald-400">Este celular está registrado a tu nombre</p>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">
+                ¿No eres tú? Pídele a tu supervisor que actualice el registro de este celular.
+              </p>
+            </div>
+          ) : trabajadores.length > 0 ? (
             <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
               {trabajadores.map((t) => (
                 <button
