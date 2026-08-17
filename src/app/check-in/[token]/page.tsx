@@ -94,7 +94,13 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
     const payload: Record<string, unknown> = {
       proyecto_id: proyecto!.id,
       tipo,
-      fecha: new Date().toISOString().split("T")[0],
+      // Fecha y hora en el timezone LOCAL del dispositivo (no UTC) para
+      // que ambas queden consistentes entre sí — toISOString() da la
+      // fecha en UTC, que en México puede ya ser el día siguiente.
+      fecha: (() => {
+        const d = new Date()
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+      })(),
       hora: new Date().toTimeString().split(" ")[0].substring(0, 5),
     }
 
