@@ -43,9 +43,16 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex bg-[#F7F9FC]">
-      {/* Panel izquierdo — ilustración (solo desktop) */}
-      <div className="hidden lg:block relative w-1/2 overflow-hidden">
-        <BuildingIllustration />
+      {/* Panel izquierdo — foto de edificio (solo desktop) */}
+      <div className="hidden lg:block relative w-1/2 overflow-hidden bg-[#F7F9FC]">
+        <Image
+          src="/images/login-building.jpg"
+          alt=""
+          fill
+          priority
+          className="object-cover object-left-top"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-[#F7F9FC]" />
       </div>
 
       {/* Panel derecho — formulario */}
@@ -143,89 +150,5 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
-  )
-}
-
-function BuildingIllustration() {
-  return (
-    <svg
-      viewBox="0 0 800 1200"
-      className="absolute inset-0 h-full w-full"
-      preserveAspectRatio="xMidYMid slice"
-    >
-      <defs>
-        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#EAF1FC" />
-          <stop offset="100%" stopColor="#F7F9FC" />
-        </linearGradient>
-        <linearGradient id="towerA" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#BFD6F5" />
-          <stop offset="100%" stopColor="#DCE9FA" />
-        </linearGradient>
-        <linearGradient id="towerB" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#7FA8E8" />
-          <stop offset="100%" stopColor="#A9C4F0" />
-        </linearGradient>
-        <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="70%" stopColor="#F7F9FC" stopOpacity="0" />
-          <stop offset="100%" stopColor="#F7F9FC" stopOpacity="1" />
-        </linearGradient>
-      </defs>
-
-      <rect width="800" height="1200" fill="url(#sky)" />
-
-      {/* Torre trasera */}
-      <rect x="90" y="260" width="230" height="940" fill="url(#towerA)" />
-      {Array.from({ length: 22 }).map((_, row) =>
-        Array.from({ length: 5 }).map((_, col) => (
-          <rect
-            key={`a-${row}-${col}`}
-            x={104 + col * 42}
-            y={280 + row * 40}
-            width="30"
-            height="24"
-            fill="#FFFFFF"
-            opacity={0.18}
-          />
-        ))
-      )}
-
-      {/* Torre principal (más oscura, en primer plano) */}
-      <polygon points="330,1200 330,420 460,320 590,420 590,1200" fill="url(#towerB)" />
-      {Array.from({ length: 20 }).map((_, row) =>
-        Array.from({ length: 6 }).map((_, col) => (
-          <rect
-            key={`b-${row}-${col}`}
-            x={348 + col * 40}
-            y={460 + row * 36}
-            width="28"
-            height="22"
-            fill="#FFFFFF"
-            opacity={0.16}
-          />
-        ))
-      )}
-      {/* Brillo diagonal */}
-      <polygon points="460,320 590,420 590,1200 520,1200 520,470" fill="#FFFFFF" opacity="0.08" />
-
-      {/* Torre frontal derecha, más clara */}
-      <rect x="560" y="560" width="150" height="640" fill="url(#towerA)" opacity="0.9" />
-      {Array.from({ length: 15 }).map((_, row) =>
-        Array.from({ length: 3 }).map((_, col) => (
-          <rect
-            key={`c-${row}-${col}`}
-            x={575 + col * 46}
-            y={580 + row * 40}
-            width="32"
-            height="24"
-            fill="#FFFFFF"
-            opacity={0.2}
-          />
-        ))
-      )}
-
-      {/* Degradado para fundir con el panel derecho */}
-      <rect width="800" height="1200" fill="url(#fade)" />
-    </svg>
   )
 }
