@@ -38,7 +38,7 @@ export function NuevoProyectoBoton() {
           className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
           onClick={(e) => { if (e.target === e.currentTarget && !isPending) setAbierto(false) }}
         >
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
             <button
               className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 disabled:opacity-50"
               onClick={() => setAbierto(false)}
@@ -145,6 +145,65 @@ export function NuevoProyectoBoton() {
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
                   />
                 </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100">
+                <p className="text-xs font-medium text-slate-400 mb-3 mt-3">Contacto y check-in QR (opcional, se puede configurar después)</p>
+
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Correo del cliente</label>
+                    <input
+                      name="cliente_email"
+                      type="email"
+                      placeholder="correo@cliente.com"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Teléfono del cliente</label>
+                    <input
+                      name="cliente_telefono"
+                      type="tel"
+                      placeholder="+1 305 555 0100"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Latitud (GPS)</label>
+                    <input
+                      name="lat"
+                      type="number"
+                      step="0.000001"
+                      placeholder="25.681886"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Longitud (GPS)</label>
+                    <input
+                      name="lng"
+                      type="number"
+                      step="0.000001"
+                      placeholder="-80.431882"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Entrada esperada</label>
+                    <input
+                      name="hora_entrada_esperada"
+                      type="time"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    />
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-2">
+                  Para México, EE.UU. y el resto de América, la longitud lleva signo negativo (ej. -80.43, no 80.43).
+                </p>
               </div>
 
               {error && (

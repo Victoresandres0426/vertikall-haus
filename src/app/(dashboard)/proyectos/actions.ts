@@ -73,6 +73,36 @@ export async function actualizarCoordenadas(proyectoId: string, lat: number, lng
   return {}
 }
 
+export async function actualizarClienteTelefono(proyectoId: string, telefono: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  const { data: perfil } = await supabase
+    .from("perfiles_usuario")
+    .select("rol")
+    .eq("id", user.id)
+    .single()
+
+  if (!perfil || !ROLES_EDITAN_CLIENTE.includes(perfil.rol)) {
+    return { error: "No tienes permisos para editar el contacto del cliente" }
+  }
+
+  const { error } = await supabase
+    .from("proyectos")
+    .update({ cliente_telefono: telefono || null })
+    .eq("id", proyectoId)
+
+  if (error) {
+    console.error("actualizarClienteTelefono error:", error)
+    return { error: "Error al guardar el teléfono." }
+  }
+
+  revalidatePath(`/proyectos/${proyectoId}`)
+  return {}
+}
+
 export async function actualizarHoraEntrada(proyectoId: string, hora: string): Promise<{ error?: string }> {
   const supabase = await createClient()
 
@@ -141,6 +171,30 @@ export async function crearProyecto(formData: FormData): Promise<{ error?: strin
   const presupuesto_base = parseFloat(formData.get("presupuesto_base") as string)
   const margen_objetivo = parseFloat(formData.get("margen_objetivo") as string)
 
+  const cliente_email = (formData.get("cliente_email") as string)?.trim() || null
+  if (cliente_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cliente_email)) {
+    return { error: "Correo del cliente inválido" }
+  }
+
+  const cliente_telefono = (formData.get("cliente_telefono") as string)?.trim() || null
+
+  const latStr = (formData.get("lat") as string)?.trim()
+  const lngStr = (formData.get("lng") as string)?.trim()
+  let coordenadas: { lat: number; lng: number } | null = null
+  if (latStr && lngStr) {
+    const lat = parseFloat(latStr)
+    const lng = parseFloat(lngStr)
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return { error: "Coordenadas GPS fuera de rango" }
+    }
+    coordenadas = { lat, lng }
+  }
+
+  const hora_entrada_esperada = (formData.get("hora_entrada_esperada") as string) || null
+  if (hora_entrada_esperada && !/^([01]\d|2[0-3]):[0-5]\d$/.test(hora_entrada_esperada)) {
+    return { error: "Hora de entrada esperada inválida" }
+  }
+
   const { data, error } = await supabase
     .from("proyectos")
     .insert({
@@ -148,6 +202,10 @@ export async function crearProyecto(formData: FormData): Promise<{ error?: strin
       codigo,
       nombre,
       cliente: (formData.get("cliente") as string)?.trim() || null,
+      cliente_email,
+      cliente_telefono,
+      coordenadas,
+      hora_entrada_esperada,
       ubicacion: (formData.get("ubicacion") as string)?.trim() || null,
       fecha_inicio_plan,
       fecha_fin_plan,
