@@ -1,8 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { createClient } from "@/lib/supabase/client"
 import {
   LayoutDashboard,
   FolderKanban,
@@ -76,6 +77,14 @@ interface SidebarProps {
 
 export function Sidebar({ empresaNombre = "Vertikall Haus", usuarioNombre, usuarioRol }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push("/login")
+    router.refresh()
+  }
 
   return (
     <aside className="flex flex-col h-screen w-[260px] bg-slate-900 text-white flex-shrink-0">
@@ -142,7 +151,11 @@ export function Sidebar({ empresaNombre = "Vertikall Haus", usuarioNombre, usuar
             <p className="text-sm font-medium text-white truncate">{usuarioNombre ?? "Usuario"}</p>
             <p className="text-xs text-slate-400 capitalize">{usuarioRol?.replace("_", " ") ?? "—"}</p>
           </div>
-          <button className="text-slate-500 hover:text-slate-300 transition-colors">
+          <button
+            onClick={handleLogout}
+            className="text-slate-500 hover:text-slate-300 transition-colors"
+            title="Cerrar sesión"
+          >
             <LogOut className="h-4 w-4" />
           </button>
         </div>
