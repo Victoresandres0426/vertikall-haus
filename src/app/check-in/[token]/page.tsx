@@ -129,12 +129,32 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
 
     const deviceToken = obtenerDeviceToken()
 
+    // Pide ubicación al celular (si el proyecto no la requiere, el
+    // servidor simplemente la ignora). No bloquea el envío si el
+    // usuario niega el permiso o el celular no la soporta -- el
+    // servidor decide si es obligatoria según el proyecto.
+    let coords: { lat: number; lng: number } | null = null
+    try {
+      coords = await new Promise((resolve, reject) => {
+        if (!navigator.geolocation) return reject(new Error("no_soportado"))
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          () => reject(new Error("permiso_denegado")),
+          { enableHighAccuracy: true, timeout: 8000 }
+        )
+      })
+    } catch {
+      coords = null
+    }
+
     const { error: rpcError } = await supabase.rpc("checkin_registrar", {
       p_qr_token: token,
       p_device_token: deviceToken,
       p_trabajador_id: usandoManual ? null : trabajadorId,
       p_nombre_manual: usandoManual ? nombreManual.trim() : null,
       p_tipo: tipo,
+      p_lat: coords?.lat ?? null,
+      p_lng: coords?.lng ?? null,
     })
 
     if (rpcError) {
@@ -144,6 +164,10 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
         setError(tipo === "entrada"
           ? "Ya tienes una entrada registrada hoy sin salida. Registra tu salida primero."
           : "Ya tienes una salida registrada hoy sin una entrada después. Registra tu entrada primero.")
+      } else if (rpcError.message?.includes("ubicacion_requerida")) {
+        setError("Este proyecto requiere tu ubicación para registrar el check-in. Activa el permiso de ubicación en tu navegador e intenta de nuevo.")
+      } else if (rpcError.message?.includes("fuera_de_ubicacion")) {
+        setError("Pareces estar lejos de la obra. Debes estar en el sitio del proyecto para registrar tu entrada o salida.")
       } else {
         setError("Error al registrar. Intenta de nuevo.")
       }

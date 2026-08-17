@@ -11,12 +11,14 @@ import { CircularProgress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import { EquipoProyecto, type TrabajadorEquipo } from "./equipo-proyecto"
 import { ClienteEmail } from "./cliente-email"
+import { CoordenadasObra } from "./coordenadas-obra"
 
 // ── Tipos ────────────────────────────────────────────────────
 
 type Proyecto = {
   id: string; codigo: string; nombre: string; cliente: string | null
   cliente_email: string | null
+  coordenadas: { lat: number; lng: number } | null
   ubicacion: string | null; estado: string
   fecha_inicio_plan: string; fecha_fin_plan: string
   fecha_inicio_real: string | null; fecha_fin_forecast: string | null
@@ -28,6 +30,7 @@ type RegistroAsistenciaQR = {
   tipo: "entrada" | "salida"
   hora: string
   nombre_manual: string | null
+  cierre_automatico: boolean
   trabajador: { nombre_completo: string } | null
 }
 
@@ -75,7 +78,7 @@ async function getData(id: string) {
   const { data: proyecto } = await supabase
     .from("proyectos")
     .select(`
-      id, codigo, nombre, cliente, cliente_email, ubicacion, estado,
+      id, codigo, nombre, cliente, cliente_email, coordenadas, ubicacion, estado,
       fecha_inicio_plan, fecha_fin_plan, fecha_inicio_real, fecha_fin_forecast,
       presupuesto_base, presupuesto_venta, margen_objetivo
     `)
@@ -143,7 +146,7 @@ async function getData(id: string) {
     try {
       const res = await supabase
         .from("registros_asistencia_qr")
-        .select("id, tipo, hora, nombre_manual, trabajador:trabajador_id(nombre_completo)")
+        .select("id, tipo, hora, nombre_manual, cierre_automatico, trabajador:trabajador_id(nombre_completo)")
         .eq("proyecto_id", id)
         .eq("fecha", hoy)
         .order("hora", { ascending: false })
@@ -340,8 +343,9 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
             </div>
             <h1 className="text-xl font-bold text-slate-900">{proyecto.nombre}</h1>
             {proyecto.cliente && <p className="text-sm text-slate-500 mt-0.5">{proyecto.cliente}</p>}
-            <div className="mt-1">
+            <div className="mt-1 space-y-1">
               <ClienteEmail proyectoId={proyecto.id} emailInicial={proyecto.cliente_email} puedeEditar={puedeEditarCliente} />
+              <CoordenadasObra proyectoId={proyecto.id} coordenadasIniciales={proyecto.coordenadas} puedeEditar={puedeEditarCliente} />
             </div>
           </div>
           {ultimoIIDP && (
@@ -729,7 +733,12 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
                                 : <LogOut className="h-3 w-3" />
                               }
                             </span>
-                            <span className="flex-1 text-sm font-medium text-slate-700 truncate">{nombre}</span>
+                            <span className="flex-1 text-sm font-medium text-slate-700 truncate">
+                              {nombre}
+                              {r.cierre_automatico && (
+                                <span className="ml-1.5 text-[10px] font-normal text-amber-600">(cierre automático, 8h)</span>
+                              )}
+                            </span>
                             <span className="text-xs text-slate-400 font-mono shrink-0">
                               {r.hora?.substring(0, 5) ?? "—"}
                             </span>

@@ -39,6 +39,40 @@ export async function actualizarClienteEmail(proyectoId: string, email: string):
   return {}
 }
 
+export async function actualizarCoordenadas(proyectoId: string, lat: number, lng: number): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  const { data: perfil } = await supabase
+    .from("perfiles_usuario")
+    .select("rol")
+    .eq("id", user.id)
+    .single()
+
+  if (!perfil || !ROLES_EDITAN_CLIENTE.includes(perfil.rol)) {
+    return { error: "No tienes permisos para editar la ubicación" }
+  }
+
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return { error: "Coordenadas fuera de rango" }
+  }
+
+  const { error } = await supabase
+    .from("proyectos")
+    .update({ coordenadas: { lat, lng } })
+    .eq("id", proyectoId)
+
+  if (error) {
+    console.error("actualizarCoordenadas error:", error)
+    return { error: "Error al guardar las coordenadas." }
+  }
+
+  revalidatePath(`/proyectos/${proyectoId}`)
+  return {}
+}
+
 export async function eliminarProyecto(proyectoId: string): Promise<{ error?: string }> {
   const supabase = await createClient()
 
