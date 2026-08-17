@@ -59,8 +59,11 @@ type ActividadLocal = ActividadDB & {
 // Helpers
 // ──────────────────────────────────────────────
 function fechaHoyISO() {
+  // Fecha LOCAL del dispositivo, no UTC -- toISOString() convierte a UTC
+  // y de noche en México eso ya es el día siguiente, guardando el
+  // reporte con la fecha equivocada.
   const d = new Date()
-  return d.toISOString().split("T")[0]
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 }
 
 function fechaHoyLabel() {

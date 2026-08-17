@@ -257,8 +257,8 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
     0
   )
 
-  // Trabajadores hoy: asistencias de hoy
-  const hoy = new Date().toISOString().split("T")[0]
+  // Trabajadores hoy: asistencias de hoy (fecha LOCAL de la obra, no UTC)
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" })
   const { count: trabajadoresHoy } = await supabase
     .from("reportes_diarios")
     .select("asistencia_diaria!inner(trabajador_id)", { count: "exact" })

@@ -84,7 +84,10 @@ async function getData(id: string) {
 
   if (!proyecto) notFound()
 
-  const hoy = new Date().toISOString().split("T")[0]
+  // "Hoy" en la fecha LOCAL de la obra (México), no en UTC del servidor
+  // -- de noche, UTC ya es el día siguiente y esto hacía que "Registros
+  // de hoy" nunca encontrara los check-ins recién hechos.
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" })
 
   // Queries paralelas (core — siempre disponibles)
   const [procesosRes, iidpRes, alertasRes, coRes, costosRes] = await Promise.all([
