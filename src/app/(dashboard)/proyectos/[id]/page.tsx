@@ -176,6 +176,7 @@ async function getData(id: string) {
 
   const ROLES_CLIENTE = ['project_manager', 'administrador', 'dueno', 'superadmin']
   const puedeEditarCliente = !!perfil && ROLES_CLIENTE.includes(perfil.rol)
+  const esDueno = !!perfil && perfil.rol === 'dueno'
 
   // ── Equipo autorizado (requiere migration 009) ────────────────
   let equipoAuth: TrabajadorEquipo[] = []
@@ -253,6 +254,7 @@ async function getData(id: string) {
     costos: (costosRes.data ?? []) as unknown as CostoReal[],
     qrToken,
     asistenciaHoy: asistenciaHoyData,
+    esDueno,
     equipoAuth,
     equipoDisponibles,
     puedeGestionarEquipo,
@@ -317,7 +319,7 @@ function TendIcon({ t }: { t: string | null }) {
 
 export default async function ProyectoDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { proyecto, archivos, usuarioId, procesos, iidp, alertas, changeOrders, costos, qrToken, asistenciaHoy, equipoAuth, equipoDisponibles, puedeGestionarEquipo, puedeEditarCliente } = await getData(id)
+  const { proyecto, archivos, usuarioId, procesos, iidp, alertas, changeOrders, costos, qrToken, asistenciaHoy, esDueno, equipoAuth, equipoDisponibles, puedeGestionarEquipo, puedeEditarCliente } = await getData(id)
 
   const ultimoIIDP = iidp[0] ?? null
 
@@ -711,7 +713,7 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
           proyectoId={proyecto.id}
           archivosIniciales={archivos}
           usuarioId={usuarioId}
-          puedeGestionar={puedeEditarCliente}
+          esDueno={esDueno}
         />
 
         {/* ── QR Asistencia ── */}

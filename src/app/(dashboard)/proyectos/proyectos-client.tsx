@@ -129,7 +129,7 @@ function formatMXN(n: number) {
 // ──────────────────────────────────────────────
 // Componente
 // ──────────────────────────────────────────────
-export function ProyectosClient({ proyectos: raw }: { proyectos: ProyectoFromDB[] }) {
+export function ProyectosClient({ proyectos: raw, esDueno }: { proyectos: ProyectoFromDB[]; esDueno: boolean }) {
   const router = useRouter()
   const [busqueda, setBusqueda] = useState("")
   const [filtroEstado, setFiltroEstado] = useState<"todos" | "activo" | "completado">("todos")
@@ -311,14 +311,16 @@ export function ProyectosClient({ proyectos: raw }: { proyectos: ProyectoFromDB[
                           {p.alertas_rojas + p.alertas_amarillas} alertas
                         </Button>
                       )}
-                      <Button
-                        size="sm" variant="ghost"
-                        className="text-red-400 hover:text-red-600 hover:bg-red-50"
-                        onClick={() => setProyectoAEliminar(p)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Eliminar
-                      </Button>
+                      {esDueno && (
+                        <Button
+                          size="sm" variant="ghost"
+                          className="text-red-400 hover:text-red-600 hover:bg-red-50"
+                          onClick={() => setProyectoAEliminar(p)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Eliminar
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>

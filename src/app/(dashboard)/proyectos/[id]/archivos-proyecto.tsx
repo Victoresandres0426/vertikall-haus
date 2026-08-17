@@ -38,12 +38,12 @@ export function ArchivosProyecto({
   proyectoId,
   archivosIniciales,
   usuarioId,
-  puedeGestionar,
+  esDueno,
 }: {
   proyectoId: string
   archivosIniciales: ArchivoProyecto[]
   usuarioId: string | null
-  puedeGestionar: boolean
+  esDueno: boolean
 }) {
   const [categoriaActiva, setCategoriaActiva] = useState<(typeof CATEGORIAS)[number]["key"]>("fotos")
   const [archivos, setArchivos] = useState(archivosIniciales)
@@ -210,7 +210,7 @@ export function ArchivosProyecto({
               >
                 {descargando === archivo.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               </button>
-              {(puedeGestionar || archivo.subido_por === usuarioId) && (
+              {esDueno && (
                 <button
                   onClick={() => handleEliminar(archivo)}
                   disabled={isPending}

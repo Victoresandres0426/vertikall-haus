@@ -275,6 +275,16 @@ export async function eliminarArchivoProyecto(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "No autenticado" }
 
+  const { data: perfil } = await supabase
+    .from("perfiles_usuario")
+    .select("rol")
+    .eq("id", user.id)
+    .single()
+
+  if (!perfil || perfil.rol !== "dueno") {
+    return { error: "Solo el dueño puede eliminar archivos." }
+  }
+
   const { error: storageError } = await supabase.storage.from("proyecto-archivos").remove([storagePath])
   if (storageError) {
     console.error("eliminarArchivoProyecto storage error:", storageError)
@@ -299,13 +309,18 @@ export async function eliminarProyecto(proyectoId: string): Promise<{ error?: st
   } = await supabase.auth.getUser()
   if (!user) return { error: "No autenticado" }
 
-  // Verificar que el proyecto pertenece a la empresa del usuario (RLS lo filtra)
-  const { error } = await supabase
-    .from("proyectos")
-    .update({ activo: false })
-    .eq("id", proyectoId)
+  // Eliminar (archivar) un proyecto está restringido a 'dueno' -- pasa por
+  // una función dedicada (eliminar_proyecto_seguro) en vez de un UPDATE
+  // directo, para no tocar la política general de edición del proyecto
+  // (esa sí sigue abierta a project_manager/administrador).
+  const { error } = await supabase.rpc("eliminar_proyecto_seguro", { p_proyecto_id: proyectoId })
 
-  if (error) return { error: error.message }
+  if (error) {
+    if (error.message.includes("solo_el_dueno_puede_eliminar")) {
+      return { error: "Solo el dueño puede eliminar proyectos." }
+    }
+    return { error: error.message }
+  }
 
   revalidatePath("/proyectos")
   return {}

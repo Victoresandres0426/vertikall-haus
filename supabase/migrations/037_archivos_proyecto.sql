@@ -8,8 +8,9 @@
 --
 -- Cualquier usuario autenticado de la empresa puede ver y subir
 -- archivos (por ejemplo, un capataz subiendo fotos de avance desde
--- el sitio). Borrar está limitado a quien lo subió o a roles de
--- gestión.
+-- el sitio). Borrar está limitado exclusivamente al rol 'dueno' --
+-- cualquiera puede aportar información, pero solo el dueño puede
+-- eliminarla.
 -- ============================================================
 
 INSERT INTO storage.buckets (id, name, public)
@@ -31,10 +32,12 @@ CREATE POLICY "empresa_sube_archivos_proyecto" ON storage.objects
   );
 
 DROP POLICY IF EXISTS "empresa_borra_archivos_proyecto" ON storage.objects;
-CREATE POLICY "empresa_borra_archivos_proyecto" ON storage.objects
+DROP POLICY IF EXISTS "dueno_borra_archivos_proyecto" ON storage.objects;
+CREATE POLICY "dueno_borra_archivos_proyecto" ON storage.objects
   FOR DELETE USING (
     bucket_id = 'proyecto-archivos' AND
-    (storage.foldername(name))[1]::uuid IN (SELECT id FROM proyectos WHERE empresa_id = get_empresa_id())
+    (storage.foldername(name))[1]::uuid IN (SELECT id FROM proyectos WHERE empresa_id = get_empresa_id()) AND
+    get_rol_usuario() = 'dueno'
   );
 
 CREATE TABLE IF NOT EXISTS proyecto_archivos (
@@ -66,8 +69,9 @@ CREATE POLICY "empresa_inserta_metadata_archivos" ON proyecto_archivos
   );
 
 DROP POLICY IF EXISTS "gestion_borra_metadata_archivos" ON proyecto_archivos;
-CREATE POLICY "gestion_borra_metadata_archivos" ON proyecto_archivos
+DROP POLICY IF EXISTS "dueno_borra_metadata_archivos" ON proyecto_archivos;
+CREATE POLICY "dueno_borra_metadata_archivos" ON proyecto_archivos
   FOR DELETE USING (
     proyecto_id IN (SELECT id FROM proyectos WHERE empresa_id = get_empresa_id()) AND
-    (subido_por = auth.uid() OR get_rol_usuario() IN ('project_manager', 'administrador', 'dueno', 'superadmin'))
+    get_rol_usuario() = 'dueno'
   );
