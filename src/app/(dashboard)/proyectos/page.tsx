@@ -1,9 +1,8 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
-import { Plus } from "lucide-react"
 import { Header } from "@/components/layout/header"
-import { Button } from "@/components/ui/button"
 import { ProyectosClient, type ProyectoFromDB } from "./proyectos-client"
+import { NuevoProyectoBoton } from "./nuevo-proyecto-boton"
 
 async function getProyectos(): Promise<ProyectoFromDB[]> {
   const supabase = await createClient()
@@ -46,12 +45,7 @@ export default async function ProyectosPage() {
       <Header
         titulo="Proyectos"
         subtitulo={`${proyectos.length} proyecto${proyectos.length !== 1 ? "s" : ""} · ${activos} activo${activos !== 1 ? "s" : ""}`}
-        acciones={
-          <Button size="sm">
-            <Plus className="h-4 w-4" />
-            Nuevo proyecto
-          </Button>
-        }
+        acciones={<NuevoProyectoBoton />}
       />
       <ProyectosClient proyectos={proyectos} />
     </div>

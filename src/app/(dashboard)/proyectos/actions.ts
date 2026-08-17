@@ -107,6 +107,69 @@ export async function actualizarHoraEntrada(proyectoId: string, hora: string): P
   return {}
 }
 
+export async function crearProyecto(formData: FormData): Promise<{ error?: string; id?: string }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  const { data: perfil } = await supabase
+    .from("perfiles_usuario")
+    .select("rol, empresa_id")
+    .eq("id", user.id)
+    .single()
+
+  if (!perfil || !ROLES_EDITAN_CLIENTE.includes(perfil.rol)) {
+    return { error: "No tienes permisos para crear proyectos" }
+  }
+
+  const codigo = (formData.get("codigo") as string)?.trim()
+  const nombre = (formData.get("nombre") as string)?.trim()
+  const fecha_inicio_plan = (formData.get("fecha_inicio_plan") as string) || ""
+  const fecha_fin_plan = (formData.get("fecha_fin_plan") as string) || ""
+
+  if (!codigo) return { error: "El código es obligatorio" }
+  if (!nombre) return { error: "El nombre es obligatorio" }
+  if (!fecha_inicio_plan || !fecha_fin_plan) {
+    return { error: "Las fechas de inicio y fin son obligatorias" }
+  }
+  if (fecha_fin_plan < fecha_inicio_plan) {
+    return { error: "La fecha de fin no puede ser anterior a la de inicio" }
+  }
+
+  const presupuesto_venta = parseFloat(formData.get("presupuesto_venta") as string)
+  const presupuesto_base = parseFloat(formData.get("presupuesto_base") as string)
+  const margen_objetivo = parseFloat(formData.get("margen_objetivo") as string)
+
+  const { data, error } = await supabase
+    .from("proyectos")
+    .insert({
+      empresa_id: perfil.empresa_id,
+      codigo,
+      nombre,
+      cliente: (formData.get("cliente") as string)?.trim() || null,
+      ubicacion: (formData.get("ubicacion") as string)?.trim() || null,
+      fecha_inicio_plan,
+      fecha_fin_plan,
+      presupuesto_venta: isNaN(presupuesto_venta) ? 0 : presupuesto_venta,
+      presupuesto_base: isNaN(presupuesto_base) ? 0 : presupuesto_base,
+      margen_objetivo: isNaN(margen_objetivo) ? 0 : margen_objetivo,
+      estado: "activo",
+      activo: true,
+    })
+    .select("id")
+    .single()
+
+  if (error) {
+    console.error("crearProyecto error:", error)
+    if (error.code === "23505") return { error: "Ya existe un proyecto con ese código" }
+    return { error: "Error al crear el proyecto." }
+  }
+
+  revalidatePath("/proyectos")
+  return { id: data.id }
+}
+
 export async function eliminarProyecto(proyectoId: string): Promise<{ error?: string }> {
   const supabase = await createClient()
 
