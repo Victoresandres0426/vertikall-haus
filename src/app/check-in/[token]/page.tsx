@@ -167,7 +167,8 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
       } else if (rpcError.message?.includes("ubicacion_requerida")) {
         setError("Este proyecto requiere tu ubicación para registrar el check-in. Activa el permiso de ubicación en tu navegador e intenta de nuevo.")
       } else if (rpcError.message?.includes("fuera_de_ubicacion")) {
-        setError("Pareces estar lejos de la obra. Debes estar en el sitio del proyecto para registrar tu entrada o salida.")
+        const km = rpcError.message.split("fuera_de_ubicacion:")[1]?.trim()
+        setError(`Pareces estar lejos de la obra${km ? ` (a ${km} km)` : ""}. Debes estar en el sitio del proyecto para registrar tu entrada o salida.`)
       } else {
         setError("Error al registrar. Intenta de nuevo.")
       }

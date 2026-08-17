@@ -83,6 +83,7 @@ export function CoordenadasObra({
       </div>
       <p className="text-[10px] text-slate-400">
         Búscalo en Google Maps: clic derecho sobre el sitio → copia las coordenadas.
+        Para México, EE.UU. y el resto de América, la longitud lleva signo negativo (ej. -99.13, no 99.13).
       </p>
       {error && <span className="text-xs text-red-600">{error}</span>}
     </div>
