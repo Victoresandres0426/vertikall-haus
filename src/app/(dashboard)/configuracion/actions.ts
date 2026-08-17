@@ -66,6 +66,23 @@ export async function invitarUsuario(formData: FormData): Promise<{ error?: stri
   return { token: invitacion.token, email }
 }
 
+export async function enviarRespaldoAhora(): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  const { error } = await supabase.rpc("generar_respaldo_ahora")
+
+  if (error) {
+    if (error.message.includes("Solo el dueño")) {
+      return { error: "Solo el dueño puede generar un respaldo manual." }
+    }
+    return { error: "Error al generar el respaldo. Revisa que el correo (Resend) esté configurado." }
+  }
+
+  return {}
+}
+
 export async function revocarInvitacion(invitacionId: string): Promise<{ error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

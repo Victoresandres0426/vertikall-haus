@@ -120,6 +120,20 @@ function procesarProyecto(p: ProyectoFromDB): Proyecto {
   }
 }
 
+const estadoBadgeStyle: Record<string, string> = {
+  activo: "bg-emerald-100 text-emerald-700",
+  pausado: "bg-amber-100 text-amber-700",
+  completado: "bg-slate-100 text-slate-600",
+  cancelado: "bg-red-100 text-red-600",
+}
+
+const estadoLabel: Record<string, string> = {
+  activo: "Activo",
+  pausado: "Pausado",
+  completado: "Completado",
+  cancelado: "Cancelado",
+}
+
 function formatMXN(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`
   if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
@@ -129,22 +143,28 @@ function formatMXN(n: number) {
 // ──────────────────────────────────────────────
 // Componente
 // ──────────────────────────────────────────────
+const ESTADOS_ARCHIVADOS = ["completado", "cancelado"]
+
 export function ProyectosClient({ proyectos: raw, esDueno }: { proyectos: ProyectoFromDB[]; esDueno: boolean }) {
   const router = useRouter()
   const [busqueda, setBusqueda] = useState("")
-  const [filtroEstado, setFiltroEstado] = useState<"todos" | "activo" | "completado">("todos")
+  const [vista, setVista] = useState<"proyectos" | "archivados">("proyectos")
   const [proyectoAEliminar, setProyectoAEliminar] = useState<Proyecto | null>(null)
   const [errorEliminar, setErrorEliminar] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   const proyectos = raw.map(procesarProyecto)
 
-  const proyectosFiltrados = proyectos.filter((p) => {
+  const enVista = proyectos.filter((p) =>
+    vista === "archivados" ? ESTADOS_ARCHIVADOS.includes(p.estado) : !ESTADOS_ARCHIVADOS.includes(p.estado)
+  )
+  const archivadosCount = proyectos.filter((p) => ESTADOS_ARCHIVADOS.includes(p.estado)).length
+
+  const proyectosFiltrados = enVista.filter((p) => {
     const matchBusqueda =
       p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
       p.codigo.toLowerCase().includes(busqueda.toLowerCase())
-    const matchEstado = filtroEstado === "todos" || p.estado === filtroEstado
-    return matchBusqueda && matchEstado
+    return matchBusqueda
   })
 
   const activos = proyectos.filter((p) => p.estado === "activo")
@@ -176,20 +196,24 @@ export function ProyectosClient({ proyectos: raw, esDueno }: { proyectos: Proyec
             />
           </div>
           <div className="flex rounded-lg border border-slate-200 overflow-hidden">
-            {(["todos", "activo", "completado"] as const).map((estado) => (
-              <button
-                key={estado}
-                onClick={() => setFiltroEstado(estado)}
-                className={cn(
-                  "px-4 py-2 text-sm capitalize transition-colors",
-                  filtroEstado === estado
-                    ? "bg-slate-900 text-white"
-                    : "bg-white text-slate-600 hover:bg-slate-50"
-                )}
-              >
-                {estado === "todos" ? "Todos" : estado.charAt(0).toUpperCase() + estado.slice(1)}
-              </button>
-            ))}
+            <button
+              onClick={() => setVista("proyectos")}
+              className={cn(
+                "px-4 py-2 text-sm transition-colors",
+                vista === "proyectos" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+              )}
+            >
+              Proyectos
+            </button>
+            <button
+              onClick={() => setVista("archivados")}
+              className={cn(
+                "px-4 py-2 text-sm transition-colors",
+                vista === "archivados" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+              )}
+            >
+              Archivados{archivadosCount > 0 ? ` (${archivadosCount})` : ""}
+            </button>
           </div>
         </div>
 
@@ -231,9 +255,9 @@ export function ProyectosClient({ proyectos: raw, esDueno }: { proyectos: Proyec
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
                         <Badge variant="secondary" className="font-mono text-xs">{p.codigo}</Badge>
-                        <Badge variant={p.estado === "activo" ? "default" : "success"}>
-                          {p.estado === "activo" ? "Activo" : "Completado"}
-                        </Badge>
+                        <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold", estadoBadgeStyle[p.estado] ?? "bg-slate-100 text-slate-600")}>
+                          {estadoLabel[p.estado] ?? p.estado}
+                        </span>
                         {p.alertas_rojas > 0 && <AlertaBadge nivel="rojo" />}
                         {p.alertas_amarillas > 0 && <AlertaBadge nivel="amarillo" />}
                       </div>

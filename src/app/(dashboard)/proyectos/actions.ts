@@ -137,6 +137,43 @@ export async function actualizarHoraEntrada(proyectoId: string, hora: string): P
   return {}
 }
 
+const ESTADOS_VALIDOS = ["activo", "pausado", "completado", "cancelado"]
+
+export async function actualizarEstadoProyecto(proyectoId: string, nuevoEstado: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  const { data: perfil } = await supabase
+    .from("perfiles_usuario")
+    .select("rol")
+    .eq("id", user.id)
+    .single()
+
+  if (!perfil || !ROLES_EDITAN_CLIENTE.includes(perfil.rol)) {
+    return { error: "No tienes permisos para cambiar el estado del proyecto" }
+  }
+
+  if (!ESTADOS_VALIDOS.includes(nuevoEstado)) {
+    return { error: "Estado inválido" }
+  }
+
+  const { error } = await supabase
+    .from("proyectos")
+    .update({ estado: nuevoEstado })
+    .eq("id", proyectoId)
+
+  if (error) {
+    console.error("actualizarEstadoProyecto error:", error)
+    return { error: "Error al actualizar el estado." }
+  }
+
+  revalidatePath(`/proyectos/${proyectoId}`)
+  revalidatePath("/proyectos")
+  return {}
+}
+
 export async function crearProyecto(formData: FormData): Promise<{ error?: string; id?: string }> {
   const supabase = await createClient()
 

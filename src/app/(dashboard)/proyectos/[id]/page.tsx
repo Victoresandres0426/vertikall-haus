@@ -15,6 +15,7 @@ import { TelefonoCliente } from "./telefono-cliente"
 import { CoordenadasObra } from "./coordenadas-obra"
 import { HoraEntrada } from "./hora-entrada"
 import { ArchivosProyecto, type ArchivoProyecto } from "./archivos-proyecto"
+import { EstadoProyecto } from "./estado-proyecto"
 
 // ── Tipos ────────────────────────────────────────────────────
 
@@ -367,14 +368,7 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
           <div>
             <div className="flex items-center gap-2 mb-0.5">
               <span className="font-mono text-xs text-slate-400">{proyecto.codigo}</span>
-              <span className={cn(
-                "text-xs px-2 py-0.5 rounded-full font-medium",
-                proyecto.estado === "activo" ? "bg-emerald-100 text-emerald-700"
-                  : proyecto.estado === "completado" ? "bg-slate-100 text-slate-600"
-                  : "bg-amber-100 text-amber-700"
-              )}>
-                {proyecto.estado.charAt(0).toUpperCase() + proyecto.estado.slice(1)}
-              </span>
+              <EstadoProyecto proyectoId={proyecto.id} estadoInicial={proyecto.estado} puedeEditar={puedeEditarCliente} />
             </div>
             <h1 className="text-xl font-bold text-slate-900">{proyecto.nombre}</h1>
             {proyecto.cliente && <p className="text-sm text-slate-500 mt-0.5">{proyecto.cliente}</p>}

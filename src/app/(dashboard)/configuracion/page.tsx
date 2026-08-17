@@ -4,6 +4,8 @@ import { Header } from "@/components/layout/header"
 import { Building2, Users, Settings, Bell, Shield, UserPlus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { InvitarUsuarioButton, InvitacionesPendientes } from "./invitar-client"
+import { RespaldoButton } from "./respaldo-client"
+import { DatabaseBackup } from "lucide-react"
 
 type Empresa = {
   id: string
@@ -244,6 +246,17 @@ export default async function ConfiguracionPage() {
             </div>
           )}
         </section>
+
+        {/* ── Respaldo de datos ── */}
+        {["dueno", "superadmin"].includes(perfil.rol) && (
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <DatabaseBackup className="h-4 w-4 text-slate-400" />
+              <h2 className="text-sm font-semibold text-slate-700">Respaldo de datos</h2>
+            </div>
+            <RespaldoButton destino="oficial@vertikallhaus.net" />
+          </section>
+        )}
 
         {/* ── Sobre el sistema ── */}
         <section>
