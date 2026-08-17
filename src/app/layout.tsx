@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { ServiceWorkerRegister } from "@/components/sw-register";
 
 export const metadata: Metadata = {
   title: "Vertikall Haus — Sistema de Gestión",
@@ -34,6 +35,7 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className="antialiased">
+        <ServiceWorkerRegister />
         {children}
       </body>
     </html>
