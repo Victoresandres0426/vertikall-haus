@@ -90,7 +90,7 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
       // ¿Este celular ya está vinculado a alguien de un check-in previo?
       const deviceToken = obtenerDeviceToken()
       const { data: vinculoData } = await supabase
-        .rpc("checkin_dispositivo_vinculado", { p_device_token: deviceToken })
+        .rpc("checkin_dispositivo_vinculado", { p_device_token: deviceToken, p_qr_token: token })
       const vinculo = vinculoData?.[0] as { trabajador_id: string; nombre_completo: string; ultimo_tipo: string | null } | undefined
       if (vinculo) {
         setDispositivoVinculado({ id: vinculo.trabajador_id, nombre: vinculo.nombre_completo })
