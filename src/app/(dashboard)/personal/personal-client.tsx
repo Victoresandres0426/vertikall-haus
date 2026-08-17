@@ -3,13 +3,13 @@
 import { useState, useTransition } from "react"
 import {
   Search, UserCheck, UserX, Phone, Calendar, DollarSign,
-  Star, Plus, X, ChevronDown, QrCode,
+  Star, Plus, X, ChevronDown, QrCode, Pencil, MapPin, ShieldAlert,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { crearTrabajador } from "./actions"
+import { crearTrabajador, actualizarTrabajador } from "./actions"
 
 // ──────────────────────────────────────────────
 // Tipos
@@ -27,6 +27,10 @@ export type TrabajadorFromDB = {
   fecha_ingreso: string | null
   notas: string | null
   usuario_id: string | null
+  telefono_personal: string | null
+  direccion: string | null
+  contacto_emergencia_nombre: string | null
+  contacto_emergencia_telefono: string | null
 }
 
 type ProyectoOption = {
@@ -46,7 +50,7 @@ const nivelLabel: Record<string, string> = {
   senior: "Senior",
 }
 
-function formatMXN(n: number | null, moneda = "MXN") {
+function formatMXN(n: number | null, moneda = "USD") {
   if (!n) return "—"
   return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 0 })} ${moneda}/día`
 }
@@ -72,6 +76,7 @@ export function PersonalClient({
   const [filtroActivo, setFiltroActivo] = useState<"todos" | "activo" | "inactivo">("todos")
   const [filtroRol, setFiltroRol] = useState("")
   const [showModal, setShowModal] = useState(false)
+  const [trabajadorAEditar, setTrabajadorAEditar] = useState<TrabajadorFromDB | null>(null)
   const [isPending, startTransition] = useTransition()
   const [errorModal, setErrorModal] = useState("")
 
@@ -239,6 +244,27 @@ export function PersonalClient({
                         <span>Desde {new Date(t.fecha_ingreso).toLocaleDateString("es-MX", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })}</span>
                       </div>
                     )}
+                    {t.telefono_personal && puedeEditar && (
+                      <div className="flex items-center gap-1.5">
+                        <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+                        <span>{t.telefono_personal}</span>
+                      </div>
+                    )}
+                    {t.direccion && puedeEditar && (
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
+                        <span className="truncate">{t.direccion}</span>
+                      </div>
+                    )}
+                    {t.contacto_emergencia_nombre && puedeEditar && (
+                      <div className="flex items-center gap-1.5">
+                        <ShieldAlert className="h-3 w-3 text-slate-400 shrink-0" />
+                        <span className="truncate">
+                          {t.contacto_emergencia_nombre}
+                          {t.contacto_emergencia_telefono && ` · ${t.contacto_emergencia_telefono}`}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {t.notas && (
@@ -252,6 +278,15 @@ export function PersonalClient({
                     )}>
                       {t.activo ? "Activo" : "Inactivo"}
                     </span>
+                    {puedeEditar && (
+                      <button
+                        onClick={() => setTrabajadorAEditar(t)}
+                        className="text-xs text-slate-400 hover:text-slate-700 flex items-center gap-1"
+                      >
+                        <Pencil className="h-3 w-3" />
+                        Editar
+                      </button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -262,13 +297,24 @@ export function PersonalClient({
 
       {/* Modal agregar trabajador */}
       {showModal && (
-        <ModalAgregarTrabajador
+        <ModalTrabajador
           onClose={() => { setShowModal(false); setErrorModal("") }}
           onSuccess={(nuevo) => {
             setTrabajadores((prev) => [nuevo, ...prev])
             setShowModal(false)
           }}
-          empresaId={empresaId}
+        />
+      )}
+
+      {/* Modal editar trabajador */}
+      {trabajadorAEditar && (
+        <ModalTrabajador
+          trabajador={trabajadorAEditar}
+          onClose={() => setTrabajadorAEditar(null)}
+          onSuccess={(actualizado) => {
+            setTrabajadores((prev) => prev.map((t) => (t.id === actualizado.id ? actualizado : t)))
+            setTrabajadorAEditar(null)
+          }}
         />
       )}
     </>
@@ -276,28 +322,30 @@ export function PersonalClient({
 }
 
 // ──────────────────────────────────────────────
-// Modal para agregar trabajador
+// Modal para agregar / editar trabajador
 // ──────────────────────────────────────────────
-function ModalAgregarTrabajador({
+function ModalTrabajador({
+  trabajador,
   onClose,
   onSuccess,
-  empresaId,
 }: {
+  trabajador?: TrabajadorFromDB
   onClose: () => void
   onSuccess: (t: TrabajadorFromDB) => void
-  empresaId: string
 }) {
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState("")
+  const esEdicion = !!trabajador
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError("")
     const formData = new FormData(e.currentTarget)
-    formData.set("empresa_id", empresaId)
 
     startTransition(async () => {
-      const result = await crearTrabajador(formData)
+      const result = esEdicion
+        ? await actualizarTrabajador(trabajador!.id, formData)
+        : await crearTrabajador(formData)
       if (result.error) {
         setError(result.error)
       } else if (result.trabajador) {
@@ -320,7 +368,9 @@ function ModalAgregarTrabajador({
           <X className="h-5 w-5" />
         </button>
 
-        <h3 className="text-lg font-semibold text-slate-900 mb-5">Agregar trabajador</h3>
+        <h3 className="text-lg font-semibold text-slate-900 mb-5">
+          {esEdicion ? "Editar trabajador" : "Agregar trabajador"}
+        </h3>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -328,6 +378,7 @@ function ModalAgregarTrabajador({
             <input
               name="nombre_completo"
               required
+              defaultValue={trabajador?.nombre_completo}
               placeholder="Ej. Juan García López"
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
             />
@@ -338,6 +389,7 @@ function ModalAgregarTrabajador({
               <label className="block text-xs font-medium text-slate-700 mb-1">Código</label>
               <input
                 name="codigo"
+                defaultValue={trabajador?.codigo ?? ""}
                 placeholder="Ej. T-001"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
               />
@@ -346,6 +398,7 @@ function ModalAgregarTrabajador({
               <label className="block text-xs font-medium text-slate-700 mb-1">Rol en obra</label>
               <input
                 name="rol_obra"
+                defaultValue={trabajador?.rol_obra ?? ""}
                 placeholder="Ej. electricista"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
               />
@@ -356,6 +409,7 @@ function ModalAgregarTrabajador({
             <label className="block text-xs font-medium text-slate-700 mb-1">Especialidad</label>
             <input
               name="especialidad"
+              defaultValue={trabajador?.especialidad ?? ""}
               placeholder="Ej. Instalaciones eléctricas de alta tensión"
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
             />
@@ -366,6 +420,7 @@ function ModalAgregarTrabajador({
               <label className="block text-xs font-medium text-slate-700 mb-1">Nivel</label>
               <select
                 name="nivel_experiencia"
+                defaultValue={trabajador?.nivel_experiencia ?? ""}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
               >
                 <option value="">Sin especificar</option>
@@ -375,12 +430,13 @@ function ModalAgregarTrabajador({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Tarifa diaria (MXN)</label>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Tarifa diaria (USD)</label>
               <input
                 name="tarifa_diaria"
                 type="number"
                 min="0"
                 step="0.01"
+                defaultValue={trabajador?.tarifa_diaria ?? ""}
                 placeholder="0.00"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
               />
@@ -392,8 +448,56 @@ function ModalAgregarTrabajador({
             <input
               name="fecha_ingreso"
               type="date"
+              defaultValue={trabajador?.fecha_ingreso ?? ""}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
             />
+          </div>
+
+          <div className="pt-2 border-t border-slate-100">
+            <p className="text-xs font-medium text-slate-400 mb-3 mt-3">Información personal (opcional)</p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Teléfono personal</label>
+                <input
+                  name="telefono_personal"
+                  type="tel"
+                  defaultValue={trabajador?.telefono_personal ?? ""}
+                  placeholder="+1 305 555 0100"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Dirección</label>
+                <input
+                  name="direccion"
+                  defaultValue={trabajador?.direccion ?? ""}
+                  placeholder="Calle, número, ciudad"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Contacto de emergencia</label>
+                  <input
+                    name="contacto_emergencia_nombre"
+                    defaultValue={trabajador?.contacto_emergencia_nombre ?? ""}
+                    placeholder="Nombre"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Teléfono de emergencia</label>
+                  <input
+                    name="contacto_emergencia_telefono"
+                    type="tel"
+                    defaultValue={trabajador?.contacto_emergencia_telefono ?? ""}
+                    placeholder="+1 305 555 0100"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           <div>
@@ -401,6 +505,7 @@ function ModalAgregarTrabajador({
             <textarea
               name="notas"
               rows={2}
+              defaultValue={trabajador?.notas ?? ""}
               placeholder="Observaciones adicionales..."
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 resize-none"
             />
@@ -417,7 +522,7 @@ function ModalAgregarTrabajador({
               Cancelar
             </Button>
             <Button type="submit" className="flex-1" isLoading={isPending}>
-              Agregar
+              {esEdicion ? "Guardar cambios" : "Agregar"}
             </Button>
           </div>
         </form>

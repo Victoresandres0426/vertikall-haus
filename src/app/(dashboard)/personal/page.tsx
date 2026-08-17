@@ -20,7 +20,7 @@ export default async function PersonalPage() {
   const [{ data: trabajadores }, { data: proyectos }] = await Promise.all([
     supabase
       .from("trabajadores")
-      .select("id, nombre_completo, codigo, especialidad, rol_obra, nivel_experiencia, tarifa_diaria, moneda, activo, fecha_ingreso, notas, usuario_id")
+      .select("id, nombre_completo, codigo, especialidad, rol_obra, nivel_experiencia, tarifa_diaria, moneda, activo, fecha_ingreso, notas, usuario_id, telefono_personal, direccion, contacto_emergencia_nombre, contacto_emergencia_telefono")
       .eq("empresa_id", perfil.empresa_id)
       .order("nombre_completo"),
     supabase
