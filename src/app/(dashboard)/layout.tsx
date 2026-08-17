@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/layout/sidebar"
+import { DashboardShell } from "@/components/layout/dashboard-shell"
 import { createClient } from "@/lib/supabase/server"
 
 async function getUserProfile() {
@@ -39,15 +39,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const perfil = await getUserProfile()
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-      <Sidebar
-        empresaNombre={perfil?.empresaNombre ?? "Vertikall Haus"}
-        usuarioNombre={perfil?.nombre ?? "Usuario"}
-        usuarioRol={perfil?.rol ?? "project_manager"}
-      />
-      <main className="flex-1 overflow-y-auto">
-        {children}
-      </main>
-    </div>
+    <DashboardShell
+      empresaNombre={perfil?.empresaNombre ?? "Vertikall Haus"}
+      usuarioNombre={perfil?.nombre ?? "Usuario"}
+      usuarioRol={perfil?.rol ?? "project_manager"}
+    >
+      {children}
+    </DashboardShell>
   )
 }

@@ -69,13 +69,14 @@ const navItems: { grupo: string; items: NavItem[] }[] = [
   },
 ]
 
-interface SidebarProps {
+export interface SidebarProps {
   empresaNombre?: string
   usuarioNombre?: string
   usuarioRol?: string
+  onNavigate?: () => void
 }
 
-export function Sidebar({ empresaNombre = "Vertikall Haus", usuarioNombre, usuarioRol }: SidebarProps) {
+export function Sidebar({ empresaNombre = "Vertikall Haus", usuarioNombre, usuarioRol, onNavigate }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -87,7 +88,7 @@ export function Sidebar({ empresaNombre = "Vertikall Haus", usuarioNombre, usuar
   }
 
   return (
-    <aside className="flex flex-col h-screen w-[260px] bg-slate-900 text-white flex-shrink-0">
+    <aside className="flex flex-col h-full w-[260px] bg-slate-900 text-white flex-shrink-0">
       {/* Header / Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-800">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10">
@@ -116,6 +117,7 @@ export function Sidebar({ empresaNombre = "Vertikall Haus", usuarioNombre, usuar
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={onNavigate}
                     className={cn(
                       "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                       isActive
