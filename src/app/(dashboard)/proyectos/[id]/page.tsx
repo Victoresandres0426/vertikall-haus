@@ -180,43 +180,43 @@ async function getData(id: string) {
   let equipoAuth: TrabajadorEquipo[] = []
   let equipoDisponibles: TrabajadorEquipo[] = []
 
+  // Nota: trabajadores tiene RLS restringida a roles de gestión (salario, datos
+  // personales), así que aquí se usa trabajadores_directorio_empresa(), que solo
+  // expone campos no sensibles a cualquier usuario autenticado (migración 035).
   const eqRes = await supabase
     .from("proyecto_trabajadores")
-    .select("trabajador:trabajador_id(id, nombre_completo, rol_obra, especialidad)")
+    .select("trabajador_id")
     .eq("proyecto_id", id)
     .eq("autorizado", true)
 
-  if (!eqRes.error && eqRes.data) {
-    equipoAuth = (eqRes.data as unknown as Array<{ trabajador: TrabajadorEquipo | null }>)
-      .filter(pt => pt.trabajador != null)
-      .map(pt => ({
-        id: pt.trabajador!.id,
-        nombre_completo: pt.trabajador!.nombre_completo,
-        rol_obra: pt.trabajador!.rol_obra ?? null,
-        especialidad: pt.trabajador!.especialidad ?? null,
+  if (!eqRes.error && eqRes.data && perfil?.empresa_id) {
+    const { data: directorioRaw } = await supabase.rpc("trabajadores_directorio_empresa")
+    const directorio = new Map(
+      ((directorioRaw ?? []) as (TrabajadorEquipo & { activo: boolean })[]).map((t) => [t.id, t])
+    )
+
+    const autorizadosIds = new Set((eqRes.data as { trabajador_id: string }[]).map(pt => pt.trabajador_id))
+
+    equipoAuth = Array.from(autorizadosIds)
+      .map((tid) => directorio.get(tid))
+      .filter((t): t is TrabajadorEquipo & { activo: boolean } => t != null)
+      .map((t) => ({
+        id: t.id,
+        nombre_completo: t.nombre_completo,
+        rol_obra: t.rol_obra ?? null,
+        especialidad: t.especialidad ?? null,
       }))
 
     // Workers in the empresa not yet in this project
-    if (perfil?.empresa_id) {
-      const autorizadosIds = new Set(equipoAuth.map(e => e.id))
-      const todosRes = await supabase
-        .from("trabajadores")
-        .select("id, nombre_completo, rol_obra, especialidad")
-        .eq("empresa_id", perfil.empresa_id)
-        .eq("activo", true)
-        .order("nombre_completo")
-
-      if (!todosRes.error && todosRes.data) {
-        equipoDisponibles = (todosRes.data as any[])
-          .filter((t: any) => !autorizadosIds.has(t.id))
-          .map((t: any) => ({
-            id: t.id,
-            nombre_completo: t.nombre_completo,
-            rol_obra: (t.rol_obra as string | null) ?? null,
-            especialidad: (t.especialidad as string | null) ?? null,
-          }))
-      }
-    }
+    equipoDisponibles = Array.from(directorio.values())
+      .filter((t) => t.activo !== false && !autorizadosIds.has(t.id))
+      .sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo))
+      .map((t) => ({
+        id: t.id,
+        nombre_completo: t.nombre_completo,
+        rol_obra: t.rol_obra ?? null,
+        especialidad: t.especialidad ?? null,
+      }))
   }
 
   return {

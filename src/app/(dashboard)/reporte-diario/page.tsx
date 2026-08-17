@@ -45,26 +45,32 @@ async function getData(): Promise<{
   }
 
   // Trabajadores autorizados por proyecto (equipo asignado en la ficha del proyecto)
+  // Nota: la tabla trabajadores tiene RLS restringida a roles de gestión (salario,
+  // datos personales), así que aquí no se hace join directo -- se usa la función
+  // trabajadores_directorio_empresa(), que solo expone campos no sensibles a
+  // cualquier usuario autenticado de la empresa (ver migración 035).
   const trabajadoresPorProyecto: Record<string, TrabajadorDB[]> = {}
 
   if (proyectoIds.length > 0) {
-    const { data: asignacionesRaw } = await supabase
-      .from("proyecto_trabajadores")
-      .select(`
-        proyecto_id,
-        trabajadores ( id, nombre_completo, rol_obra, especialidad, activo )
-      `)
-      .in("proyecto_id", proyectoIds)
-      .eq("autorizado", true)
+    const [{ data: asignacionesRaw }, { data: directorioRaw }] = await Promise.all([
+      supabase
+        .from("proyecto_trabajadores")
+        .select("proyecto_id, trabajador_id")
+        .in("proyecto_id", proyectoIds)
+        .eq("autorizado", true),
+      supabase.rpc("trabajadores_directorio_empresa"),
+    ])
 
-    for (const asign of (asignacionesRaw ?? []) as unknown as {
-      proyecto_id: string
-      trabajadores: (TrabajadorDB & { activo: boolean }) | null
-    }[]) {
-      if (!asign.trabajadores || asign.trabajadores.activo === false) continue
+    const directorio = new Map(
+      ((directorioRaw ?? []) as (TrabajadorDB & { activo: boolean })[]).map((t) => [t.id, t])
+    )
+
+    for (const asign of (asignacionesRaw ?? []) as { proyecto_id: string; trabajador_id: string }[]) {
+      const trabajador = directorio.get(asign.trabajador_id)
+      if (!trabajador || trabajador.activo === false) continue
       if (!trabajadoresPorProyecto[asign.proyecto_id]) trabajadoresPorProyecto[asign.proyecto_id] = []
-      const { activo: _activo, ...trabajador } = asign.trabajadores
-      trabajadoresPorProyecto[asign.proyecto_id].push(trabajador)
+      const { activo: _activo, ...resto } = trabajador
+      trabajadoresPorProyecto[asign.proyecto_id].push(resto)
     }
     for (const pid of Object.keys(trabajadoresPorProyecto)) {
       trabajadoresPorProyecto[pid].sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo))

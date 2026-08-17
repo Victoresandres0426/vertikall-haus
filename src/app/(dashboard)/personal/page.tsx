@@ -17,6 +17,9 @@ export default async function PersonalPage() {
 
   if (!perfil) redirect("/sin-acceso")
 
+  const ROLES_VEN_PERSONAL = ["dueno", "superadmin", "administrador", "project_manager"]
+  if (!ROLES_VEN_PERSONAL.includes(perfil.rol)) redirect("/sin-acceso")
+
   const [{ data: trabajadores }, { data: proyectos }] = await Promise.all([
     supabase
       .from("trabajadores")

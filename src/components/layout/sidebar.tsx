@@ -23,7 +23,15 @@ import {
   ChevronRight,
 } from "lucide-react"
 
-const navItems = [
+type NavItem = {
+  href: string
+  label: string
+  icon: typeof LayoutDashboard
+  badge?: string
+  ocultoPara?: string[]
+}
+
+const navItems: { grupo: string; items: NavItem[] }[] = [
   {
     grupo: "Principal",
     items: [
@@ -37,7 +45,7 @@ const navItems = [
     items: [
       { href: "/reporte-diario", label: "Reporte Diario", icon: ClipboardList },
       { href: "/actividades", label: "Actividades", icon: Wrench },
-      { href: "/personal", label: "Personal", icon: UserCheck },
+      { href: "/personal", label: "Personal", icon: UserCheck, ocultoPara: ["capataz"] },
       { href: "/recursos", label: "Recursos", icon: Users },
       { href: "/materiales", label: "Materiales", icon: Package },
     ],
@@ -90,7 +98,9 @@ export function Sidebar({ empresaNombre = "Vertikall Haus", usuarioNombre, usuar
               {grupo.grupo}
             </p>
             <div className="space-y-0.5">
-              {grupo.items.map((item) => {
+              {grupo.items
+                .filter((item) => !usuarioRol || !item.ocultoPara?.includes(usuarioRol))
+                .map((item) => {
                 const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
                 const Icon = item.icon
                 return (
