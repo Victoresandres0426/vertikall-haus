@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils"
 import { EquipoProyecto, type TrabajadorEquipo } from "./equipo-proyecto"
 import { ClienteEmail } from "./cliente-email"
 import { CoordenadasObra } from "./coordenadas-obra"
+import { HoraEntrada } from "./hora-entrada"
 
 // ── Tipos ────────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ type Proyecto = {
   id: string; codigo: string; nombre: string; cliente: string | null
   cliente_email: string | null
   coordenadas: { lat: number; lng: number } | null
+  hora_entrada_esperada: string | null
   ubicacion: string | null; estado: string
   fecha_inicio_plan: string; fecha_fin_plan: string
   fecha_inicio_real: string | null; fecha_fin_forecast: string | null
@@ -31,6 +33,10 @@ type RegistroAsistenciaQR = {
   hora: string
   nombre_manual: string | null
   cierre_automatico: boolean
+  motivo_cierre: string | null
+  llegada_tarde: boolean
+  minutos_tarde: number | null
+  horas_extra: number | null
   trabajador: { nombre_completo: string } | null
 }
 
@@ -78,7 +84,7 @@ async function getData(id: string) {
   const { data: proyecto } = await supabase
     .from("proyectos")
     .select(`
-      id, codigo, nombre, cliente, cliente_email, coordenadas, ubicacion, estado,
+      id, codigo, nombre, cliente, cliente_email, coordenadas, hora_entrada_esperada, ubicacion, estado,
       fecha_inicio_plan, fecha_fin_plan, fecha_inicio_real, fecha_fin_forecast,
       presupuesto_base, presupuesto_venta, margen_objetivo
     `)
@@ -146,7 +152,7 @@ async function getData(id: string) {
     try {
       const res = await supabase
         .from("registros_asistencia_qr")
-        .select("id, tipo, hora, nombre_manual, cierre_automatico, trabajador:trabajador_id(nombre_completo)")
+        .select("id, tipo, hora, nombre_manual, cierre_automatico, motivo_cierre, llegada_tarde, minutos_tarde, horas_extra, trabajador:trabajador_id(nombre_completo)")
         .eq("proyecto_id", id)
         .eq("fecha", hoy)
         .order("hora", { ascending: false })
@@ -346,6 +352,7 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
             <div className="mt-1 space-y-1">
               <ClienteEmail proyectoId={proyecto.id} emailInicial={proyecto.cliente_email} puedeEditar={puedeEditarCliente} />
               <CoordenadasObra proyectoId={proyecto.id} coordenadasIniciales={proyecto.coordenadas} puedeEditar={puedeEditarCliente} />
+              <HoraEntrada proyectoId={proyecto.id} horaInicial={proyecto.hora_entrada_esperada} puedeEditar={puedeEditarCliente} />
             </div>
           </div>
           {ultimoIIDP && (
@@ -735,8 +742,17 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
                             </span>
                             <span className="flex-1 text-sm font-medium text-slate-700 truncate">
                               {nombre}
-                              {r.cierre_automatico && (
+                              {r.motivo_cierre === "8_horas" && (
                                 <span className="ml-1.5 text-[10px] font-normal text-amber-600">(cierre automático, 8h)</span>
+                              )}
+                              {r.motivo_cierre === "cambio_proyecto" && (
+                                <span className="ml-1.5 text-[10px] font-normal text-amber-600">(cerrado por cambio de proyecto)</span>
+                              )}
+                              {r.llegada_tarde && (
+                                <span className="ml-1.5 text-[10px] font-normal text-red-500">(llegada tarde, +{r.minutos_tarde}min)</span>
+                              )}
+                              {!!r.horas_extra && r.horas_extra > 0 && (
+                                <span className="ml-1.5 text-[10px] font-normal text-blue-600">(+{r.horas_extra}h extra)</span>
                               )}
                             </span>
                             <span className="text-xs text-slate-400 font-mono shrink-0">
