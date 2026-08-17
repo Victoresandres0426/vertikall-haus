@@ -679,7 +679,7 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(
-                        `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/check-in/${qrToken}`
+                        `${process.env.NEXT_PUBLIC_APP_URL || "https://vertikall-haus.vercel.app"}/check-in/${qrToken}`
                       )}&size=160x160&bgcolor=ffffff&color=0f172a&margin=4`}
                       alt="QR de asistencia"
                       width={160}
