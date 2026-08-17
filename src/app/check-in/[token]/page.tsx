@@ -107,6 +107,12 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
   }, [token])
 
   const handleRegistrar = async () => {
+    // Guarda de doble clic/toque: si ya hay un envío en curso, ignora
+    // por completo el segundo click en vez de solo deshabilitar el
+    // botón (evita la ventana de milisegundos antes de que React
+    // vuelva a renderizar con el botón ya deshabilitado).
+    if (submitting) return
+
     setError("")
 
     const usandoManual = trabajadorId === "__manual__"
