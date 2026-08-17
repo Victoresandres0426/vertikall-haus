@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/header"
 import { FacturasClient, type FacturaCliente, type FacturaProveedor, type ProyectoOpcion, type ProveedorOpcion } from "./facturas-client"
 
 const ROLES_FACTURAS = ["administrador", "dueno", "superadmin"]
+const ROLES_VEN_FACTURAS = ["administrador", "project_manager", "dueno", "superadmin"]
 
 async function getData() {
   const supabase = await createClient()
@@ -15,6 +16,8 @@ async function getData() {
     .select("rol")
     .eq("id", user.id)
     .single()
+
+  if (!perfil || !ROLES_VEN_FACTURAS.includes(perfil.rol)) redirect("/sin-acceso")
 
   const [
     { data: facturasCliente },

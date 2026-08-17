@@ -16,6 +16,8 @@ async function getData() {
     .eq("id", user.id)
     .single()
 
+  if (!perfil || !ROLES_GESTION.includes(perfil.rol)) redirect("/sin-acceso")
+
   const [{ data: changeOrders, error }, { data: proyectos }] = await Promise.all([
     supabase
       .from("change_orders")

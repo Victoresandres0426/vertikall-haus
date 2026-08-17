@@ -53,17 +53,17 @@ const navItems: { grupo: string; items: NavItem[] }[] = [
   {
     grupo: "Finanzas",
     items: [
-      { href: "/presupuesto", label: "Presupuesto", icon: DollarSign },
-      { href: "/change-orders", label: "Change Orders", icon: FileText },
-      { href: "/facturas", label: "Facturas", icon: Receipt },
-      { href: "/flujo-caja", label: "Flujo de Caja", icon: TrendingUp },
+      { href: "/presupuesto", label: "Presupuesto", icon: DollarSign, ocultoPara: ["capataz"] },
+      { href: "/change-orders", label: "Change Orders", icon: FileText, ocultoPara: ["capataz"] },
+      { href: "/facturas", label: "Facturas", icon: Receipt, ocultoPara: ["capataz"] },
+      { href: "/flujo-caja", label: "Flujo de Caja", icon: TrendingUp, ocultoPara: ["capataz"] },
     ],
   },
   {
     grupo: "Análisis",
     items: [
       { href: "/desempeno", label: "Desempeño (IIDP)", icon: TrendingUp },
-      { href: "/riesgos", label: "Riesgos", icon: AlertTriangle },
+      { href: "/riesgos", label: "Riesgos", icon: AlertTriangle, ocultoPara: ["capataz"] },
     ],
   },
 ]
