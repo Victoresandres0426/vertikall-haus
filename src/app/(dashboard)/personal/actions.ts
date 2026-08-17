@@ -44,7 +44,7 @@ export async function crearTrabajador(
       fecha_ingreso: (formData.get("fecha_ingreso") as string) || null,
       notas: (formData.get("notas") as string) || null,
       activo: true,
-      moneda: "MXN",
+      moneda: "USD",
     })
     .select("id, nombre_completo, codigo, especialidad, rol_obra, nivel_experiencia, tarifa_diaria, moneda, activo, fecha_ingreso, notas, usuario_id")
     .single()

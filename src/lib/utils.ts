@@ -19,7 +19,7 @@ export function formatFechaRelativa(fecha: string | Date): string {
 }
 
 // Formateo de moneda
-export function formatMoneda(monto: number, moneda = 'MXN'): string {
+export function formatMoneda(monto: number, moneda = 'USD'): string {
   return new Intl.NumberFormat('es-MX', {
     style: 'currency',
     currency: moneda,
