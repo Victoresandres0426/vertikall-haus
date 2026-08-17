@@ -91,10 +91,14 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
       const deviceToken = obtenerDeviceToken()
       const { data: vinculoData } = await supabase
         .rpc("checkin_dispositivo_vinculado", { p_device_token: deviceToken })
-      const vinculo = vinculoData?.[0] as { trabajador_id: string; nombre_completo: string } | undefined
+      const vinculo = vinculoData?.[0] as { trabajador_id: string; nombre_completo: string; ultimo_tipo: string | null } | undefined
       if (vinculo) {
         setDispositivoVinculado({ id: vinculo.trabajador_id, nombre: vinculo.nombre_completo })
         setTrabajadorId(vinculo.trabajador_id)
+        // Preseleccionar el movimiento contrario al último de hoy
+        // (si su último registro fue "entrada", lo lógico es "salida")
+        if (vinculo.ultimo_tipo === "entrada") setTipo("salida")
+        else if (vinculo.ultimo_tipo === "salida") setTipo("entrada")
       }
 
       setIsLoading(false)
@@ -130,6 +134,10 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
     if (rpcError) {
       if (rpcError.message?.includes("dispositivo_vinculado_a_otro")) {
         setError("Este celular ya está registrado para otro trabajador. Si cambiaste de celular, pídele a tu supervisor que lo actualice.")
+      } else if (rpcError.message?.includes("tipo_duplicado")) {
+        setError(tipo === "entrada"
+          ? "Ya tienes una entrada registrada hoy sin salida. Registra tu salida primero."
+          : "Ya tienes una salida registrada hoy sin una entrada después. Registra tu entrada primero.")
       } else {
         setError("Error al registrar. Intenta de nuevo.")
       }
@@ -183,9 +191,15 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
             className="mt-8 px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm transition-colors"
             onClick={() => {
               setSuccess(false)
-              setTrabajadorId("")
               setNombreManual("")
-              setTipo("entrada")
+              if (dispositivoVinculado) {
+                // Sigue siendo la misma persona (el celular ya está
+                // vinculado) — solo se ofrece el movimiento contrario.
+                setTipo(tipo === "entrada" ? "salida" : "entrada")
+              } else {
+                setTrabajadorId("")
+                setTipo("entrada")
+              }
             }}
           >
             Registrar otro
