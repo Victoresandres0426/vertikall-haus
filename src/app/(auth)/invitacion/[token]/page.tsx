@@ -89,7 +89,7 @@ export default function InvitacionPage({ params }: { params: Promise<{ token: st
     })
 
     if (activError || !activResult?.ok) {
-      setError(activResult?.error ?? "Error al activar la invitación")
+      setError(activResult?.error ?? activError?.message ?? "Error al activar la invitación")
       setIsLoading(false)
       return
     }
