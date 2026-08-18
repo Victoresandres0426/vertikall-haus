@@ -96,7 +96,7 @@ const rolColor: Record<string, string> = {
 export default async function ConfiguracionPage() {
   const { empresa, perfil, equipo, invitaciones } = await getData()
   const puedeInvitar = ["dueno", "superadmin", "administrador"].includes(perfil.rol)
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ""
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vertikall-haus.vercel.app"
 
   return (
     <div>
