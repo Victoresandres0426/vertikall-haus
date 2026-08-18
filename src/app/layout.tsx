@@ -3,6 +3,7 @@ import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/sw-register";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://vertikall-haus.vercel.app"),
   title: "Vertikall Haus — Sistema de Gestión",
   description: "Centro de mando operativo y financiero para proyectos de construcción",
   manifest: "/manifest.json",
@@ -17,6 +18,21 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "Vertikall Haus",
+  },
+  openGraph: {
+    title: "Vertikall Haus — Sistema de Gestión",
+    description: "Centro de mando operativo y financiero para proyectos de construcción",
+    url: "https://vertikall-haus.vercel.app",
+    siteName: "Vertikall Haus",
+    images: [{ url: "/og-image.png", width: 1200, height: 630 }],
+    locale: "es_MX",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Vertikall Haus — Sistema de Gestión",
+    description: "Centro de mando operativo y financiero para proyectos de construcción",
+    images: ["/og-image.png"],
   },
 };
 
