@@ -42,7 +42,19 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex bg-[#F7F9FC]">
+    <div className="relative min-h-screen flex bg-[#F7F9FC] overflow-hidden">
+      {/* Foto de edificio de fondo — esquina inferior izquierda, solo móvil */}
+      <div className="lg:hidden absolute inset-0 pointer-events-none">
+        <Image
+          src="/images/login-building.jpg"
+          alt=""
+          fill
+          priority
+          className="object-cover object-left-bottom"
+        />
+        <div className="absolute inset-0 bg-gradient-to-tr from-[#F7F9FC]/40 via-[#F7F9FC]/70 to-[#F7F9FC]" />
+      </div>
+
       {/* Panel izquierdo — foto de edificio (solo desktop) */}
       <div className="hidden lg:block relative w-1/2 overflow-hidden bg-[#F7F9FC]">
         <Image
@@ -56,7 +68,7 @@ export default function LoginPage() {
       </div>
 
       {/* Panel derecho — formulario */}
-      <div className="flex-1 flex items-center justify-center p-6">
+      <div className="relative flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-sm">
           {/* Marca */}
           <div className="flex flex-col items-center mb-10">
