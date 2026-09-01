@@ -376,8 +376,8 @@ export function ProyectosClient({ proyectos: raw, esDueno }: { proyectos: Proyec
             <p className="text-sm text-slate-500 text-center mb-1">
               <strong className="text-slate-700">{proyectoAEliminar.nombre}</strong>
             </p>
-            <p className="text-xs text-slate-400 text-center mb-6">
-              El proyecto será archivado. Los datos se conservan y puedes restaurarlo contactando a soporte.
+            <p className="text-xs text-red-500 text-center mb-6 font-medium">
+              Esto borra el proyecto por completo (actividades, presupuesto, reportes, etc.) de forma permanente. No se puede deshacer.
             </p>
             {errorEliminar && (
               <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-600 mb-4">
