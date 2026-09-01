@@ -744,6 +744,14 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
                   >
                     Abrir página de check-in ↗
                   </a>
+                  <a
+                    href={`/imprimir-qr/${id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    Imprimir QR ↗
+                  </a>
                 </div>
 
                 {/* Asistencia de hoy */}
