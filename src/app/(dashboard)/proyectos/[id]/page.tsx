@@ -595,6 +595,14 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
             <CheckCircle className="h-4 w-4 text-slate-400" />
             <h2 className="text-sm font-semibold text-slate-700">Procesos y actividades</h2>
             <span className="text-xs text-slate-400">· {todasActividades.length} actividades</span>
+            <a
+              href={`/gantt/${id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto text-xs text-blue-600 hover:underline"
+            >
+              Ver / imprimir diagrama de Gantt ↗
+            </a>
           </div>
           <div className="space-y-4">
             {procesos.map((proc) => {
