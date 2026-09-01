@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
+import Link from "next/link"
+import { Sparkles } from "lucide-react"
 import { Header } from "@/components/layout/header"
 import { ProyectosClient, type ProyectoFromDB } from "./proyectos-client"
 import { NuevoProyectoBoton } from "./nuevo-proyecto-boton"
@@ -48,7 +50,18 @@ export default async function ProyectosPage() {
       <Header
         titulo="Proyectos"
         subtitulo={`${proyectos.length} proyecto${proyectos.length !== 1 ? "s" : ""} · ${activos} activo${activos !== 1 ? "s" : ""}`}
-        acciones={<NuevoProyectoBoton />}
+        acciones={
+          <div className="flex items-center gap-2">
+            <Link
+              href="/proyectos/importar"
+              className="inline-flex items-center gap-1.5 text-sm font-medium border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              <Sparkles className="h-4 w-4" />
+              Importar desde Excel
+            </Link>
+            <NuevoProyectoBoton />
+          </div>
+        }
       />
       <ProyectosClient proyectos={proyectos} esDueno={esDueno} />
     </div>
