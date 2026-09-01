@@ -172,7 +172,7 @@ export async function analizarExcelProyecto(
       },
       body: JSON.stringify({
         model: "claude-sonnet-5",
-        max_tokens: 8000,
+        max_tokens: 32000,
         system: PROMPT_SISTEMA,
         messages: [
           {
@@ -191,6 +191,7 @@ export async function analizarExcelProyecto(
 
     const json = await respuesta.json()
     const textoRespuesta: string = json?.content?.[0]?.text ?? ""
+    const detenidoPorLimite = json?.stop_reason === "max_tokens"
 
     let limpio = textoRespuesta.trim()
     if (limpio.startsWith("```")) {
@@ -201,7 +202,10 @@ export async function analizarExcelProyecto(
     try {
       parsed = JSON.parse(limpio)
     } catch (err) {
-      console.error("Error parseando JSON de la IA:", err, limpio.slice(0, 500))
+      console.error("Error parseando JSON de la IA:", err, "stop_reason:", json?.stop_reason, limpio.slice(0, 500))
+      if (detenidoPorLimite) {
+        return { error: "El archivo tiene demasiadas actividades para analizarlo de una vez. Divídelo en partes más pequeñas o avísame para ajustar el límite." }
+      }
       return { error: "La IA no devolvió un resultado válido. Intenta de nuevo." }
     }
 
