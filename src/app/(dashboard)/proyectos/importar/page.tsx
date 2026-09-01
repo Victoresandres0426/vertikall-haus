@@ -67,7 +67,7 @@ export default function ImportarProyectoPage() {
   const actualizarActividad = (
     procIdx: number,
     actIdx: number,
-    campo: "nombre" | "costo_presupuesto" | "dias_duracion" | "es_critica",
+    campo: "nombre" | "costo_material" | "costo_mano_obra" | "dias_duracion" | "es_critica",
     valor: string | number | boolean
   ) => {
     if (!resultado) return
@@ -92,7 +92,7 @@ export default function ImportarProyectoPage() {
 
   const totalActividades = resultado?.procesos.reduce((s, p) => s + p.actividades.length, 0) ?? 0
   const totalCosto = resultado?.procesos.reduce(
-    (s, p) => s + p.actividades.reduce((s2, a) => s2 + (a.costo_presupuesto || 0), 0),
+    (s, p) => s + p.actividades.reduce((s2, a) => s2 + (a.costo_material || 0) + (a.costo_mano_obra || 0), 0),
     0
   ) ?? 0
 
@@ -291,6 +291,13 @@ export default function ImportarProyectoPage() {
             </div>
 
             {/* Procesos y actividades */}
+            <div className="flex items-center gap-2 px-1 text-[11px] text-slate-400">
+              <span className="w-16 shrink-0">Código</span>
+              <span className="flex-1 min-w-[180px]">Actividad</span>
+              <span className="w-20 shrink-0">Material $</span>
+              <span className="w-20 shrink-0">M. de obra $</span>
+              <span className="w-16 shrink-0">Días</span>
+            </div>
             <div className="space-y-4">
               {resultado.procesos.map((proc, procIdx) => (
                 <div key={procIdx} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -310,10 +317,17 @@ export default function ImportarProyectoPage() {
                         />
                         <input
                           type="number"
-                          value={act.costo_presupuesto}
-                          onChange={(e) => actualizarActividad(procIdx, actIdx, "costo_presupuesto", parseFloat(e.target.value) || 0)}
-                          className="w-24 border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
-                          title="Costo ($)"
+                          value={act.costo_material}
+                          onChange={(e) => actualizarActividad(procIdx, actIdx, "costo_material", parseFloat(e.target.value) || 0)}
+                          className="w-20 border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                          title="Costo material ($)"
+                        />
+                        <input
+                          type="number"
+                          value={act.costo_mano_obra}
+                          onChange={(e) => actualizarActividad(procIdx, actIdx, "costo_mano_obra", parseFloat(e.target.value) || 0)}
+                          className="w-20 border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                          title="Costo mano de obra ($)"
                         />
                         <input
                           type="number"

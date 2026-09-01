@@ -12,7 +12,8 @@ const ROLES_IMPORTAN = ["project_manager", "administrador", "dueno", "superadmin
 export type ActividadExtraida = {
   codigo: string
   nombre: string
-  costo_presupuesto: number
+  costo_material: number
+  costo_mano_obra: number
   dias_duracion: number
   dia_inicio: number
   dia_fin: number
@@ -74,7 +75,7 @@ Recibirás el contenido completo de un archivo Excel (todas sus hojas, fila por 
 
 1. Datos generales del proyecto: nombre del proyecto, cliente (nombre), email del cliente, teléfono del cliente, ubicación/dirección.
 2. Resumen financiero: costo directo total, costos indirectos (supervisión, seguros, movilización, etc.), contingencia, margen/utilidad del contratista, y el gran total del contrato.
-3. El desglose detallado de actividades: agrupadas por división/proceso/disciplina (grupos), y dentro de cada grupo, las actividades o subactividades individuales con: código, nombre, costo total (si material y mano de obra vienen separados, súmalos), duración en días, día de inicio y día de fin relativos al inicio del proyecto (si no existen explícitamente, estímalos acumulando las duraciones en el orden en que aparecen), si es ruta crítica (true/false), y la disciplina o cuadrilla responsable si se menciona.
+3. El desglose detallado de actividades: agrupadas por división/proceso/disciplina (grupos), y dentro de cada grupo, las actividades o subactividades individuales con: código, nombre, costo de MATERIAL y costo de MANO DE OBRA por separado (NO los sumes — si el archivo trae una sola columna de costo sin distinguir origen, pon todo en costo_material y dilo en "notas"), duración en días, día de inicio y día de fin relativos al inicio del proyecto (si no existen explícitamente, estímalos acumulando las duraciones en el orden en que aparecen), si es ruta crítica (true/false), y la disciplina o cuadrilla responsable si se menciona.
 
 Responde ÚNICAMENTE con un JSON válido (sin texto antes ni después, sin markdown, sin \`\`\`), con esta forma exacta:
 
@@ -98,7 +99,8 @@ Responde ÚNICAMENTE con un JSON válido (sin texto antes ni después, sin markd
         {
           "codigo": string,
           "nombre": string,
-          "costo_presupuesto": number,
+          "costo_material": number,
+          "costo_mano_obra": number,
           "dias_duracion": number,
           "dia_inicio": number,
           "dia_fin": number,
@@ -116,6 +118,7 @@ Notas importantes:
 - "presupuesto_venta" = el gran total / precio final al cliente (incluyendo margen). Si no hay margen explícito, usa el mismo valor que presupuesto_base.
 - "margen_objetivo" = el margen/utilidad como PORCENTAJE (número, ej. 15.3), calculado como (presupuesto_venta - presupuesto_base) / presupuesto_venta * 100. Si no se puede determinar, usa 0.
 - Si una fila es un encabezado de grupo/división (sin costo propio, es la suma de sus subactividades), trátala como un "proceso", no como una actividad.
+- MUY IMPORTANTE: si el archivo tiene una hoja de resumen (por disciplina, división o categoría) con un subtotal de costo para un grupo, pero ese grupo NO aparece desglosado en subactividades en ninguna otra hoja, de todas formas créalo como una actividad única dentro de su proceso, usando el nombre del grupo y el subtotal completo como costo (en costo_material si no se puede distinguir mano de obra). No omitas nunca un monto que aparezca en un resumen financiero solo porque no tiene desglose línea por línea — el total de todas las actividades debe cuadrar con el subtotal de costos directos del archivo.
 - Usa "notas" para avisar de cualquier ambigüedad, dato faltante, o suposición importante que hiciste, en español, breve.
 - Si de verdad no hay ninguna actividad identificable en el archivo, devuelve "procesos": [] y explica por qué en "notas".`
 
@@ -306,6 +309,37 @@ export async function crearProyectoDesdeImportacion(
 
   const proyectoId = proyectoCreado.id
 
+  // Presupuesto base (versión 1) donde quedará el desglose material/mano de obra.
+  const { data: presupuestoCreado, error: errorPresupuesto } = await supabase
+    .from("presupuestos")
+    .insert({
+      proyecto_id: proyectoId,
+      version: 1,
+      nombre_version: "Importado desde Excel",
+      es_baseline_actual: true,
+      total: 0,
+    })
+    .select("id")
+    .single()
+
+  if (errorPresupuesto) {
+    console.error("crearProyectoDesdeImportacion - presupuesto:", errorPresupuesto)
+  }
+  const presupuestoId: string | null = presupuestoCreado?.id ?? null
+
+  // Partidas de material/mano de obra a insertar al final, una vez que
+  // tengamos los IDs reales de las actividades recién creadas.
+  const partidasPendientes: Array<{
+    presupuesto_id: string
+    actividad_id: string
+    proceso_id: string
+    codigo: string | null
+    descripcion: string
+    tipo_recurso: "material" | "mano_obra"
+    monto_total: number
+    monto_presupuestado: number
+  }> = []
+
   for (let i = 0; i < input.procesos.length; i++) {
     const proc = input.procesos[i]
 
@@ -330,6 +364,8 @@ export async function crearProyectoDesdeImportacion(
     const filasActividades = proc.actividades.map((act) => {
       const inicio = addBusinessDays(fechaInicio, act.dia_inicio ?? 0)
       const fin = addBusinessDays(fechaInicio, act.dia_fin ?? act.dia_inicio ?? 0)
+      const costoMaterial = act.costo_material || 0
+      const costoManoObra = act.costo_mano_obra || 0
       return {
         proceso_id: procesoCreado.id,
         proyecto_id: proyectoId,
@@ -340,13 +376,64 @@ export async function crearProyectoDesdeImportacion(
         fecha_fin_plan: toDateInputValue(fin),
         duracion_plan_dias: Math.max(1, Math.round(act.dias_duracion || 1)),
         es_critica: !!act.es_critica,
-        costo_presupuesto: act.costo_presupuesto || 0,
+        costo_presupuesto: costoMaterial + costoManoObra,
       }
     })
 
-    const { error: errorActividades } = await supabase.from("actividades").insert(filasActividades)
+    const { data: actividadesCreadas, error: errorActividades } = await supabase
+      .from("actividades")
+      .insert(filasActividades)
+      .select("id")
+
     if (errorActividades) {
       console.error("crearProyectoDesdeImportacion - actividades:", errorActividades)
+      continue
+    }
+
+    // Si tenemos presupuesto y los IDs de las actividades recién creadas
+    // (vienen en el mismo orden en que se insertaron), armamos las partidas
+    // de material y mano de obra por separado.
+    if (presupuestoId && actividadesCreadas) {
+      proc.actividades.forEach((act, idx) => {
+        const actividadId = actividadesCreadas[idx]?.id
+        if (!actividadId) return
+        const costoMaterial = act.costo_material || 0
+        const costoManoObra = act.costo_mano_obra || 0
+        if (costoMaterial > 0) {
+          partidasPendientes.push({
+            presupuesto_id: presupuestoId,
+            actividad_id: actividadId,
+            proceso_id: procesoCreado.id,
+            codigo: act.codigo || null,
+            descripcion: `${act.nombre || "Actividad"} (material)`,
+            tipo_recurso: "material",
+            monto_total: costoMaterial,
+            monto_presupuestado: costoMaterial,
+          })
+        }
+        if (costoManoObra > 0) {
+          partidasPendientes.push({
+            presupuesto_id: presupuestoId,
+            actividad_id: actividadId,
+            proceso_id: procesoCreado.id,
+            codigo: act.codigo || null,
+            descripcion: `${act.nombre || "Actividad"} (mano de obra)`,
+            tipo_recurso: "mano_obra",
+            monto_total: costoManoObra,
+            monto_presupuestado: costoManoObra,
+          })
+        }
+      })
+    }
+  }
+
+  if (presupuestoId && partidasPendientes.length) {
+    const { error: errorPartidas } = await supabase.from("partidas_presupuesto").insert(partidasPendientes)
+    if (errorPartidas) {
+      console.error("crearProyectoDesdeImportacion - partidas_presupuesto:", errorPartidas)
+    } else {
+      const totalPartidas = partidasPendientes.reduce((s, p) => s + p.monto_presupuestado, 0)
+      await supabase.from("presupuestos").update({ total: totalPartidas }).eq("id", presupuestoId)
     }
   }
 
