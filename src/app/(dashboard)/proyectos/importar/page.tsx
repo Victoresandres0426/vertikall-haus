@@ -67,8 +67,8 @@ export default function ImportarProyectoPage() {
   const actualizarActividad = (
     procIdx: number,
     actIdx: number,
-    campo: "nombre" | "costo_material" | "costo_mano_obra" | "dias_duracion" | "es_critica",
-    valor: string | number | boolean
+    campo: "nombre" | "costo_material" | "costo_mano_obra" | "cantidad" | "unidad" | "dias_duracion" | "es_critica",
+    valor: string | number | boolean | null
   ) => {
     if (!resultado) return
     const nuevosProcesos: ProcesoExtraido[] = resultado.procesos.map((p, pi) => {
@@ -294,6 +294,8 @@ export default function ImportarProyectoPage() {
             <div className="flex items-center gap-2 px-1 text-[11px] text-slate-400">
               <span className="w-16 shrink-0">Código</span>
               <span className="flex-1 min-w-[180px]">Actividad</span>
+              <span className="w-16 shrink-0">Cant.</span>
+              <span className="w-14 shrink-0">UM</span>
               <span className="w-20 shrink-0">Material $</span>
               <span className="w-20 shrink-0">M. de obra $</span>
               <span className="w-16 shrink-0">Días</span>
@@ -314,6 +316,20 @@ export default function ImportarProyectoPage() {
                           value={act.nombre}
                           onChange={(e) => actualizarActividad(procIdx, actIdx, "nombre", e.target.value)}
                           className="flex-1 min-w-[180px] border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                        />
+                        <input
+                          type="number"
+                          value={act.cantidad ?? ""}
+                          onChange={(e) => actualizarActividad(procIdx, actIdx, "cantidad", e.target.value === "" ? null : parseFloat(e.target.value) || 0)}
+                          className="w-16 border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                          title="Cantidad"
+                        />
+                        <input
+                          value={act.unidad ?? ""}
+                          onChange={(e) => actualizarActividad(procIdx, actIdx, "unidad", e.target.value || null)}
+                          className="w-14 border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                          title="Unidad de medida"
+                          placeholder="UM"
                         />
                         <input
                           type="number"

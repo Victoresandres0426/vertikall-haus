@@ -14,6 +14,8 @@ export type ActividadExtraida = {
   nombre: string
   costo_material: number
   costo_mano_obra: number
+  cantidad: number | null
+  unidad: string | null
   dias_duracion: number
   dia_inicio: number
   dia_fin: number
@@ -75,7 +77,7 @@ Recibirás el contenido completo de un archivo Excel (todas sus hojas, fila por 
 
 1. Datos generales del proyecto: nombre del proyecto, cliente (nombre), email del cliente, teléfono del cliente, ubicación/dirección.
 2. Resumen financiero: costo directo total, costos indirectos (supervisión, seguros, movilización, etc.), contingencia, margen/utilidad del contratista, y el gran total del contrato.
-3. El desglose detallado de actividades: agrupadas por división/proceso/disciplina (grupos), y dentro de cada grupo, las actividades o subactividades individuales con: código, nombre, costo de MATERIAL y costo de MANO DE OBRA por separado (NO los sumes — si el archivo trae una sola columna de costo sin distinguir origen, pon todo en costo_material y dilo en "notas"), duración en días, día de inicio y día de fin relativos al inicio del proyecto (si no existen explícitamente, estímalos acumulando las duraciones en el orden en que aparecen), si es ruta crítica (true/false), y la disciplina o cuadrilla responsable si se menciona.
+3. El desglose detallado de actividades: agrupadas por división/proceso/disciplina (grupos), y dentro de cada grupo, las actividades o subactividades individuales con: código, nombre, costo de MATERIAL y costo de MANO DE OBRA por separado (NO los sumes — si el archivo trae una sola columna de costo sin distinguir origen, pon todo en costo_material y dilo en "notas"), cantidad (número) y unidad de medida (texto corto: SF, LF, EA, m2, m3, ml, und, etc. — si el archivo no la indica explícitamente, usa null en ambos, NO inventes una unidad), duración en días, día de inicio y día de fin relativos al inicio del proyecto (si no existen explícitamente, estímalos acumulando las duraciones en el orden en que aparecen), si es ruta crítica (true/false), y la disciplina o cuadrilla responsable si se menciona.
 
 Responde ÚNICAMENTE con un JSON válido (sin texto antes ni después, sin markdown, sin \`\`\`), con esta forma exacta:
 
@@ -101,6 +103,8 @@ Responde ÚNICAMENTE con un JSON válido (sin texto antes ni después, sin markd
           "nombre": string,
           "costo_material": number,
           "costo_mano_obra": number,
+          "cantidad": number | null,
+          "unidad": string | null,
           "dias_duracion": number,
           "dia_inicio": number,
           "dia_fin": number,
@@ -377,6 +381,8 @@ export async function crearProyectoDesdeImportacion(
         duracion_plan_dias: Math.max(1, Math.round(act.dias_duracion || 1)),
         es_critica: !!act.es_critica,
         costo_presupuesto: costoMaterial + costoManoObra,
+        cantidad_objetivo: act.cantidad ?? null,
+        unidad: act.unidad || null,
       }
     })
 
