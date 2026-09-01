@@ -196,7 +196,13 @@ export async function analizarExcelProyecto(
       return { error: "La IA no pudo procesar el archivo (respuesta sin contenido). Intenta de nuevo en unos minutos." }
     }
 
-    const textoRespuesta: string = json?.content?.[0]?.text ?? ""
+    // El modelo puede devolver varios bloques de contenido (p. ej. uno de
+    // razonamiento interno antes del de texto) — juntamos solo los de tipo "text".
+    const bloques: Array<{ type?: string; text?: string }> = Array.isArray(json?.content) ? json.content : []
+    const textoRespuesta: string = bloques
+      .filter((b) => b?.type === "text" && typeof b.text === "string")
+      .map((b) => b.text)
+      .join("\n")
     const detenidoPorLimite = json?.stop_reason === "max_tokens"
 
     let limpio = textoRespuesta.trim()
@@ -209,7 +215,7 @@ export async function analizarExcelProyecto(
       parsed = JSON.parse(limpio)
     } catch (err) {
       console.error(
-        `Error parseando JSON de la IA | stop_reason=${json?.stop_reason} | json_keys=${Object.keys(json ?? {}).join(",")} | texto_len=${textoRespuesta.length} | texto_preview=${JSON.stringify(limpio.slice(0, 800))} | err=${String(err)}`
+        `Error parseando JSON de la IA | stop_reason=${json?.stop_reason} | bloques=${bloques.map((b) => b?.type).join(",")} | texto_len=${textoRespuesta.length} | texto_preview=${JSON.stringify(limpio.slice(0, 800))} | err=${String(err)}`
       )
       if (detenidoPorLimite) {
         return { error: "El archivo tiene demasiadas actividades para analizarlo de una vez. Divídelo en partes más pequeñas o avísame para ajustar el límite." }
