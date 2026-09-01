@@ -55,6 +55,8 @@ export type ProyectoConActividades = {
   presupuesto_base: number
   presupuesto_venta: number
   margen_objetivo: number
+  fecha_inicio_plan: string | null
+  fecha_fin_plan: string | null
   procesos: Proceso[]
 }
 
@@ -134,6 +136,8 @@ export function ActividadesClient({
       presupuesto_base: p.presupuesto_base,
       presupuesto_venta: p.presupuesto_venta,
       margen_objetivo: p.margen_objetivo,
+      fecha_inicio_plan: p.fecha_inicio_plan,
+      fecha_fin_plan: p.fecha_fin_plan,
     })
   }
 
@@ -295,6 +299,14 @@ export function ActividadesClient({
                 <div>
                   <label className="block text-[11px] text-slate-400 mb-1">Margen objetivo (%)</label>
                   <input type="number" value={draftProyecto.margen_objetivo} onChange={(e) => setDraftProyecto({ ...draftProyecto, margen_objetivo: parseFloat(e.target.value) || 0 })} className={cn(inputCls, "w-full")} />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Fecha de inicio</label>
+                  <input type="date" value={draftProyecto.fecha_inicio_plan ?? ""} onChange={(e) => setDraftProyecto({ ...draftProyecto, fecha_inicio_plan: e.target.value || null })} className={cn(inputCls, "w-full")} />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Fecha de fin (plan)</label>
+                  <input type="date" value={draftProyecto.fecha_fin_plan ?? ""} onChange={(e) => setDraftProyecto({ ...draftProyecto, fecha_fin_plan: e.target.value || null })} className={cn(inputCls, "w-full")} />
                 </div>
                 <div className="col-span-2 flex items-center gap-2 justify-end">
                   <button onClick={() => { setEditandoProyectoId(null); setDraftProyecto(null) }} disabled={isPending} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-slate-200 text-xs text-slate-600 hover:bg-slate-50">

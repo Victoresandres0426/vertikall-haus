@@ -32,6 +32,8 @@ export type ProyectoInfoInput = {
   presupuesto_base: number
   presupuesto_venta: number
   margen_objetivo: number
+  fecha_inicio_plan: string | null
+  fecha_fin_plan: string | null
 }
 
 export async function actualizarProyectoInfo(
@@ -55,6 +57,8 @@ export async function actualizarProyectoInfo(
       presupuesto_base: input.presupuesto_base || 0,
       presupuesto_venta: input.presupuesto_venta || 0,
       margen_objetivo: input.margen_objetivo || 0,
+      fecha_inicio_plan: input.fecha_inicio_plan || null,
+      fecha_fin_plan: input.fecha_fin_plan || null,
     })
     .eq("id", proyectoId)
 

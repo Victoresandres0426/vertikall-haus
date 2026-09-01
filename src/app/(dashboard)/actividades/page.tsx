@@ -16,6 +16,7 @@ async function getProyectosConActividades(): Promise<{ proyectos: ProyectoConAct
       .select(`
         id, codigo, nombre, cliente, cliente_email, cliente_telefono, ubicacion,
         presupuesto_base, presupuesto_venta, margen_objetivo,
+        fecha_inicio_plan, fecha_fin_plan,
         procesos (
           id, codigo, nombre, orden,
           actividades (
