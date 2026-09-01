@@ -381,6 +381,8 @@ export async function crearProyectoDesdeImportacion(
         duracion_plan_dias: Math.max(1, Math.round(act.dias_duracion || 1)),
         es_critica: !!act.es_critica,
         costo_presupuesto: costoMaterial + costoManoObra,
+        costo_material: costoMaterial,
+        costo_mano_obra: costoManoObra,
         cantidad_objetivo: act.cantidad ?? null,
         unidad: act.unidad || null,
       }
