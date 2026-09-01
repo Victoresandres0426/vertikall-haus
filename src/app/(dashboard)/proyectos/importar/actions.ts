@@ -190,6 +190,12 @@ export async function analizarExcelProyecto(
     }
 
     const json = await respuesta.json()
+
+    if (json?.type === "error" || !json?.content) {
+      console.error(`Anthropic devolvió una respuesta sin contenido | status=${respuesta.status} | body=${JSON.stringify(json).slice(0, 800)}`)
+      return { error: "La IA no pudo procesar el archivo (respuesta sin contenido). Intenta de nuevo en unos minutos." }
+    }
+
     const textoRespuesta: string = json?.content?.[0]?.text ?? ""
     const detenidoPorLimite = json?.stop_reason === "max_tokens"
 
@@ -202,7 +208,9 @@ export async function analizarExcelProyecto(
     try {
       parsed = JSON.parse(limpio)
     } catch (err) {
-      console.error("Error parseando JSON de la IA:", err, "stop_reason:", json?.stop_reason, limpio.slice(0, 500))
+      console.error(
+        `Error parseando JSON de la IA | stop_reason=${json?.stop_reason} | json_keys=${Object.keys(json ?? {}).join(",")} | texto_len=${textoRespuesta.length} | texto_preview=${JSON.stringify(limpio.slice(0, 800))} | err=${String(err)}`
+      )
       if (detenidoPorLimite) {
         return { error: "El archivo tiene demasiadas actividades para analizarlo de una vez. Divídelo en partes más pequeñas o avísame para ajustar el límite." }
       }
