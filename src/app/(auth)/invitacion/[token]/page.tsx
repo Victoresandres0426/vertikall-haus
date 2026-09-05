@@ -16,6 +16,7 @@ const rolLabel: Record<string, string> = {
   administrador: "Administrador",
   project_manager: "Project Manager",
   dueno: "Dueño",
+  cliente: "Cliente",
 }
 
 export default function InvitacionPage({ params }: { params: Promise<{ token: string }> }) {
@@ -100,7 +101,8 @@ export default function InvitacionPage({ params }: { params: Promise<{ token: st
     // Si la cuenta requiere confirmación de email, mostramos mensaje
     // Si no (email confirmations disabled), redirigimos directamente
     if (authData.session) {
-      setTimeout(() => router.push("/dashboard"), 2000)
+      const destino = invite!.rol === "cliente" ? "/portal-cliente" : "/dashboard"
+      setTimeout(() => router.push(destino), 2000)
     }
   }
 

@@ -69,11 +69,19 @@ async function getData() {
     .order("created_at", { ascending: false })
     .limit(20)
 
+  const { data: proyectos } = await supabase
+    .from("proyectos")
+    .select("id, codigo, nombre")
+    .eq("empresa_id", perfil.empresa_id)
+    .eq("activo", true)
+    .order("codigo")
+
   return {
     empresa: empresa as Empresa,
     perfil: perfil as Perfil & { empresa_id: string },
     equipo: (equipo ?? []) as Perfil[],
     invitaciones: (invitaciones ?? []) as Invitacion[],
+    proyectos: (proyectos ?? []) as { id: string; codigo: string; nombre: string }[],
   }
 }
 
@@ -83,6 +91,7 @@ const rolLabel: Record<string, string> = {
   project_manager: "Project Manager",
   administrador: "Administrador",
   capataz: "Capataz",
+  cliente: "Cliente",
 }
 
 const rolColor: Record<string, string> = {
@@ -91,10 +100,11 @@ const rolColor: Record<string, string> = {
   project_manager: "bg-blue-100 text-blue-700",
   administrador: "bg-emerald-100 text-emerald-700",
   capataz: "bg-amber-100 text-amber-700",
+  cliente: "bg-sky-100 text-sky-700",
 }
 
 export default async function ConfiguracionPage() {
-  const { empresa, perfil, equipo, invitaciones } = await getData()
+  const { empresa, perfil, equipo, invitaciones, proyectos } = await getData()
   const puedeInvitar = ["dueno", "superadmin", "administrador"].includes(perfil.rol)
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vertikall-haus.vercel.app"
 
@@ -207,7 +217,7 @@ export default async function ConfiguracionPage() {
             <h2 className="text-sm font-semibold text-slate-700">Equipo</h2>
             <span className="text-xs text-slate-400">· {equipo.length} usuarios</span>
             <div className="ml-auto">
-              <InvitarUsuarioButton appUrl={appUrl} puedeInvitar={puedeInvitar} />
+              <InvitarUsuarioButton appUrl={appUrl} puedeInvitar={puedeInvitar} proyectos={proyectos} />
             </div>
           </div>
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">

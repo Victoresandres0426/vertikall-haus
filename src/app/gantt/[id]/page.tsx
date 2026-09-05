@@ -107,6 +107,11 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
         }
         table.gantt { table-layout: fixed; width: 100%; border-collapse: collapse; }
         table.gantt th, table.gantt td { border: 1px solid #e2e8f0; }
+        * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          color-adjust: exact !important;
+        }
       `}</style>
 
       <div className="flex items-center justify-between mb-4 print:hidden">

@@ -16,10 +16,17 @@ type Invitacion = {
   activa: boolean
 }
 
+type Proyecto = {
+  id: string
+  codigo: string
+  nombre: string
+}
+
 type Props = {
   invitaciones: Invitacion[]
   appUrl: string
   puedeInvitar: boolean
+  proyectos?: Proyecto[]
 }
 
 const rolLabel: Record<string, string> = {
@@ -27,6 +34,7 @@ const rolLabel: Record<string, string> = {
   administrador: "Administrador",
   project_manager: "Project Manager",
   dueno: "Dueño",
+  cliente: "Cliente",
 }
 
 function timeAgo(dateStr: string) {
@@ -62,10 +70,11 @@ function CopyButton({ text, label = "Copiar" }: { text: string; label?: string }
   )
 }
 
-export function InvitarUsuarioButton({ appUrl, puedeInvitar }: { appUrl: string; puedeInvitar: boolean }) {
+export function InvitarUsuarioButton({ appUrl, puedeInvitar, proyectos = [] }: { appUrl: string; puedeInvitar: boolean; proyectos?: Proyecto[] }) {
   const [open, setOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<{ token?: string; email?: string; error?: string } | null>(null)
+  const [rolSeleccionado, setRolSeleccionado] = useState("capataz")
   const formRef = useRef<HTMLFormElement>(null)
 
   if (!puedeInvitar) return null
@@ -86,6 +95,7 @@ export function InvitarUsuarioButton({ appUrl, puedeInvitar }: { appUrl: string;
   const handleClose = () => {
     setOpen(false)
     setResult(null)
+    setRolSeleccionado("capataz")
   }
 
   return (
@@ -144,7 +154,8 @@ export function InvitarUsuarioButton({ appUrl, puedeInvitar }: { appUrl: string;
                     <select
                       name="rol"
                       required
-                      defaultValue="capataz"
+                      value={rolSeleccionado}
+                      onChange={(e) => setRolSeleccionado(e.target.value)}
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
                     >
                       {Object.entries(rolLabel).map(([val, label]) => (
@@ -152,6 +163,28 @@ export function InvitarUsuarioButton({ appUrl, puedeInvitar }: { appUrl: string;
                       ))}
                     </select>
                   </div>
+
+                  {rolSeleccionado === "cliente" && (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">
+                        Proyecto al que tendrá acceso
+                      </label>
+                      <select
+                        name="proyecto_id"
+                        required
+                        defaultValue=""
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+                      >
+                        <option value="" disabled>Selecciona un proyecto</option>
+                        {proyectos.map((p) => (
+                          <option key={p.id} value={p.id}>{p.codigo} — {p.nombre}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-slate-400 mt-1">
+                        El cliente solo verá avance, fotos/reportes validados, el monto contratado y sus facturas de este proyecto.
+                      </p>
+                    </div>
+                  )}
 
                   {result?.error && (
                     <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">

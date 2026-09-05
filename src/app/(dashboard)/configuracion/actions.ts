@@ -3,17 +3,19 @@
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
-const ROLES_VALIDOS = ["capataz", "administrador", "project_manager", "dueno"] as const
+const ROLES_VALIDOS = ["capataz", "administrador", "project_manager", "dueno", "cliente"] as const
 type RolValido = typeof ROLES_VALIDOS[number]
 
 export async function invitarUsuario(formData: FormData): Promise<{ error?: string; token?: string; email?: string }> {
   const email = (formData.get("email") as string)?.toLowerCase().trim()
   const nombre = (formData.get("nombre") as string)?.trim()
   const rol = formData.get("rol") as string
+  const proyectoId = (formData.get("proyecto_id") as string)?.trim() || null
 
   if (!email || !nombre || !rol) return { error: "Todos los campos son requeridos" }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Email inválido" }
   if (!ROLES_VALIDOS.includes(rol as RolValido)) return { error: "Rol inválido" }
+  if (rol === "cliente" && !proyectoId) return { error: "Selecciona el proyecto al que tendrá acceso el cliente" }
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -29,6 +31,17 @@ export async function invitarUsuario(formData: FormData): Promise<{ error?: stri
   if (!perfil) return { error: "Perfil no encontrado" }
   if (!["dueno", "superadmin", "administrador"].includes(perfil.rol)) {
     return { error: "No tienes permisos para invitar usuarios" }
+  }
+
+  // Si es cliente, verificar que el proyecto pertenezca a la misma empresa
+  if (rol === "cliente") {
+    const { data: proyecto } = await supabase
+      .from("proyectos")
+      .select("id")
+      .eq("id", proyectoId)
+      .eq("empresa_id", perfil.empresa_id)
+      .single()
+    if (!proyecto) return { error: "Proyecto no válido" }
   }
 
   // Verificar que el email no esté ya registrado
@@ -55,6 +68,7 @@ export async function invitarUsuario(formData: FormData): Promise<{ error?: stri
       email,
       nombre_completo: nombre,
       rol,
+      proyecto_id: rol === "cliente" ? proyectoId : null,
       created_by: user.id,
     })
     .select("token")

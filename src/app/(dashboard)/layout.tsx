@@ -1,5 +1,6 @@
 import { DashboardShell } from "@/components/layout/dashboard-shell"
 import { createClient } from "@/lib/supabase/server"
+import { redirect } from "next/navigation"
 
 async function getUserProfile() {
   try {
@@ -37,6 +38,9 @@ async function getUserProfile() {
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const perfil = await getUserProfile()
+
+  // Los clientes no usan el dashboard interno — tienen su propio portal
+  if (perfil?.rol === "cliente") redirect("/portal-cliente")
 
   return (
     <DashboardShell
