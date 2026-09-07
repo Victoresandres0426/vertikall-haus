@@ -16,6 +16,7 @@ import { CoordenadasObra } from "./coordenadas-obra"
 import { HoraEntrada } from "./hora-entrada"
 import { ArchivosProyecto, type ArchivoProyecto } from "./archivos-proyecto"
 import { EstadoProyecto } from "./estado-proyecto"
+import { SeccionDesplegable } from "./seccion-desplegable"
 
 // ── Tipos ────────────────────────────────────────────────────
 
@@ -568,12 +569,11 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
 
         {/* ── Actividades críticas ── */}
         {actividadesCriticas.length > 0 && (
-          <section>
-            <div className="flex items-center gap-2 mb-3">
-              <Shield className="h-4 w-4 text-slate-400" />
-              <h2 className="text-sm font-semibold text-slate-700">Ruta crítica activa</h2>
-              <span className="text-xs text-slate-400">· {actividadesCriticas.length} actividad{actividadesCriticas.length !== 1 ? "es" : ""}</span>
-            </div>
+          <SeccionDesplegable
+            icono={<Shield className="h-4 w-4 text-slate-400 shrink-0" />}
+            titulo="Ruta crítica activa"
+            contador={`${actividadesCriticas.length} actividad${actividadesCriticas.length !== 1 ? "es" : ""}`}
+          >
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
               {actividadesCriticas.map((a, i) => (
                 <div key={a.id} className={cn("flex items-center gap-3 px-4 py-3", i > 0 ? "border-t border-slate-50" : "")}>
@@ -589,24 +589,25 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
                 </div>
               ))}
             </div>
-          </section>
+          </SeccionDesplegable>
         )}
 
         {/* ── Procesos y actividades ── */}
-        <section>
-          <div className="flex items-center gap-2 mb-3">
-            <CheckCircle className="h-4 w-4 text-slate-400" />
-            <h2 className="text-sm font-semibold text-slate-700">Procesos y actividades</h2>
-            <span className="text-xs text-slate-400">· {todasActividades.length} actividades</span>
+        <SeccionDesplegable
+          icono={<CheckCircle className="h-4 w-4 text-slate-400 shrink-0" />}
+          titulo="Procesos y actividades"
+          contador={`${todasActividades.length} actividades`}
+          extra={
             <a
               href={`/gantt/${id}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="ml-auto text-xs text-blue-600 hover:underline"
+              className="text-xs text-blue-600 hover:underline shrink-0"
             >
               Ver / imprimir diagrama de Gantt ↗
             </a>
-          </div>
+          }
+        >
           <div className="space-y-4">
             {procesos.map((proc) => {
               const avanceProceso = proc.actividades.length > 0
@@ -667,7 +668,7 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
               )
             })}
           </div>
-        </section>
+        </SeccionDesplegable>
 
         {/* ── Change Orders ── */}
         {changeOrders.length > 0 && (
