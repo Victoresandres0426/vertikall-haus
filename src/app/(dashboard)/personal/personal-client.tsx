@@ -125,14 +125,14 @@ function TarifasPorRol({ trabajadorId, tarifasIniciales, puedeEditar }: { trabaj
                 value={nuevoRol}
                 onChange={(e) => setNuevoRol(e.target.value)}
                 placeholder="Rol (ej. electricista)"
-                className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
               />
               <input
                 type="number"
                 value={nuevaTarifa}
                 onChange={(e) => setNuevaTarifa(e.target.value)}
                 placeholder="$/h"
-                className="w-16 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                className="w-16 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
               />
               <button
                 onClick={handleAgregar}
@@ -221,7 +221,7 @@ export function PersonalClient({
           <div className="relative flex-1 min-w-48 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
-              className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
               placeholder="Buscar por nombre, código, rol..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
@@ -485,7 +485,7 @@ function ModalTrabajador({
               required
               defaultValue={trabajador?.nombre_completo}
               placeholder="Ej. Juan García López"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
             />
           </div>
 
@@ -496,7 +496,7 @@ function ModalTrabajador({
                 name="codigo"
                 defaultValue={trabajador?.codigo ?? ""}
                 placeholder="Ej. T-001"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
               />
             </div>
             <div>
@@ -505,7 +505,7 @@ function ModalTrabajador({
                 name="rol_obra"
                 defaultValue={trabajador?.rol_obra ?? ""}
                 placeholder="Ej. electricista"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
               />
             </div>
           </div>
@@ -516,7 +516,7 @@ function ModalTrabajador({
               name="especialidad"
               defaultValue={trabajador?.especialidad ?? ""}
               placeholder="Ej. Instalaciones eléctricas de alta tensión"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
             />
           </div>
 
@@ -526,7 +526,7 @@ function ModalTrabajador({
               <select
                 name="nivel_experiencia"
                 defaultValue={trabajador?.nivel_experiencia ?? ""}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
               >
                 <option value="">Sin especificar</option>
                 <option value="junior">Junior</option>
@@ -543,7 +543,7 @@ function ModalTrabajador({
                 step="0.01"
                 defaultValue={trabajador?.tarifa_diaria ?? ""}
                 placeholder="0.00"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
               />
             </div>
           </div>
@@ -554,7 +554,7 @@ function ModalTrabajador({
               name="fecha_ingreso"
               type="date"
               defaultValue={trabajador?.fecha_ingreso ?? ""}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
             />
           </div>
 
@@ -569,7 +569,7 @@ function ModalTrabajador({
                   type="tel"
                   defaultValue={trabajador?.telefono_personal ?? ""}
                   placeholder="+1 305 555 0100"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
                 />
               </div>
               <div>
@@ -578,7 +578,7 @@ function ModalTrabajador({
                   name="direccion"
                   defaultValue={trabajador?.direccion ?? ""}
                   placeholder="Calle, número, ciudad"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -588,7 +588,7 @@ function ModalTrabajador({
                     name="contacto_emergencia_nombre"
                     defaultValue={trabajador?.contacto_emergencia_nombre ?? ""}
                     placeholder="Nombre"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
                   />
                 </div>
                 <div>
@@ -598,7 +598,7 @@ function ModalTrabajador({
                     type="tel"
                     defaultValue={trabajador?.contacto_emergencia_telefono ?? ""}
                     placeholder="+1 305 555 0100"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
                   />
                 </div>
               </div>
@@ -612,7 +612,7 @@ function ModalTrabajador({
               rows={2}
               defaultValue={trabajador?.notas ?? ""}
               placeholder="Observaciones adicionales..."
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 resize-none"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 resize-none"
             />
           </div>
 
