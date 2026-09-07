@@ -2,8 +2,9 @@
 
 import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { Building2, MapPin, Calendar, CheckCircle, AlertCircle, Loader2, Clock, LogIn, LogOut, ChevronLeft } from "lucide-react"
+import { Building2, MapPin, Calendar, CheckCircle, AlertCircle, Loader2, Clock, LogIn, LogOut, ChevronLeft, ClipboardList } from "lucide-react"
 
 type ProyectoInfo = {
   id: string
@@ -261,6 +262,12 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
           >
             Registrar otro
           </button>
+          <Link
+            href={`/mi-obra/${token}`}
+            className="mt-3 flex items-center justify-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors"
+          >
+            <ClipboardList className="h-4 w-4" /> Ver actividades del proyecto
+          </Link>
         </div>
       </div>
     )
@@ -285,6 +292,12 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
               <MapPin className="h-3 w-3" /> {proyecto!.ubicacion}
             </p>
           )}
+          <Link
+            href={`/mi-obra/${token}`}
+            className="mt-3 inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+          >
+            <ClipboardList className="h-3.5 w-3.5" /> Ver actividades del proyecto
+          </Link>
         </div>
 
         {/* Fecha y hora */}
