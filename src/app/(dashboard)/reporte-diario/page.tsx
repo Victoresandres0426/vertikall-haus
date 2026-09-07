@@ -55,7 +55,7 @@ async function getData(): Promise<{
     const [{ data: asignacionesRaw }, { data: directorioRaw }] = await Promise.all([
       supabase
         .from("proyecto_trabajadores")
-        .select("proyecto_id, trabajador_id")
+        .select("proyecto_id, trabajador_id, rol_obra_proyecto")
         .in("proyecto_id", proyectoIds)
         .eq("autorizado", true),
       supabase.rpc("trabajadores_directorio_empresa"),
@@ -65,11 +65,14 @@ async function getData(): Promise<{
       ((directorioRaw ?? []) as (TrabajadorDB & { activo: boolean })[]).map((t) => [t.id, t])
     )
 
-    for (const asign of (asignacionesRaw ?? []) as { proyecto_id: string; trabajador_id: string }[]) {
+    for (const asign of (asignacionesRaw ?? []) as { proyecto_id: string; trabajador_id: string; rol_obra_proyecto: string | null }[]) {
       const trabajador = directorio.get(asign.trabajador_id)
       if (!trabajador || trabajador.activo === false) continue
       if (!trabajadoresPorProyecto[asign.proyecto_id]) trabajadoresPorProyecto[asign.proyecto_id] = []
       const { activo: _activo, ...resto } = trabajador
+      // El rol específico de este proyecto (si se definió) reemplaza al rol general
+      // solo para lo que se muestra aquí -- no toca el registro de Personal.
+      if (asign.rol_obra_proyecto) resto.rol_obra = asign.rol_obra_proyecto
       trabajadoresPorProyecto[asign.proyecto_id].push(resto)
     }
     for (const pid of Object.keys(trabajadoresPorProyecto)) {

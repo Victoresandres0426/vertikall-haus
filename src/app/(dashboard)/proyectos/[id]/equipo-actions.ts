@@ -18,7 +18,7 @@ async function verificarAcceso(supabase: Awaited<ReturnType<typeof createClient>
   return !!perfil && ROLES_GESTION.includes(perfil.rol)
 }
 
-export async function agregarTrabajadorAProyecto(proyectoId: string, trabajadorId: string) {
+export async function agregarTrabajadorAProyecto(proyectoId: string, trabajadorId: string, rolObraProyecto?: string | null) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "No autenticado" }
@@ -29,9 +29,35 @@ export async function agregarTrabajadorAProyecto(proyectoId: string, trabajadorI
   const { error } = await supabase
     .from("proyecto_trabajadores")
     .upsert(
-      { proyecto_id: proyectoId, trabajador_id: trabajadorId, autorizado: true, autorizado_por: user.id },
+      {
+        proyecto_id: proyectoId,
+        trabajador_id: trabajadorId,
+        autorizado: true,
+        autorizado_por: user.id,
+        rol_obra_proyecto: rolObraProyecto?.trim() || null,
+      },
       { onConflict: "proyecto_id,trabajador_id" }
     )
+
+  if (error) return { error: error.message }
+
+  revalidatePath(`/proyectos/${proyectoId}`)
+  return { ok: true }
+}
+
+// Cambia (o quita, si se manda null/vacío) el rol específico que un
+// trabajador desempeña en ESTE proyecto, sin tocar su rol general en Personal.
+export async function actualizarRolProyecto(proyectoId: string, trabajadorId: string, rolObraProyecto: string | null) {
+  const supabase = await createClient()
+
+  const tieneAcceso = await verificarAcceso(supabase, proyectoId)
+  if (!tieneAcceso) return { error: "Sin permisos" }
+
+  const { error } = await supabase
+    .from("proyecto_trabajadores")
+    .update({ rol_obra_proyecto: rolObraProyecto?.trim() || null })
+    .eq("proyecto_id", proyectoId)
+    .eq("trabajador_id", trabajadorId)
 
   if (error) return { error: error.message }
 

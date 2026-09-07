@@ -188,7 +188,7 @@ async function getData(id: string) {
   // expone campos no sensibles a cualquier usuario autenticado (migración 035).
   const eqRes = await supabase
     .from("proyecto_trabajadores")
-    .select("trabajador_id")
+    .select("trabajador_id, rol_obra_proyecto")
     .eq("proyecto_id", id)
     .eq("autorizado", true)
 
@@ -198,7 +198,9 @@ async function getData(id: string) {
       ((directorioRaw ?? []) as (TrabajadorEquipo & { activo: boolean })[]).map((t) => [t.id, t])
     )
 
-    const autorizadosIds = new Set((eqRes.data as { trabajador_id: string }[]).map(pt => pt.trabajador_id))
+    const asignaciones = eqRes.data as { trabajador_id: string; rol_obra_proyecto: string | null }[]
+    const rolPorProyecto = new Map(asignaciones.map((a) => [a.trabajador_id, a.rol_obra_proyecto]))
+    const autorizadosIds = new Set(asignaciones.map(pt => pt.trabajador_id))
 
     equipoAuth = Array.from(autorizadosIds)
       .map((tid) => directorio.get(tid))
@@ -208,6 +210,7 @@ async function getData(id: string) {
         nombre_completo: t.nombre_completo,
         rol_obra: t.rol_obra ?? null,
         especialidad: t.especialidad ?? null,
+        rol_obra_proyecto: rolPorProyecto.get(t.id) ?? null,
       }))
 
     // Workers in the empresa not yet in this project
