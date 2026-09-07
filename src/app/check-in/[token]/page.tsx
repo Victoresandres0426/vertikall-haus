@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect, use } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { Building2, MapPin, Calendar, CheckCircle, AlertCircle, Loader2, Clock, LogIn, LogOut } from "lucide-react"
+import { Building2, MapPin, Calendar, CheckCircle, AlertCircle, Loader2, Clock, LogIn, LogOut, ChevronLeft } from "lucide-react"
 
 type ProyectoInfo = {
   id: string
@@ -29,6 +30,29 @@ function obtenerDeviceToken(): string {
     window.localStorage.setItem(DEVICE_TOKEN_KEY, token)
   }
   return token
+}
+
+function BotonVolver({ className = "" }: { className?: string }) {
+  const router = useRouter()
+  const volver = () => {
+    // Esta página se abre normalmente escaneando un QR (sin historial
+    // previo dentro de la app) o desde el dashboard en una pestaña nueva
+    // — en la app instalada en el celular no hay barra ni botón "atrás",
+    // así que si hay historial navegamos hacia atrás y si no, al dashboard.
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back()
+    } else {
+      router.push("/dashboard")
+    }
+  }
+  return (
+    <button
+      onClick={volver}
+      className={`inline-flex items-center gap-1 text-xs text-slate-400 hover:text-white transition-colors ${className}`}
+    >
+      <ChevronLeft className="h-3.5 w-3.5" /> Volver
+    </button>
+  )
 }
 
 export default function CheckInPage({ params }: { params: Promise<{ token: string }> }) {
@@ -196,7 +220,8 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
 
   if (notFound) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+      <div className="relative min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+        <div className="absolute top-4 left-4"><BotonVolver /></div>
         <div className="text-center">
           <AlertCircle className="h-16 w-16 text-red-400 mx-auto mb-4" />
           <h1 className="text-xl font-bold text-white mb-2">QR no válido</h1>
@@ -208,7 +233,8 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
 
   if (success) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+      <div className="relative min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="absolute top-4 left-4"><BotonVolver /></div>
         <div className="text-center max-w-xs">
           <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/20 mb-5">
             <CheckCircle className="h-10 w-10 text-emerald-400" />
@@ -243,7 +269,8 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
   const trabajadorSeleccionado = trabajadores.find((t) => t.id === trabajadorId)
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 flex flex-col items-center justify-center p-4">
+    <div className="relative min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 flex flex-col items-center justify-center p-4">
+      <div className="absolute top-4 left-4"><BotonVolver /></div>
       <div className="w-full max-w-sm space-y-4">
         {/* Logo + Proyecto */}
         <div className="text-center mb-6">
