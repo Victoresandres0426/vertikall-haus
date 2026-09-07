@@ -96,7 +96,14 @@ export function EquipoProyecto({ proyectoId, equipo: initialEquipo, disponibles:
             <UserCheck className="h-8 w-8 mx-auto text-slate-200 mb-2" />
             <p className="text-sm text-slate-400">Sin trabajadores autorizados aún</p>
             {puedeGestionar && (
-              <p className="text-xs text-slate-400 mt-0.5">Usa el botón de abajo para agregar al equipo</p>
+              disponibles.length > 0 ? (
+                <p className="text-xs text-slate-400 mt-0.5">Usa el botón de abajo para agregar al equipo</p>
+              ) : (
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Todavía no tienes trabajadores registrados en tu empresa —{" "}
+                  <a href="/personal" className="text-blue-600 hover:underline">agrégalos primero en Personal</a>
+                </p>
+              )
             )}
           </div>
         ) : (
