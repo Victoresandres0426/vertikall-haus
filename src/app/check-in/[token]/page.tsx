@@ -410,7 +410,10 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
               value={nombreManual}
               onChange={(e) => setNombreManual(e.target.value)}
               placeholder="Tu nombre completo"
-              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-white/30"
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-white/30 [&:-webkit-autofill]:[-webkit-text-fill-color:white] [&:-webkit-autofill]:[transition:background-color_9999s_ease-in-out_0s]"
+              autoComplete="off"
+              autoCapitalize="words"
+              autoCorrect="off"
               autoFocus
             />
           )}
