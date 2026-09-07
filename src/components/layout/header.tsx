@@ -3,7 +3,11 @@
 import { useState, useRef, useEffect } from "react"
 import { Bell, ChevronDown, Check, FolderOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { Proyecto } from "@/types/database"
+
+// Forma mínima que necesita el selector -- así cualquier página puede
+// pasarle una consulta ligera (id, nombre, codigo) sin tener que traer
+// todos los campos del tipo Proyecto completo.
+export type ProyectoLigero = { id: string; nombre: string; codigo?: string | null }
 
 interface HeaderProps {
   titulo: string
@@ -36,7 +40,7 @@ export function Header({ titulo, subtitulo, acciones }: HeaderProps) {
 
 interface ProyectoSelectorProps {
   /** Lista real de proyectos del tenant (desde Supabase) */
-  proyectos?: Proyecto[]
+  proyectos?: ProyectoLigero[]
   proyectoActualId?: string | null
   onSeleccionar?: (id: string) => void
   className?: string

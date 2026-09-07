@@ -1,44 +1,65 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { Header } from "@/components/layout/header"
+import { SelectorProyectoActivo } from "@/components/layout/selector-proyecto-activo"
 import { ActividadesClient, type ProyectoConActividades } from "./actividades-client"
+import { getProyectoActivoId, resolverProyectoActivo } from "@/lib/proyecto-activo"
 
 const ROLES_EDITAN = ["project_manager", "administrador", "dueno", "superadmin"]
 
-async function getProyectosConActividades(): Promise<{ proyectos: ProyectoConActividades[]; puedeEditar: boolean }> {
+async function getProyectosConActividades(): Promise<{
+  proyectos: ProyectoConActividades[]
+  todosLosProyectos: { id: string; codigo: string; nombre: string }[]
+  puedeEditar: boolean
+}> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
 
-  const [{ data, error }, { data: perfil }] = await Promise.all([
+  const [{ data: proyectosActivos }, { data: perfil }] = await Promise.all([
     supabase
       .from("proyectos")
-      .select(`
-        id, codigo, nombre, cliente, cliente_email, cliente_telefono, ubicacion,
-        presupuesto_base, presupuesto_venta, margen_objetivo,
-        fecha_inicio_plan, fecha_fin_plan,
-        procesos (
-          id, codigo, nombre, orden,
-          actividades (
-            id, codigo, nombre, estado, activa,
-            avance_porcentaje, es_critica, riesgo_nivel, disciplina,
-            fecha_inicio_plan, fecha_fin_plan, duracion_plan_dias, holgura_dias,
-            costo_presupuesto, costo_real, costo_material, costo_mano_obra,
-            cantidad_objetivo, unidad
-          )
-        )
-      `)
+      .select("id, codigo, nombre")
       .eq("activo", true)
       .order("created_at", { ascending: false }),
     supabase.from("perfiles_usuario").select("rol").eq("id", user.id).single(),
   ])
 
-  if (error) {
-    console.error("Error cargando actividades:", error.message)
-    return { proyectos: [], puedeEditar: false }
+  const todosLosProyectos = proyectosActivos ?? []
+  const puedeEditar = !!perfil && ROLES_EDITAN.includes(perfil.rol)
+
+  // Actividades ahora se limita al proyecto "activo" (elegido con el
+  // selector de arriba) en vez de mostrar todos los proyectos mezclados.
+  const cookieId = await getProyectoActivoId()
+  const proyectoActivo = resolverProyectoActivo(todosLosProyectos, cookieId)
+
+  if (!proyectoActivo) {
+    return { proyectos: [], todosLosProyectos, puedeEditar }
   }
 
-  const puedeEditar = !!perfil && ROLES_EDITAN.includes(perfil.rol)
+  const { data, error } = await supabase
+    .from("proyectos")
+    .select(`
+      id, codigo, nombre, cliente, cliente_email, cliente_telefono, ubicacion,
+      presupuesto_base, presupuesto_venta, margen_objetivo,
+      fecha_inicio_plan, fecha_fin_plan,
+      procesos (
+        id, codigo, nombre, orden,
+        actividades (
+          id, codigo, nombre, estado, activa,
+          avance_porcentaje, es_critica, riesgo_nivel, disciplina,
+          fecha_inicio_plan, fecha_fin_plan, duracion_plan_dias, holgura_dias,
+          costo_presupuesto, costo_real, costo_material, costo_mano_obra,
+          cantidad_objetivo, unidad
+        )
+      )
+    `)
+    .eq("id", proyectoActivo.id)
+
+  if (error) {
+    console.error("Error cargando actividades:", error.message)
+    return { proyectos: [], todosLosProyectos, puedeEditar }
+  }
 
   const proyectos = ((data ?? []) as unknown as ProyectoConActividades[]).map((proy) => ({
     ...proy,
@@ -52,11 +73,11 @@ async function getProyectosConActividades(): Promise<{ proyectos: ProyectoConAct
       })),
   }))
 
-  return { proyectos, puedeEditar }
+  return { proyectos, todosLosProyectos, puedeEditar }
 }
 
 export default async function ActividadesPage() {
-  const { proyectos, puedeEditar } = await getProyectosConActividades()
+  const { proyectos, todosLosProyectos, puedeEditar } = await getProyectosConActividades()
 
   const totalActs = proyectos.flatMap((p) => p.procesos.flatMap((pr) => pr.actividades))
   const enProgreso = totalActs.filter((a) => a.estado === "en_progreso").length
@@ -68,6 +89,14 @@ export default async function ActividadesPage() {
       <Header
         titulo="Actividades"
         subtitulo={`${totalActs.length} actividades · ${enProgreso} en progreso · ${completadas} completadas`}
+        acciones={
+          todosLosProyectos.length > 0 ? (
+            <SelectorProyectoActivo
+              proyectos={todosLosProyectos}
+              proyectoActualId={proyectos[0]?.id ?? null}
+            />
+          ) : undefined
+        }
       />
 
       <div className="p-6 space-y-6">

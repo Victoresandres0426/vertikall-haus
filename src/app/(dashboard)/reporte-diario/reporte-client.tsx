@@ -7,6 +7,7 @@ import {
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Header } from "@/components/layout/header"
+import { SelectorProyectoActivo } from "@/components/layout/selector-proyecto-activo"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input, Textarea } from "@/components/ui/input"
@@ -87,10 +88,12 @@ function fechaHoyLabel() {
 // ──────────────────────────────────────────────
 export function ReporteClient({
   proyectos,
+  todosLosProyectos,
   actividadesPorProyecto,
   trabajadoresPorProyecto,
 }: {
   proyectos: ProyectoSimple[]
+  todosLosProyectos: ProyectoSimple[]
   actividadesPorProyecto: Record<string, ActividadDB[]>
   trabajadoresPorProyecto: Record<string, TrabajadorDB[]>
 }) {
@@ -266,7 +269,15 @@ export function ReporteClient({
   if (proyectos.length === 0) {
     return (
       <div>
-        <Header titulo="Reporte Diario" subtitulo="No hay proyectos activos" />
+        <Header
+          titulo="Reporte Diario"
+          subtitulo="No hay proyectos activos"
+          acciones={
+            todosLosProyectos.length > 0 ? (
+              <SelectorProyectoActivo proyectos={todosLosProyectos} proyectoActualId={null} />
+            ) : undefined
+          }
+        />
         <div className="p-6 text-center text-slate-400 py-16 border border-dashed border-slate-200 rounded-xl m-6">
           <HardHat className="h-10 w-10 mx-auto mb-3 opacity-40" />
           <p className="font-medium">Sin proyectos activos</p>
@@ -279,7 +290,16 @@ export function ReporteClient({
   if (enviado) {
     return (
       <div>
-        <Header titulo="Reporte Diario" subtitulo={fechaHoyLabel()} />
+        <Header
+          titulo="Reporte Diario"
+          subtitulo={fechaHoyLabel()}
+          acciones={
+            <SelectorProyectoActivo
+              proyectos={todosLosProyectos}
+              proyectoActualId={proyectoActual?.id ?? null}
+            />
+          }
+        />
         <div className="min-h-96 flex items-center justify-center p-6">
           <div className="text-center">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 mx-auto mb-4">
@@ -308,12 +328,18 @@ export function ReporteClient({
     <div>
       <Header
         titulo="Reporte Diario"
-        subtitulo={`${fechaHoyLabel()} · ${proyectoActual?.nombre ?? ""}`}
+        subtitulo={fechaHoyLabel()}
         acciones={
-          <Badge variant="secondary">
-            <Clock className="h-3 w-3 mr-1" />
-            Borrador
-          </Badge>
+          <div className="flex items-center gap-3">
+            <SelectorProyectoActivo
+              proyectos={todosLosProyectos}
+              proyectoActualId={proyectoActual?.id ?? null}
+            />
+            <Badge variant="secondary">
+              <Clock className="h-3 w-3 mr-1" />
+              Borrador
+            </Badge>
+          </div>
         }
       />
 

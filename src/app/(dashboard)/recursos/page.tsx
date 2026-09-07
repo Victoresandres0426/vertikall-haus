@@ -2,8 +2,10 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { Users, Package, Wrench, Building2, TrendingUp } from "lucide-react"
 import { Header } from "@/components/layout/header"
+import { SelectorProyectoActivo } from "@/components/layout/selector-proyecto-activo"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { getProyectoActivoId, resolverProyectoActivo } from "@/lib/proyecto-activo"
 
 type CostoRaw = {
   tipo_recurso: string
@@ -30,26 +32,49 @@ function formatMXN(n: number) {
   return `$${n.toLocaleString("es-MX", { maximumFractionDigits: 0 })}`
 }
 
-async function getRecursos(): Promise<CostoRaw[]> {
+async function getRecursos(): Promise<{
+  costos: CostoRaw[]
+  todosLosProyectos: { id: string; codigo: string; nombre: string }[]
+  proyectoActivoId: string | null
+}> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
 
+  const { data: proyectosActivos } = await supabase
+    .from("proyectos")
+    .select("id, codigo, nombre")
+    .eq("activo", true)
+    .order("created_at", { ascending: false })
+
+  const todosLosProyectos = proyectosActivos ?? []
+  const cookieId = await getProyectoActivoId()
+  const proyectoActivo = resolverProyectoActivo(todosLosProyectos, cookieId)
+
+  if (!proyectoActivo) {
+    return { costos: [], todosLosProyectos, proyectoActivoId: null }
+  }
+
   const { data, error } = await supabase
     .from("costos_reales")
     .select("tipo_recurso, monto, descripcion, fecha, proyectos ( nombre, codigo )")
+    .eq("proyecto_id", proyectoActivo.id)
     .order("fecha", { ascending: false })
     .limit(200)
 
   if (error) {
     console.error("Error cargando recursos:", error.message)
-    return []
+    return { costos: [], todosLosProyectos, proyectoActivoId: proyectoActivo.id }
   }
-  return (data ?? []) as unknown as CostoRaw[]
+  return {
+    costos: (data ?? []) as unknown as CostoRaw[],
+    todosLosProyectos,
+    proyectoActivoId: proyectoActivo.id,
+  }
 }
 
 export default async function RecursosPage() {
-  const costos = await getRecursos()
+  const { costos, todosLosProyectos, proyectoActivoId } = await getRecursos()
 
   const porTipo: Record<string, { total: number; cantidad: number; items: CostoRaw[] }> = {}
   for (const c of costos) {
@@ -65,7 +90,15 @@ export default async function RecursosPage() {
 
   return (
     <div>
-      <Header titulo="Recursos" subtitulo="Resumen de costos ejecutados por tipo de recurso" />
+      <Header
+        titulo="Recursos"
+        subtitulo="Resumen de costos ejecutados por tipo de recurso"
+        acciones={
+          todosLosProyectos.length > 0 ? (
+            <SelectorProyectoActivo proyectos={todosLosProyectos} proyectoActualId={proyectoActivoId} />
+          ) : undefined
+        }
+      />
 
       <div className="p-6 space-y-6">
         {/* Total general */}

@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { Header } from "@/components/layout/header"
+import { SelectorProyectoActivo } from "@/components/layout/selector-proyecto-activo"
 import { ChangeOrdersClient, type ChangeOrder, type ProyectoOpcion } from "./change-orders-client"
+import { getProyectoActivoId, resolverProyectoActivo } from "@/lib/proyecto-activo"
 
 const ROLES_GESTION = ["project_manager", "dueno", "superadmin", "administrador"]
 
@@ -18,8 +20,18 @@ async function getData() {
 
   if (!perfil || !ROLES_GESTION.includes(perfil.rol)) redirect("/sin-acceso")
 
-  const [{ data: changeOrders, error }, { data: proyectos }] = await Promise.all([
-    supabase
+  const { data: proyectos } = await supabase
+    .from("proyectos")
+    .select("id, nombre, codigo")
+    .order("nombre")
+
+  const todosLosProyectos = proyectos ?? []
+  const cookieId = await getProyectoActivoId()
+  const proyectoActivo = resolverProyectoActivo(todosLosProyectos, cookieId)
+
+  let changeOrders: ChangeOrder[] = []
+  if (proyectoActivo) {
+    const { data, error } = await supabase
       .from("change_orders")
       .select(`
         id, numero, titulo, descripcion, solicitado_por,
@@ -27,24 +39,23 @@ async function getData() {
         facturado, cobrado, created_at, aprobado_at,
         proyectos ( nombre, codigo )
       `)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("proyectos")
-      .select("id, nombre, codigo")
-      .order("nombre"),
-  ])
-
-  if (error) console.error("Error cargando change orders:", error.message)
+      .eq("proyecto_id", proyectoActivo.id)
+      .order("created_at", { ascending: false })
+    if (error) console.error("Error cargando change orders:", error.message)
+    changeOrders = (data ?? []) as unknown as ChangeOrder[]
+  }
 
   return {
-    changeOrders: (changeOrders ?? []) as unknown as ChangeOrder[],
+    changeOrders,
     proyectos: (proyectos ?? []) as ProyectoOpcion[],
     puedeCrear: !!perfil && ROLES_GESTION.includes(perfil.rol),
+    todosLosProyectos,
+    proyectoActivoId: proyectoActivo?.id ?? null,
   }
 }
 
 export default async function ChangeOrdersPage() {
-  const { changeOrders, proyectos, puedeCrear } = await getData()
+  const { changeOrders, proyectos, puedeCrear, todosLosProyectos, proyectoActivoId } = await getData()
 
   return (
     <div>
@@ -54,6 +65,11 @@ export default async function ChangeOrdersPage() {
           changeOrders.length === 0
             ? "Sin órdenes de cambio"
             : `${changeOrders.length} total`
+        }
+        acciones={
+          todosLosProyectos.length > 0 ? (
+            <SelectorProyectoActivo proyectos={todosLosProyectos} proyectoActualId={proyectoActivoId} />
+          ) : undefined
         }
       />
       <ChangeOrdersClient changeOrdersIniciales={changeOrders} proyectos={proyectos} puedeCrear={puedeCrear} />

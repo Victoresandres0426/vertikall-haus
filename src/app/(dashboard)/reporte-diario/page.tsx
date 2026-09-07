@@ -2,9 +2,11 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { ReporteClient } from "./reporte-client"
 import type { ActividadDB, TrabajadorDB, ProyectoSimple } from "./reporte-client"
+import { getProyectoActivoId, resolverProyectoActivo } from "@/lib/proyecto-activo"
 
 async function getData(): Promise<{
   proyectos: ProyectoSimple[]
+  todosLosProyectos: ProyectoSimple[]
   actividadesPorProyecto: Record<string, ActividadDB[]>
   trabajadoresPorProyecto: Record<string, TrabajadorDB[]>
 }> {
@@ -19,9 +21,16 @@ async function getData(): Promise<{
     .eq("activo", true)
     .order("created_at", { ascending: false })
 
-  const proyectos: ProyectoSimple[] = (proyectosRaw ?? []) as ProyectoSimple[]
+  const todosLosProyectos: ProyectoSimple[] = (proyectosRaw ?? []) as ProyectoSimple[]
 
-  // Obtener actividades activas (no completadas/canceladas) para todos los proyectos
+  // Reporte Diario ahora se limita al proyecto "activo" (elegido con el
+  // selector en la parte superior y recordado en una cookie) en vez de
+  // mezclar los de todos los proyectos a la vez.
+  const cookieId = await getProyectoActivoId()
+  const proyectoActivo = resolverProyectoActivo(todosLosProyectos, cookieId)
+  const proyectos: ProyectoSimple[] = proyectoActivo ? [proyectoActivo] : []
+
+  // Obtener actividades activas (no completadas/canceladas) del proyecto activo
   const proyectoIds = proyectos.map((p) => p.id)
   const actividadesPorProyecto: Record<string, ActividadDB[]> = {}
 
@@ -80,15 +89,16 @@ async function getData(): Promise<{
     }
   }
 
-  return { proyectos, actividadesPorProyecto, trabajadoresPorProyecto }
+  return { proyectos, todosLosProyectos, actividadesPorProyecto, trabajadoresPorProyecto }
 }
 
 export default async function ReporteDiarioPage() {
-  const { proyectos, actividadesPorProyecto, trabajadoresPorProyecto } = await getData()
+  const { proyectos, todosLosProyectos, actividadesPorProyecto, trabajadoresPorProyecto } = await getData()
 
   return (
     <ReporteClient
       proyectos={proyectos}
+      todosLosProyectos={todosLosProyectos}
       actividadesPorProyecto={actividadesPorProyecto}
       trabajadoresPorProyecto={trabajadoresPorProyecto}
     />

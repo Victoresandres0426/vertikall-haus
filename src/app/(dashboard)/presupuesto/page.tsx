@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { Header } from "@/components/layout/header"
+import { SelectorProyectoActivo } from "@/components/layout/selector-proyecto-activo"
 import { PresupuestoClient, type Presupuesto, type ProyectoOpcion } from "./presupuesto-client"
+import { getProyectoActivoId, resolverProyectoActivo } from "@/lib/proyecto-activo"
 
 const ROLES_GESTION = ["project_manager", "dueno", "superadmin", "administrador"]
 
@@ -18,8 +20,18 @@ async function getData() {
 
   if (!perfil || !ROLES_GESTION.includes(perfil.rol)) redirect("/sin-acceso")
 
-  const [{ data }, { data: proyectos }] = await Promise.all([
-    supabase
+  const { data: proyectos } = await supabase
+    .from("proyectos")
+    .select("id, nombre, codigo")
+    .order("nombre")
+
+  const todosLosProyectos = proyectos ?? []
+  const cookieId = await getProyectoActivoId()
+  const proyectoActivo = resolverProyectoActivo(todosLosProyectos, cookieId)
+
+  let presupuestos: Presupuesto[] = []
+  if (proyectoActivo) {
+    const { data } = await supabase
       .from("presupuestos")
       .select(`
         id, version, nombre_version, es_baseline_actual,
@@ -33,22 +45,24 @@ async function getData() {
           procesos ( nombre, codigo )
         )
       `)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("proyectos")
-      .select("id, nombre, codigo")
-      .order("nombre"),
-  ])
+      .eq("proyecto_id", proyectoActivo.id)
+      .order("created_at", { ascending: false })
+    presupuestos = (data ?? []) as unknown as Presupuesto[]
+  }
 
   return {
-    presupuestos: (data ?? []) as unknown as Presupuesto[],
+    presupuestos,
+    // Lista completa: la usa el modal de "Nueva versión" para elegir a
+    // qué proyecto pertenece -- no se limita al proyecto activo.
     proyectos: (proyectos ?? []) as ProyectoOpcion[],
     puedeCrear: !!perfil && ROLES_GESTION.includes(perfil.rol),
+    todosLosProyectos,
+    proyectoActivoId: proyectoActivo?.id ?? null,
   }
 }
 
 export default async function PresupuestoPage() {
-  const { presupuestos, proyectos, puedeCrear } = await getData()
+  const { presupuestos, proyectos, puedeCrear, todosLosProyectos, proyectoActivoId } = await getData()
 
   const totalPartidas = presupuestos.reduce((s, p) => s + p.partidas.length, 0)
   const totalPresupuestado = presupuestos.reduce((s, p) => s + (p.monto_total ?? 0), 0)
@@ -67,6 +81,11 @@ export default async function PresupuestoPage() {
           presupuestos.length === 0
             ? "Sin presupuestos cargados"
             : `${presupuestos.length} versión${presupuestos.length !== 1 ? "es" : ""} · ${totalPartidas} partidas · ${formatMXN(totalPresupuestado)} total`
+        }
+        acciones={
+          todosLosProyectos.length > 0 ? (
+            <SelectorProyectoActivo proyectos={todosLosProyectos} proyectoActualId={proyectoActivoId} />
+          ) : undefined
         }
       />
       <PresupuestoClient presupuestosIniciales={presupuestos} proyectos={proyectos} puedeCrear={puedeCrear} />
