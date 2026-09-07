@@ -55,7 +55,7 @@ export async function crearTrabajador(
 
   if (error) {
     console.error("crearTrabajador error:", error)
-    return { error: "Error al guardar. Intenta de nuevo." }
+    return { error: `Error al guardar: ${error.message}` }
   }
 
   revalidatePath("/personal")
@@ -112,7 +112,7 @@ export async function actualizarTrabajador(
 
   if (error) {
     console.error("actualizarTrabajador error:", error)
-    return { error: "Error al guardar. Intenta de nuevo." }
+    return { error: `Error al guardar: ${error.message}` }
   }
 
   revalidatePath("/personal")
