@@ -20,7 +20,7 @@ export default async function PersonalPage() {
   const ROLES_VEN_PERSONAL = ["dueno", "superadmin", "administrador", "project_manager"]
   if (!ROLES_VEN_PERSONAL.includes(perfil.rol)) redirect("/sin-acceso")
 
-  const [{ data: trabajadores }, { data: proyectos }] = await Promise.all([
+  const [{ data: trabajadores }, { data: proyectos }, { data: tarifasRaw }] = await Promise.all([
     supabase
       .from("trabajadores")
       .select("id, nombre_completo, codigo, especialidad, rol_obra, nivel_experiencia, tarifa_diaria, moneda, activo, fecha_ingreso, notas, usuario_id, telefono_personal, direccion, contacto_emergencia_nombre, contacto_emergencia_telefono")
@@ -31,9 +31,20 @@ export default async function PersonalPage() {
       .select("id, nombre")
       .eq("empresa_id", perfil.empresa_id)
       .eq("estado", "activo"),
+    supabase
+      .from("tarifas_trabajo")
+      .select("id, trabajador_id, rol_obra, tarifa_hora")
+      .eq("activo", true),
   ])
 
   const puedeEditar = ["dueno", "superadmin", "administrador", "project_manager"].includes(perfil.rol)
+
+  const tarifasPorTrabajador: Record<string, { id: string; rol_obra: string; tarifa_hora: number | null }[]> = {}
+  for (const t of tarifasRaw ?? []) {
+    const row = t as { id: string; trabajador_id: string; rol_obra: string; tarifa_hora: number | null }
+    if (!tarifasPorTrabajador[row.trabajador_id]) tarifasPorTrabajador[row.trabajador_id] = []
+    tarifasPorTrabajador[row.trabajador_id].push({ id: row.id, rol_obra: row.rol_obra, tarifa_hora: row.tarifa_hora })
+  }
 
   return (
     <div className="flex flex-col h-screen">
@@ -47,6 +58,7 @@ export default async function PersonalPage() {
           proyectos={proyectos ?? []}
           puedeEditar={puedeEditar}
           empresaId={perfil.empresa_id}
+          tarifasPorTrabajador={tarifasPorTrabajador}
         />
       </div>
     </div>

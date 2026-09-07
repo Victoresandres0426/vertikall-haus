@@ -22,6 +22,7 @@ import {
   FileText,
   Receipt,
   ChevronRight,
+  Wallet,
 } from "lucide-react"
 
 type NavItem = {
@@ -58,6 +59,7 @@ const navItems: { grupo: string; items: NavItem[] }[] = [
       { href: "/change-orders", label: "Change Orders", icon: FileText, ocultoPara: ["capataz"] },
       { href: "/facturas", label: "Facturas", icon: Receipt, ocultoPara: ["capataz"] },
       { href: "/flujo-caja", label: "Flujo de Caja", icon: TrendingUp, ocultoPara: ["capataz"] },
+      { href: "/nomina", label: "Nómina", icon: Wallet, ocultoPara: ["capataz", "project_manager"] },
     ],
   },
   {

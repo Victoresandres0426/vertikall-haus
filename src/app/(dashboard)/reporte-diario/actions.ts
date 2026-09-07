@@ -19,6 +19,13 @@ type EntradaAsistencia = {
   motivo_ausencia?: string
 }
 
+type EntradaHorasActividad = {
+  trabajador_id: string
+  actividad_id: string
+  rol_aplicado: string | null
+  horas: number
+}
+
 export async function crearReporteDiario(input: {
   proyecto_id: string
   fecha: string
@@ -26,6 +33,7 @@ export async function crearReporteDiario(input: {
   observaciones?: string
   avances: EntradaAvance[]
   asistencia: EntradaAsistencia[]
+  horasPorActividad?: EntradaHorasActividad[]
 }): Promise<{ error?: string; id?: string }> {
   const supabase = await createClient()
 
@@ -77,6 +85,22 @@ export async function crearReporteDiario(input: {
         }))
       )
     if (errAsist) return { error: errAsist.message }
+  }
+
+  // Costo real de mano de obra por actividad/rol (migración 050) --
+  // no debe romper el guardado del reporte si falla (ej. rol sin
+  // tarifa configurada): el reporte y la asistencia ya se guardaron,
+  // que es lo crítico. El error queda en logs para revisarlo.
+  if (input.horasPorActividad && input.horasPorActividad.length > 0) {
+    try {
+      const { error: errHoras } = await supabase.rpc("registrar_asistencia_actividad", {
+        p_reporte_id: reporte.id,
+        p_entradas: input.horasPorActividad,
+      })
+      if (errHoras) console.error(`registrar_asistencia_actividad falló: ${errHoras.message}`)
+    } catch (e) {
+      console.error(`registrar_asistencia_actividad falló: ${e}`)
+    }
   }
 
   // Actualizar avance_porcentaje en actividades

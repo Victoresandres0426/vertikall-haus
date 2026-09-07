@@ -118,3 +118,70 @@ export async function actualizarTrabajador(
   revalidatePath("/personal")
   return { trabajador: data }
 }
+
+const ROLES_TARIFAS = ["dueno", "superadmin", "administrador", "project_manager"]
+
+// Tarifa específica de un trabajador para un rol/tipo de trabajo -- se usa
+// cuando la misma persona gana distinto según la actividad que hace (ver
+// migración 049/050). Si ya existe una tarifa para ese (trabajador, rol),
+// se actualiza en vez de duplicarla.
+export async function guardarTarifaTrabajo(
+  trabajadorId: string,
+  rolObra: string,
+  tarifaHora: number
+): Promise<{ error?: string; tarifa?: { id: string; rol_obra: string; tarifa_hora: number | null } }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autorizado" }
+
+  const { data: perfil } = await supabase
+    .from("perfiles_usuario")
+    .select("rol")
+    .eq("id", user.id)
+    .single()
+
+  if (!perfil || !ROLES_TARIFAS.includes(perfil.rol)) {
+    return { error: "No tienes permisos para editar tarifas" }
+  }
+
+  if (!rolObra?.trim()) return { error: "Escribe el rol/tipo de trabajo" }
+  if (Number.isNaN(tarifaHora) || tarifaHora < 0) return { error: "Tarifa inválida" }
+
+  const { data, error } = await supabase
+    .from("tarifas_trabajo")
+    .upsert(
+      { trabajador_id: trabajadorId, rol_obra: rolObra.trim(), tarifa_hora: tarifaHora, activo: true },
+      { onConflict: "trabajador_id,rol_obra" }
+    )
+    .select("id, rol_obra, tarifa_hora")
+    .single()
+
+  if (error) return { error: "Error al guardar la tarifa" }
+
+  revalidatePath("/personal")
+  return { tarifa: data }
+}
+
+export async function eliminarTarifaTrabajo(tarifaId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autorizado" }
+
+  const { data: perfil } = await supabase
+    .from("perfiles_usuario")
+    .select("rol")
+    .eq("id", user.id)
+    .single()
+
+  if (!perfil || !ROLES_TARIFAS.includes(perfil.rol)) {
+    return { error: "No tienes permisos para eliminar tarifas" }
+  }
+
+  const { error } = await supabase.from("tarifas_trabajo").delete().eq("id", tarifaId)
+  if (error) return { error: "Error al eliminar la tarifa" }
+
+  revalidatePath("/personal")
+  return {}
+}

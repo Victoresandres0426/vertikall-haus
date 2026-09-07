@@ -3,13 +3,13 @@
 import { useState, useTransition } from "react"
 import {
   Search, UserCheck, UserX, Phone, Calendar, DollarSign,
-  Star, Plus, X, ChevronDown, QrCode, Pencil, MapPin, ShieldAlert,
+  Star, Plus, X, ChevronDown, ChevronUp, QrCode, Pencil, MapPin, ShieldAlert, Wallet,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { crearTrabajador, actualizarTrabajador } from "./actions"
+import { crearTrabajador, actualizarTrabajador, guardarTarifaTrabajo, eliminarTarifaTrabajo } from "./actions"
 
 // ──────────────────────────────────────────────
 // Tipos
@@ -55,6 +55,101 @@ function formatMXN(n: number | null, moneda = "USD") {
   return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 0 })} ${moneda}/día`
 }
 
+export type TarifaTrabajo = { id: string; rol_obra: string; tarifa_hora: number | null }
+
+// Tarifas específicas por rol -- para cuando el mismo trabajador gana
+// distinto según la actividad que hace (ej. $80/h como ayudante, $150/h
+// como electricista), incluso dentro del mismo proyecto. Si no hay una
+// tarifa aquí para el rol con el que se le registra una actividad en
+// Reporte Diario, se usa la tarifa general (tarifa_diaria) de arriba.
+function TarifasPorRol({ trabajadorId, tarifasIniciales, puedeEditar }: { trabajadorId: string; tarifasIniciales: TarifaTrabajo[]; puedeEditar: boolean }) {
+  const [abierto, setAbierto] = useState(false)
+  const [tarifas, setTarifas] = useState(tarifasIniciales)
+  const [nuevoRol, setNuevoRol] = useState("")
+  const [nuevaTarifa, setNuevaTarifa] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  if (!puedeEditar && tarifas.length === 0) return null
+
+  const handleAgregar = () => {
+    setError(null)
+    const monto = Number(nuevaTarifa)
+    startTransition(async () => {
+      const res = await guardarTarifaTrabajo(trabajadorId, nuevoRol, monto)
+      if (res.error) {
+        setError(res.error)
+      } else if (res.tarifa) {
+        setTarifas((prev) => [...prev.filter((t) => t.rol_obra !== res.tarifa!.rol_obra), res.tarifa!])
+        setNuevoRol("")
+        setNuevaTarifa("")
+      }
+    })
+  }
+
+  const handleEliminar = (id: string) => {
+    startTransition(async () => {
+      const res = await eliminarTarifaTrabajo(id)
+      if (!res.error) setTarifas((prev) => prev.filter((t) => t.id !== id))
+    })
+  }
+
+  return (
+    <div className="mt-2 pt-2 border-t border-slate-100">
+      <button
+        onClick={() => setAbierto((v) => !v)}
+        className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800"
+      >
+        <Wallet className="h-3 w-3" />
+        Tarifas por rol {tarifas.length > 0 && `(${tarifas.length})`}
+        {abierto ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+
+      {abierto && (
+        <div className="mt-2 space-y-1.5">
+          {tarifas.map((t) => (
+            <div key={t.id} className="flex items-center gap-2 text-xs bg-slate-50 rounded-lg px-2 py-1.5">
+              <span className="flex-1 capitalize text-slate-700">{t.rol_obra}</span>
+              <span className="font-medium text-slate-800">${Number(t.tarifa_hora ?? 0).toLocaleString()}/h</span>
+              {puedeEditar && (
+                <button onClick={() => handleEliminar(t.id)} disabled={isPending} className="text-slate-300 hover:text-red-500">
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          ))}
+
+          {puedeEditar && (
+            <div className="flex items-center gap-1.5">
+              <input
+                value={nuevoRol}
+                onChange={(e) => setNuevoRol(e.target.value)}
+                placeholder="Rol (ej. electricista)"
+                className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+              />
+              <input
+                type="number"
+                value={nuevaTarifa}
+                onChange={(e) => setNuevaTarifa(e.target.value)}
+                placeholder="$/h"
+                className="w-16 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+              />
+              <button
+                onClick={handleAgregar}
+                disabled={isPending || !nuevoRol.trim() || !nuevaTarifa}
+                className="text-slate-500 hover:text-slate-800 disabled:opacity-40 shrink-0"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+          {error && <p className="text-[11px] text-red-600">{error}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ──────────────────────────────────────────────
 // Componente
 // ──────────────────────────────────────────────
@@ -63,6 +158,7 @@ interface PersonalClientProps {
   proyectos: ProyectoOption[]
   puedeEditar: boolean
   empresaId: string
+  tarifasPorTrabajador?: Record<string, TarifaTrabajo[]>
 }
 
 export function PersonalClient({
@@ -70,6 +166,7 @@ export function PersonalClient({
   proyectos,
   puedeEditar,
   empresaId,
+  tarifasPorTrabajador = {},
 }: PersonalClientProps) {
   const [trabajadores, setTrabajadores] = useState(initial)
   const [busqueda, setBusqueda] = useState("")
@@ -269,6 +366,14 @@ export function PersonalClient({
 
                   {t.notas && (
                     <p className="mt-2 text-xs text-slate-400 italic line-clamp-2">{t.notas}</p>
+                  )}
+
+                  {puedeEditar && (
+                    <TarifasPorRol
+                      trabajadorId={t.id}
+                      tarifasIniciales={tarifasPorTrabajador[t.id] ?? []}
+                      puedeEditar={puedeEditar}
+                    />
                   )}
 
                   <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">

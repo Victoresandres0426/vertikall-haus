@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import {
   CheckCircle, Clock, Send, CloudSun, HardHat, Users,
-  ChevronDown,
+  ChevronDown, Plus, X,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Header } from "@/components/layout/header"
@@ -43,11 +43,21 @@ export type ProyectoSimple = {
 
 type AsistenciaState = "presente" | "ausente" | "medio_dia"
 
+// Cómo repartió sus horas del día entre actividades -- cada una puede
+// llevar un rol distinto (ej. medio día de ayudante, medio día de
+// electricista), para que el costo se calcule con la tarifa correcta.
+type SplitActividad = {
+  actividadId: string
+  rol: string
+  horas: number
+}
+
 type TrabajadorLocal = TrabajadorDB & {
   asistencia: AsistenciaState
   horas: number
   extra: number
   motivo?: string
+  splits: SplitActividad[]
 }
 
 type ActividadLocal = ActividadDB & {
@@ -92,12 +102,22 @@ export function ReporteClient({
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
+  // Split inicial: por defecto toda la jornada se atribuye a la primera
+  // actividad activa del proyecto, con el rol que el trabajador tiene
+  // en ese proyecto -- así, si nadie divide nada, igual queda un registro
+  // de costo de mano de obra por actividad sin trabajo extra.
+  const splitInicial = (t: TrabajadorDB, horas: number, actividadesDelProyecto: ActividadDB[]): SplitActividad[] =>
+    actividadesDelProyecto.length > 0
+      ? [{ actividadId: actividadesDelProyecto[0].id, rol: t.rol_obra ?? t.especialidad ?? "", horas }]
+      : []
+
   const [trabajadores, setTrabajadores] = useState<TrabajadorLocal[]>(
     (trabajadoresPorProyecto[proyectos[0]?.id ?? ""] ?? []).map((t) => ({
       ...t,
       asistencia: "presente" as AsistenciaState,
       horas: 8,
       extra: 0,
+      splits: splitInicial(t, 8, actividadesPorProyecto[proyectos[0]?.id ?? ""] ?? []),
     }))
   )
 
@@ -114,8 +134,9 @@ export function ReporteClient({
   // Al cambiar proyecto, actualiza actividades
   const handleCambiarProyecto = (id: string) => {
     setProyectoId(id)
+    const nuevasActividades = actividadesPorProyecto[id] ?? []
     setActividades(
-      (actividadesPorProyecto[id] ?? []).map((a) => ({
+      nuevasActividades.map((a) => ({
         ...a,
         cantidad_hoy: 0,
         incidencias: "",
@@ -127,6 +148,7 @@ export function ReporteClient({
         asistencia: "presente" as AsistenciaState,
         horas: 8,
         extra: 0,
+        splits: splitInicial(t, 8, nuevasActividades),
       }))
     )
     setPaso(1)
@@ -134,11 +156,46 @@ export function ReporteClient({
 
   const toggleAsistencia = (id: string, tipo: AsistenciaState) => {
     setTrabajadores((prev) =>
-      prev.map((t) =>
-        t.id === id
-          ? { ...t, asistencia: tipo, horas: tipo === "ausente" ? 0 : tipo === "medio_dia" ? 4 : 8 }
-          : t
-      )
+      prev.map((t) => {
+        if (t.id !== id) return t
+        const horas = tipo === "ausente" ? 0 : tipo === "medio_dia" ? 4 : 8
+        // Si solo hay un split (el caso común), lo mantenemos sincronizado
+        // con el total de horas para no obligar a re-escribirlo.
+        const splits = t.splits.length <= 1
+          ? splitInicial(t, horas, actividadesPorProyecto[proyectoId] ?? [])
+          : t.splits
+        return { ...t, asistencia: tipo, horas, splits }
+      })
+    )
+  }
+
+  // ── Edición de los splits (actividad + rol + horas) de un trabajador ──
+  const updateSplit = (trabajadorId: string, index: number, campo: keyof SplitActividad, valor: string | number) => {
+    setTrabajadores((prev) =>
+      prev.map((t) => {
+        if (t.id !== trabajadorId) return t
+        const splits = t.splits.map((s, i) => i === index ? { ...s, [campo]: valor } : s)
+        return { ...t, splits }
+      })
+    )
+  }
+
+  const agregarSplit = (trabajadorId: string) => {
+    setTrabajadores((prev) =>
+      prev.map((t) => {
+        if (t.id !== trabajadorId) return t
+        const primeraActividad = (actividadesPorProyecto[proyectoId] ?? [])[0]?.id ?? ""
+        return {
+          ...t,
+          splits: [...t.splits, { actividadId: primeraActividad, rol: t.rol_obra ?? t.especialidad ?? "", horas: 0 }],
+        }
+      })
+    )
+  }
+
+  const quitarSplit = (trabajadorId: string, index: number) => {
+    setTrabajadores((prev) =>
+      prev.map((t) => t.id === trabajadorId ? { ...t, splits: t.splits.filter((_, i) => i !== index) } : t)
     )
   }
 
@@ -179,6 +236,18 @@ export function ReporteClient({
             horas_regulares: t.horas,
             horas_extra: t.extra,
           })),
+        horasPorActividad: trabajadores
+          .filter((t) => t.asistencia !== "ausente")
+          .flatMap((t) =>
+            t.splits
+              .filter((s) => s.actividadId && s.horas > 0)
+              .map((s) => ({
+                trabajador_id: t.id,
+                actividad_id: s.actividadId,
+                rol_aplicado: s.rol || null,
+                horas: s.horas,
+              }))
+          ),
       })
       if (result.error) {
         setErrorEnvio(result.error)
@@ -369,11 +438,18 @@ export function ReporteClient({
                               type="number"
                               placeholder="Horas regulares"
                               value={t.horas}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const horas = Number(e.target.value)
                                 setTrabajadores((prev) =>
-                                  prev.map((w) => w.id === t.id ? { ...w, horas: Number(e.target.value) } : w)
+                                  prev.map((w) => {
+                                    if (w.id !== t.id) return w
+                                    const splits = w.splits.length <= 1
+                                      ? splitInicial(w, horas, actividadesPorProyecto[proyectoId] ?? [])
+                                      : w.splits
+                                    return { ...w, horas, splits }
+                                  })
                                 )
-                              }
+                              }}
                               className="w-32 text-sm"
                             />
                             <Input
@@ -388,6 +464,51 @@ export function ReporteClient({
                               }
                               className="w-28 text-sm"
                             />
+                          </div>
+                        )}
+
+                        {/* Reparto de horas por actividad (y rol) -- solo si hay actividades activas */}
+                        {t.asistencia !== "ausente" && (actividadesPorProyecto[proyectoId] ?? []).length > 0 && (
+                          <div className="mt-2.5 pt-2.5 border-t border-black/5 space-y-1.5">
+                            <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">
+                              Actividad(es) de hoy
+                            </p>
+                            {t.splits.map((s, i) => (
+                              <div key={i} className="flex items-center gap-1.5">
+                                <select
+                                  value={s.actividadId}
+                                  onChange={(e) => updateSplit(t.id, i, "actividadId", e.target.value)}
+                                  className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
+                                >
+                                  {(actividadesPorProyecto[proyectoId] ?? []).map((a) => (
+                                    <option key={a.id} value={a.id}>{a.nombre}</option>
+                                  ))}
+                                </select>
+                                <input
+                                  value={s.rol}
+                                  onChange={(e) => updateSplit(t.id, i, "rol", e.target.value)}
+                                  placeholder="Rol"
+                                  className="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                                />
+                                <input
+                                  type="number"
+                                  value={s.horas}
+                                  onChange={(e) => updateSplit(t.id, i, "horas", Number(e.target.value))}
+                                  className="w-14 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                                />
+                                {t.splits.length > 1 && (
+                                  <button onClick={() => quitarSplit(t.id, i)} className="text-slate-300 hover:text-red-500 shrink-0">
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                            <button
+                              onClick={() => agregarSplit(t.id)}
+                              className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800"
+                            >
+                              <Plus className="h-3 w-3" /> Dividir en otra actividad
+                            </button>
                           </div>
                         )}
                       </div>
