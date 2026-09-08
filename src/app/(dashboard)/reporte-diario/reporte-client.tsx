@@ -213,24 +213,34 @@ export function ReporteClient({
             ? (horasQrPorTrabajador[t.id] ?? 0)
             : (tipo === "medio_dia" ? 4 : 8)
         // Si solo hay un split (el caso común), lo mantenemos sincronizado
-        // con el total de horas para no obligar a re-escribirlo; si hay
-        // varios, se recalcula el primero para que sigan sumando el total.
+        // con el total de horas para no obligar a re-escribirlo. Si hay
+        // varios: para un capataz (requiere_qr) se recalcula el primero
+        // para que sigan sumando el total (evita duplicar horas contra el
+        // QR). Para cualquier otro (incluido el dueño/PM con salario fijo
+        // por tiempo), el primero simplemente se sincroniza con el nuevo
+        // total y los demás splits de destajo quedan intactos -- son un
+        // extra que se SUMA, no se resta de la base.
         const splits = t.splits.length <= 1
           ? splitInicial(t, horas, actividadesPorProyecto[proyectoId] ?? [])
-          : reconciliarPrimario(t.splits, horas)
+          : t.requiere_qr
+            ? reconciliarPrimario(t.splits, horas)
+            : t.splits.map((s, i) => (i === 0 ? { ...s, horas } : s))
         return { ...t, asistencia: tipo, horas, splits }
       })
     )
   }
 
-  // El primer split de cada trabajador representa "el resto del día" (para
-  // el capataz, sus horas de supervisión; para cualquier otro, simplemente
-  // su primera tarea) -- sus horas NO se escriben a mano cuando hay más de
-  // un split: se recalculan solas como horasTotal menos lo que ya se le
-  // asignó a las demás tareas del día. Así nunca se puede duplicar ni
-  // perder horas entre "supervisar" y "hacer una tarea extra" -- si dedicó
-  // 3h a una tarea de destajo, automáticamente le quedan 5h de supervisión,
-  // no 8 + 3.
+  // SOLO para trabajadores con requiere_qr (capataz vinculado): el primer
+  // split representa "el resto del día" de supervisión, y sus horas NO se
+  // escriben a mano cuando hay más de un split -- se recalculan solas como
+  // horasTotal menos lo que ya se le asignó a las demás tareas del día. Así
+  // nunca se puede duplicar contra el QR -- si dedicó 3h a una tarea de
+  // destajo, automáticamente le quedan 5h de supervisión, no 8 + 3.
+  //
+  // Para cualquier otro trabajador (incluido el dueño/PM que cobra un
+  // salario fijo por tiempo), esta función NO se usa: su primer split (la
+  // base por tiempo) es invariable, y cualquier split extra de destajo se
+  // SUMA por encima, nunca se resta. Ver los call-sites de abajo.
   const reconciliarPrimario = (splits: SplitActividad[], horasTotal: number): SplitActividad[] => {
     if (splits.length === 0) return splits
     const restoAsignado = splits.slice(1).reduce((s, sp) => s + (sp.horas || 0), 0)
@@ -244,7 +254,7 @@ export function ReporteClient({
       prev.map((t) => {
         if (t.id !== trabajadorId) return t
         const splitsEditados = t.splits.map((s, i) => i === index ? { ...s, [campo]: valor } : s)
-        const splits = campo === "horas" ? reconciliarPrimario(splitsEditados, t.horas) : splitsEditados
+        const splits = campo === "horas" && t.requiere_qr ? reconciliarPrimario(splitsEditados, t.horas) : splitsEditados
         return { ...t, splits }
       })
     )
@@ -256,7 +266,7 @@ export function ReporteClient({
         if (t.id !== trabajadorId) return t
         const primeraActividad = (actividadesPorProyecto[proyectoId] ?? [])[0]?.id ?? ""
         const splits = [...t.splits, { actividadId: primeraActividad, rol: t.rol_obra ?? t.especialidad ?? "", horas: 0, avance: 0 }]
-        return { ...t, splits: reconciliarPrimario(splits, t.horas) }
+        return { ...t, splits: t.requiere_qr ? reconciliarPrimario(splits, t.horas) : splits }
       })
     )
   }
@@ -266,7 +276,7 @@ export function ReporteClient({
       prev.map((t) => {
         if (t.id !== trabajadorId) return t
         const splits = t.splits.filter((_, i) => i !== index)
-        return { ...t, splits: reconciliarPrimario(splits, t.horas) }
+        return { ...t, splits: t.requiere_qr ? reconciliarPrimario(splits, t.horas) : splits }
       })
     )
   }
@@ -676,13 +686,13 @@ export function ReporteClient({
                                     <div className="flex items-center gap-0.5">
                                       <input
                                         type="number"
-                                        title={i === 0 && t.splits.length > 1 ? "Resto del día -- se calcula solo" : "Horas"}
+                                        title={i === 0 && t.splits.length > 1 && t.requiere_qr ? "Resto del día -- se calcula solo" : "Horas"}
                                         value={s.horas}
-                                        disabled={i === 0 && t.splits.length > 1}
+                                        disabled={i === 0 && t.splits.length > 1 && t.requiere_qr}
                                         onChange={(e) => updateSplit(t.id, i, "horas", Number(e.target.value))}
                                         className={cn(
                                           "w-12 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900",
-                                          i === 0 && t.splits.length > 1 && "bg-slate-100 text-slate-400"
+                                          i === 0 && t.splits.length > 1 && t.requiere_qr && "bg-slate-100 text-slate-400"
                                         )}
                                       />
                                       <span className="text-[10px] text-slate-400">h</span>
@@ -702,7 +712,9 @@ export function ReporteClient({
                                   {(actividadSplit || montoDestajo !== null || (i === 0 && t.splits.length > 1)) && (
                                     <p className="text-[10px] text-slate-400 pl-0.5">
                                       {i === 0 && t.splits.length > 1 && (
-                                        <>Resto del día (después de las otras tareas) · </>
+                                        t.requiere_qr
+                                          ? <>Resto del día (después de las otras tareas) · </>
+                                          : <>Base fija por tiempo (no cambia con las tareas de destajo) · </>
                                       )}
                                       {actividadSplit && actividadSplit.cantidad_objetivo ? (
                                         <>Presupuestado: {actividadSplit.cantidad_objetivo} {unidad} · Llevas: {(actividadSplit.cantidad_ejecutada ?? 0).toFixed(1)} ({actividadSplit.avance_porcentaje}%){montoDestajo !== null ? " · " : ""}</>
