@@ -31,6 +31,9 @@ export async function crearTrabajador(
   const tarifa_raw = formData.get("tarifa_diaria") as string
   const tarifa_diaria = tarifa_raw ? parseFloat(tarifa_raw) : null
 
+  const usuario_id = await resolverUsuarioVinculado(supabase, perfil.empresa_id, formData.get("usuario_id") as string, null)
+  if (usuario_id.error) return { error: usuario_id.error }
+
   const { data, error } = await supabase
     .from("trabajadores")
     .insert({
@@ -49,6 +52,7 @@ export async function crearTrabajador(
       direccion: (formData.get("direccion") as string) || null,
       contacto_emergencia_nombre: (formData.get("contacto_emergencia_nombre") as string) || null,
       contacto_emergencia_telefono: (formData.get("contacto_emergencia_telefono") as string) || null,
+      usuario_id: usuario_id.value,
     })
     .select("id, nombre_completo, codigo, especialidad, rol_obra, nivel_experiencia, tarifa_diaria, moneda, activo, fecha_ingreso, notas, usuario_id, telefono_personal, direccion, contacto_emergencia_nombre, contacto_emergencia_telefono")
     .single()
@@ -60,6 +64,43 @@ export async function crearTrabajador(
 
   revalidatePath("/personal")
   return { trabajador: data }
+}
+
+// Valida que la cuenta del sistema que se quiere vincular a este trabajador
+// (para que también pueda cobrar como trabajador de campo) exista, sea de
+// la misma empresa, y no esté ya vinculada a OTRO trabajador -- si ya está
+// vinculada a este mismo trabajador (edición), se permite sin problema.
+async function resolverUsuarioVinculado(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  empresaId: string,
+  rawValue: string | null,
+  trabajadorIdActual: string | null
+): Promise<{ value: string | null; error?: string }> {
+  const usuarioId = (rawValue ?? "").trim()
+  if (!usuarioId) return { value: null }
+
+  const { data: usuario } = await supabase
+    .from("perfiles_usuario")
+    .select("id, empresa_id")
+    .eq("id", usuarioId)
+    .single()
+
+  if (!usuario || usuario.empresa_id !== empresaId) {
+    return { value: null, error: "La cuenta seleccionada no es válida" }
+  }
+
+  const { data: yaVinculado } = await supabase
+    .from("trabajadores")
+    .select("id")
+    .eq("usuario_id", usuarioId)
+    .neq("id", trabajadorIdActual ?? "00000000-0000-0000-0000-000000000000")
+    .maybeSingle()
+
+  if (yaVinculado) {
+    return { value: null, error: "Esa cuenta ya está vinculada a otro trabajador de Personal" }
+  }
+
+  return { value: usuarioId }
 }
 
 export async function actualizarTrabajador(
@@ -90,6 +131,9 @@ export async function actualizarTrabajador(
   const tarifa_raw = formData.get("tarifa_diaria") as string
   const tarifa_diaria = tarifa_raw ? parseFloat(tarifa_raw) : null
 
+  const usuario_id = await resolverUsuarioVinculado(supabase, perfil.empresa_id, formData.get("usuario_id") as string, trabajadorId)
+  if (usuario_id.error) return { error: usuario_id.error }
+
   const { data, error } = await supabase
     .from("trabajadores")
     .update({
@@ -105,6 +149,7 @@ export async function actualizarTrabajador(
       direccion: (formData.get("direccion") as string) || null,
       contacto_emergencia_nombre: (formData.get("contacto_emergencia_nombre") as string) || null,
       contacto_emergencia_telefono: (formData.get("contacto_emergencia_telefono") as string) || null,
+      usuario_id: usuario_id.value,
     })
     .eq("id", trabajadorId)
     .select("id, nombre_completo, codigo, especialidad, rol_obra, nivel_experiencia, tarifa_diaria, moneda, activo, fecha_ingreso, notas, usuario_id, telefono_personal, direccion, contacto_emergencia_nombre, contacto_emergencia_telefono")

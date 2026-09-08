@@ -38,6 +38,20 @@ type ProyectoOption = {
   nombre: string
 }
 
+export type UsuarioSistema = {
+  id: string
+  nombre_completo: string
+  rol: string
+}
+
+const rolSistemaLabel: Record<string, string> = {
+  dueno: "Dueño",
+  superadmin: "Superadmin",
+  administrador: "Administrador",
+  project_manager: "Project Manager",
+  capataz: "Capataz",
+}
+
 const nivelColor: Record<string, string> = {
   junior:  "bg-slate-100 text-slate-600",
   medio:   "bg-blue-100 text-blue-700",
@@ -159,6 +173,7 @@ interface PersonalClientProps {
   puedeEditar: boolean
   empresaId: string
   tarifasPorTrabajador?: Record<string, TarifaTrabajo[]>
+  usuariosSistema?: UsuarioSistema[]
 }
 
 export function PersonalClient({
@@ -167,6 +182,7 @@ export function PersonalClient({
   puedeEditar,
   empresaId,
   tarifasPorTrabajador = {},
+  usuariosSistema = [],
 }: PersonalClientProps) {
   const [trabajadores, setTrabajadores] = useState(initial)
   const [busqueda, setBusqueda] = useState("")
@@ -196,6 +212,11 @@ export function PersonalClient({
   })
 
   const activos = trabajadores.filter((t) => t.activo).length
+  const usuarioPorId = new Map(usuariosSistema.map((u) => [u.id, u]))
+  // Cuentas ya vinculadas a algún trabajador -- para no ofrecerlas dos veces
+  const usuariosUsados = new Map(
+    trabajadores.filter((t) => t.usuario_id).map((t) => [t.usuario_id as string, t.id])
+  )
 
   return (
     <>
@@ -304,8 +325,8 @@ export function PersonalClient({
                           </span>
                         )}
                         {t.usuario_id && (
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 font-medium">
-                            App
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 font-medium" title="Vinculado a una cuenta del sistema">
+                            App{usuarioPorId.has(t.usuario_id) ? ` · ${usuarioPorId.get(t.usuario_id)!.nombre_completo}` : ""}
                           </span>
                         )}
                       </div>
@@ -403,6 +424,8 @@ export function PersonalClient({
       {/* Modal agregar trabajador */}
       {showModal && (
         <ModalTrabajador
+          usuariosSistema={usuariosSistema}
+          usuariosUsados={usuariosUsados}
           onClose={() => { setShowModal(false); setErrorModal("") }}
           onSuccess={(nuevo) => {
             setTrabajadores((prev) => [nuevo, ...prev])
@@ -415,6 +438,8 @@ export function PersonalClient({
       {trabajadorAEditar && (
         <ModalTrabajador
           trabajador={trabajadorAEditar}
+          usuariosSistema={usuariosSistema}
+          usuariosUsados={usuariosUsados}
           onClose={() => setTrabajadorAEditar(null)}
           onSuccess={(actualizado) => {
             setTrabajadores((prev) => prev.map((t) => (t.id === actualizado.id ? actualizado : t)))
@@ -431,10 +456,14 @@ export function PersonalClient({
 // ──────────────────────────────────────────────
 function ModalTrabajador({
   trabajador,
+  usuariosSistema = [],
+  usuariosUsados = new Map(),
   onClose,
   onSuccess,
 }: {
   trabajador?: TrabajadorFromDB
+  usuariosSistema?: UsuarioSistema[]
+  usuariosUsados?: Map<string, string>
   onClose: () => void
   onSuccess: (t: TrabajadorFromDB) => void
 }) {
@@ -604,6 +633,34 @@ function ModalTrabajador({
               </div>
             </div>
           </div>
+
+          {usuariosSistema.length > 0 && (
+            <div className="pt-2 border-t border-slate-100">
+              <label className="block text-xs font-medium text-slate-700 mb-1 mt-3">
+                Vincular con cuenta del sistema (opcional)
+              </label>
+              <select
+                name="usuario_id"
+                defaultValue={trabajador?.usuario_id ?? ""}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+              >
+                <option value="">Ninguna</option>
+                {usuariosSistema
+                  .filter((u) => {
+                    const usadoPor = usuariosUsados.get(u.id)
+                    return !usadoPor || usadoPor === trabajador?.id
+                  })
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.nombre_completo} ({rolSistemaLabel[u.rol] ?? u.rol})
+                    </option>
+                  ))}
+              </select>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Si este trabajador es también capataz o PM en el sistema, vincúlalo aquí para que las tareas de campo que registre en Reporte Diario se paguen igual que a cualquier otro trabajador.
+              </p>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">Notas</label>

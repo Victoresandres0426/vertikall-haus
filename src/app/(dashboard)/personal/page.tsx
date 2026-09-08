@@ -20,7 +20,7 @@ export default async function PersonalPage() {
   const ROLES_VEN_PERSONAL = ["dueno", "superadmin", "administrador", "project_manager"]
   if (!ROLES_VEN_PERSONAL.includes(perfil.rol)) redirect("/sin-acceso")
 
-  const [{ data: trabajadores }, { data: proyectos }, { data: tarifasRaw }] = await Promise.all([
+  const [{ data: trabajadores }, { data: proyectos }, { data: tarifasRaw }, { data: usuariosSistemaRaw }] = await Promise.all([
     supabase
       .from("trabajadores")
       .select("id, nombre_completo, codigo, especialidad, rol_obra, nivel_experiencia, tarifa_diaria, moneda, activo, fecha_ingreso, notas, usuario_id, telefono_personal, direccion, contacto_emergencia_nombre, contacto_emergencia_telefono")
@@ -35,6 +35,15 @@ export default async function PersonalPage() {
       .from("tarifas_trabajo")
       .select("id, trabajador_id, rol_obra, tarifa_hora")
       .eq("activo", true),
+    // Cuentas del sistema (capataz/PM/etc.) que se pueden vincular a un
+    // registro de Personal, para que también puedan cobrar como
+    // trabajador si hacen tarea de campo (no solo su rol de gestión).
+    supabase
+      .from("perfiles_usuario")
+      .select("id, nombre_completo, rol")
+      .eq("empresa_id", perfil.empresa_id)
+      .neq("rol", "cliente")
+      .order("nombre_completo"),
   ])
 
   const puedeEditar = ["dueno", "superadmin", "administrador", "project_manager"].includes(perfil.rol)
@@ -59,6 +68,7 @@ export default async function PersonalPage() {
           puedeEditar={puedeEditar}
           empresaId={perfil.empresa_id}
           tarifasPorTrabajador={tarifasPorTrabajador}
+          usuariosSistema={usuariosSistemaRaw ?? []}
         />
       </div>
     </div>
