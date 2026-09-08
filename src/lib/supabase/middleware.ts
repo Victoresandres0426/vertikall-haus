@@ -31,7 +31,7 @@ export async function updateSession(request: NextRequest) {
   const loginPaths = ['/login', '/recuperar-contrasena']
 
   // Rutas siempre accesibles (con o sin sesión)
-  const alwaysPublic = ['/sin-acceso', '/invitacion/', '/check-in/']
+  const alwaysPublic = ['/sin-acceso', '/invitacion/', '/check-in/', '/mi-obra/']
   const isAlwaysPublic = alwaysPublic.some(p => pathname.startsWith(p))
   const isLoginPath = loginPaths.some(p => pathname.startsWith(p))
   const isPublicPath = isLoginPath || isAlwaysPublic
