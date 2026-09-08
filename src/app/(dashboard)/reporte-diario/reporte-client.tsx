@@ -53,6 +53,13 @@ export type ProyectoSimple = {
 
 type AsistenciaState = "presente" | "ausente" | "medio_dia"
 
+// Solo se paga el 90% del valor de mano de obra presupuestado por
+// actividad -- el 10% restante queda de reserva del proyecto para
+// retrabajo o imprevistos (migración 060). Este es solo el preview en
+// pantalla; el cálculo real y definitivo se hace en el servidor
+// (registrar_asistencia_actividad), que aplica el mismo factor.
+const FACTOR_RESERVA_DESTAJO = 0.9
+
 // Cómo repartió sus horas del día entre actividades -- cada una puede
 // llevar un rol distinto (ej. medio día de ayudante, medio día de
 // electricista), para que el costo se calcule con la tarifa correcta.
@@ -640,7 +647,7 @@ export function ReporteClient({
                               const actividadSplit = (actividadesPorProyecto[proyectoId] ?? []).find((a) => a.id === s.actividadId)
                               const unidad = actividadSplit?.unidad ?? "und"
                               const tarifaUnitaria = tarifaManoObraPorActividad[s.actividadId]
-                              const montoDestajo = tarifaUnitaria && s.avance > 0 ? s.avance * tarifaUnitaria : null
+                              const montoDestajo = tarifaUnitaria && s.avance > 0 ? s.avance * tarifaUnitaria * FACTOR_RESERVA_DESTAJO : null
                               return (
                                 <div key={i} className="space-y-1">
                                   <div className="flex items-center gap-1.5">
