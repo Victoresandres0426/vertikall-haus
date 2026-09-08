@@ -4,14 +4,14 @@ import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import { ejecutarMotorDiario } from "@/lib/engine/motor"
 
-type EntradaAvance = {
+export type EntradaAvance = {
   actividad_id: string
   cantidad_ejecutada_dia: number
   porcentaje_avance_total: number
   incidencias?: string
 }
 
-type EntradaAsistencia = {
+export type EntradaAsistencia = {
   trabajador_id: string
   presente: boolean
   horas_regulares: number
@@ -19,7 +19,7 @@ type EntradaAsistencia = {
   motivo_ausencia?: string
 }
 
-type EntradaHorasActividad = {
+export type EntradaHorasActividad = {
   trabajador_id: string
   actividad_id: string
   rol_aplicado: string | null
@@ -137,4 +137,68 @@ export async function crearReporteDiario(input: {
   revalidatePath("/desempeno")
 
   return { id: reporte.id }
+}
+
+// ── Editar un reporte YA enviado de un día anterior ──
+// Solo dueno/superadmin/administrador/project_manager (el capataz que lo
+// llenó no puede editarlo después) -- la función SQL actualizar_reporte_
+// diario (migración 059) valida el rol y el acceso al proyecto de nuevo
+// por su cuenta, así que esto no depende únicamente del gating en la UI.
+export async function actualizarReporteDiario(input: {
+  reporte_id: string
+  proyecto_id: string
+  fecha: string
+  clima?: string
+  observaciones?: string
+  avances: EntradaAvance[]
+  asistencia: EntradaAsistencia[]
+  horasPorActividad?: EntradaHorasActividad[]
+}): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  const { error: rpcError } = await supabase.rpc("actualizar_reporte_diario", {
+    p_reporte_id: input.reporte_id,
+    p_clima: input.clima ?? null,
+    p_observaciones: input.observaciones ?? null,
+    p_asistencias: input.asistencia,
+    p_avances: input.avances,
+    p_horas_actividad: input.horasPorActividad ?? [],
+  })
+
+  if (rpcError) {
+    if (rpcError.message?.includes("sin_permisos")) {
+      return { error: "No tienes permisos para editar reportes ya enviados" }
+    }
+    if (rpcError.message?.includes("sin_acceso")) {
+      return { error: "No tienes acceso a este proyecto" }
+    }
+    if (rpcError.message?.includes("reporte_no_encontrado")) {
+      return { error: "Ese reporte ya no existe" }
+    }
+    return { error: "No se pudo guardar la edición: " + rpcError.message }
+  }
+
+  // ── Motor de reglas: recalcula desviaciones, alertas e IIDP del día editado ──
+  try {
+    const motor = await ejecutarMotorDiario(supabase, input.proyecto_id, new Date(input.fecha))
+    if (motor.errores.length > 0) {
+      console.error("Motor de reglas terminó con errores:", motor.errores)
+    }
+  } catch (e) {
+    console.error("Motor de reglas falló:", e)
+  }
+
+  revalidatePath("/reporte-diario")
+  revalidatePath("/reporte-diario/historial")
+  revalidatePath(`/reporte-diario/historial/${input.reporte_id}`)
+  revalidatePath("/actividades")
+  revalidatePath("/dashboard")
+  revalidatePath("/alertas")
+  revalidatePath("/desempeno")
+  revalidatePath("/personal")
+
+  return {}
 }

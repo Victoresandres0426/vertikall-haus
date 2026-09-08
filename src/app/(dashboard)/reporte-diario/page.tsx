@@ -11,10 +11,20 @@ async function getData(): Promise<{
   trabajadoresPorProyecto: Record<string, TrabajadorDB[]>
   tarifaManoObraPorActividad: Record<string, number>
   horasQrPorTrabajador: Record<string, number>
+  puedeVerHistorial: boolean
 }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
+
+  // Solo dueno/superadmin/administrador/project_manager pueden ver y
+  // editar el historial de reportes ya enviados (ver migración 059).
+  const { data: perfil } = await supabase
+    .from("perfiles_usuario")
+    .select("rol")
+    .eq("id", user.id)
+    .single()
+  const puedeVerHistorial = ["dueno", "superadmin", "administrador", "project_manager"].includes(perfil?.rol ?? "")
 
   // Obtener proyectos activos
   const { data: proyectosRaw } = await supabase
@@ -144,14 +154,15 @@ async function getData(): Promise<{
     } catch { /* si aún no existe registros_asistencia_qr, no rompe el reporte */ }
   }
 
-  return { proyectos, todosLosProyectos, actividadesPorProyecto, trabajadoresPorProyecto, tarifaManoObraPorActividad, horasQrPorTrabajador }
+  return { proyectos, todosLosProyectos, actividadesPorProyecto, trabajadoresPorProyecto, tarifaManoObraPorActividad, horasQrPorTrabajador, puedeVerHistorial }
 }
 
 export default async function ReporteDiarioPage() {
-  const { proyectos, todosLosProyectos, actividadesPorProyecto, trabajadoresPorProyecto, tarifaManoObraPorActividad, horasQrPorTrabajador } = await getData()
+  const { proyectos, todosLosProyectos, actividadesPorProyecto, trabajadoresPorProyecto, tarifaManoObraPorActividad, horasQrPorTrabajador, puedeVerHistorial } = await getData()
 
   return (
     <ReporteClient
+      puedeVerHistorial={puedeVerHistorial}
       proyectos={proyectos}
       todosLosProyectos={todosLosProyectos}
       actividadesPorProyecto={actividadesPorProyecto}

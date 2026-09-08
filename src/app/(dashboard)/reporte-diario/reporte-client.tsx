@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import Link from "next/link"
 import {
   CheckCircle, Clock, Send, CloudSun, HardHat, Users,
-  ChevronDown, Plus, X,
+  ChevronDown, Plus, X, History,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Header } from "@/components/layout/header"
@@ -106,6 +107,7 @@ export function ReporteClient({
   trabajadoresPorProyecto,
   tarifaManoObraPorActividad,
   horasQrPorTrabajador,
+  puedeVerHistorial,
 }: {
   proyectos: ProyectoSimple[]
   todosLosProyectos: ProyectoSimple[]
@@ -113,6 +115,7 @@ export function ReporteClient({
   trabajadoresPorProyecto: Record<string, TrabajadorDB[]>
   tarifaManoObraPorActividad: Record<string, number>
   horasQrPorTrabajador: Record<string, number>
+  puedeVerHistorial: boolean
 }) {
   const [proyectoId, setProyectoId] = useState(proyectos[0]?.id ?? "")
   const [paso, setPaso] = useState(1)
@@ -385,10 +388,20 @@ export function ReporteClient({
           titulo="Reporte Diario"
           subtitulo={fechaHoyLabel()}
           acciones={
-            <SelectorProyectoActivo
-              proyectos={todosLosProyectos}
-              proyectoActualId={proyectoActual?.id ?? null}
-            />
+            <div className="flex items-center gap-3">
+              {puedeVerHistorial && (
+                <Link
+                  href="/reporte-diario/historial"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
+                >
+                  <History className="h-4 w-4" /> Historial
+                </Link>
+              )}
+              <SelectorProyectoActivo
+                proyectos={todosLosProyectos}
+                proyectoActualId={proyectoActual?.id ?? null}
+              />
+            </div>
           }
         />
         <div className="min-h-96 flex items-center justify-center p-6">
@@ -422,6 +435,14 @@ export function ReporteClient({
         subtitulo={fechaHoyLabel()}
         acciones={
           <div className="flex items-center gap-3">
+            {puedeVerHistorial && (
+              <Link
+                href="/reporte-diario/historial"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
+              >
+                <History className="h-4 w-4" /> Historial
+              </Link>
+            )}
             <SelectorProyectoActivo
               proyectos={todosLosProyectos}
               proyectoActualId={proyectoActual?.id ?? null}
