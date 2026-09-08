@@ -34,6 +34,14 @@ export type TrabajadorDB = {
   nombre_completo: string
   rol_obra: string | null
   especialidad: string | null
+  usuario_id: string | null
+  // Solo true si la cuenta vinculada es de rol "capataz" -- un PM también
+  // puede estar vinculado a Personal (para cobrar destajo si hace tarea
+  // de campo puntual), pero un PM no está obligado a estar en la obra ni
+  // a escanear el QR, así que sus horas siguen siendo editables a mano.
+  // El capataz sí supervisa la obra en sitio, así que sus horas se
+  // bloquean y salen estrictamente del check-in QR.
+  requiere_qr: boolean
 }
 
 export type ProyectoSimple = {
@@ -123,9 +131,19 @@ export function ReporteClient({
       ? [{ actividadId: actividadesDelProyecto[0].id, rol: t.rol_obra ?? t.especialidad ?? "", horas, avance: 0 }]
       : []
 
+  // Un trabajador vinculado a una cuenta de capataz podría estar llenando
+  // su PROPIO reporte -- para él, las horas NO se pueden escribir a mano
+  // (evita que reporte 8h aunque haya llegado tarde y nunca haya
+  // escaneado el QR). El PM no está obligado a estar en la obra, así que
+  // aunque esté vinculado a Personal sigue editando sus horas a mano. Y
+  // el resto de trabajadores de campo (sin acceso al sistema) también
+  // sigue siendo editable como siempre.
+  const horasIniciales = (t: TrabajadorDB) =>
+    t.requiere_qr ? (horasQrPorTrabajador[t.id] ?? 0) : (horasQrPorTrabajador[t.id] ?? 8)
+
   const [trabajadores, setTrabajadores] = useState<TrabajadorLocal[]>(
     (trabajadoresPorProyecto[proyectos[0]?.id ?? ""] ?? []).map((t) => {
-      const horas = horasQrPorTrabajador[t.id] ?? 8
+      const horas = horasIniciales(t)
       return {
         ...t,
         asistencia: "presente" as AsistenciaState,
@@ -159,7 +177,7 @@ export function ReporteClient({
     )
     setTrabajadores(
       (trabajadoresPorProyecto[id] ?? []).map((t) => {
-        const horas = horasQrPorTrabajador[t.id] ?? 8
+        const horas = horasIniciales(t)
         return {
           ...t,
           asistencia: "presente" as AsistenciaState,
@@ -176,7 +194,14 @@ export function ReporteClient({
     setTrabajadores((prev) =>
       prev.map((t) => {
         if (t.id !== id) return t
-        const horas = tipo === "ausente" ? 0 : tipo === "medio_dia" ? 4 : 8
+        // Para un capataz vinculado, las horas siempre salen del QR (0 si
+        // no ha escaneado hoy) sin importar el botón de asistencia --
+        // excepto "ausente", que siempre es 0.
+        const horas = tipo === "ausente"
+          ? 0
+          : t.requiere_qr
+            ? (horasQrPorTrabajador[t.id] ?? 0)
+            : (tipo === "medio_dia" ? 4 : 8)
         // Si solo hay un split (el caso común), lo mantenemos sincronizado
         // con el total de horas para no obligar a re-escribirlo; si hay
         // varios, se recalcula el primero para que sigan sumando el total.
@@ -530,6 +555,8 @@ export function ReporteClient({
                               type="number"
                               placeholder="Horas regulares"
                               value={t.horas}
+                              disabled={t.requiere_qr}
+                              title={t.requiere_qr ? "Capataz vinculado -- sus horas salen del check-in QR, no se editan a mano" : undefined}
                               onChange={(e) => {
                                 const horas = Number(e.target.value)
                                 setTrabajadores((prev) =>
@@ -559,14 +586,26 @@ export function ReporteClient({
                           </div>
                         )}
                         {t.asistencia === "presente" && (
-                          horasQrPorTrabajador[t.id] !== undefined ? (
-                            <p className="text-[11px] text-violet-600 font-medium mt-1">
-                              ✓ Según check-in QR de hoy ({horasQrPorTrabajador[t.id]}h) -- puedes ajustarlo si hace falta
-                            </p>
+                          t.requiere_qr ? (
+                            horasQrPorTrabajador[t.id] !== undefined ? (
+                              <p className="text-[11px] text-violet-600 font-medium mt-1">
+                                🔒 Bloqueado -- según check-in QR de hoy ({horasQrPorTrabajador[t.id]}h)
+                              </p>
+                            ) : (
+                              <p className="text-[11px] text-red-600 font-medium mt-1">
+                                🔒 Sin check-in QR hoy -- 0h hasta que escanee entrada y salida
+                              </p>
+                            )
                           ) : (
-                            <p className="text-[11px] text-amber-600 mt-1">
-                              Sin registro de check-in QR hoy -- horas ingresadas a mano
-                            </p>
+                            horasQrPorTrabajador[t.id] !== undefined ? (
+                              <p className="text-[11px] text-violet-600 font-medium mt-1">
+                                ✓ Según check-in QR de hoy ({horasQrPorTrabajador[t.id]}h) -- puedes ajustarlo si hace falta
+                              </p>
+                            ) : (
+                              <p className="text-[11px] text-amber-600 mt-1">
+                                Sin registro de check-in QR hoy -- horas ingresadas a mano
+                              </p>
+                            )
                           )
                         )}
 

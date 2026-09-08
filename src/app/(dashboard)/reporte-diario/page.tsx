@@ -73,18 +73,22 @@ async function getData(): Promise<{
     ])
 
     const directorio = new Map(
-      ((directorioRaw ?? []) as (TrabajadorDB & { activo: boolean })[]).map((t) => [t.id, t])
+      ((directorioRaw ?? []) as (TrabajadorDB & { activo: boolean; usuario_rol: string | null })[]).map((t) => [t.id, t])
     )
 
     for (const asign of (asignacionesRaw ?? []) as { proyecto_id: string; trabajador_id: string; rol_obra_proyecto: string | null }[]) {
       const trabajador = directorio.get(asign.trabajador_id)
       if (!trabajador || trabajador.activo === false) continue
       if (!trabajadoresPorProyecto[asign.proyecto_id]) trabajadoresPorProyecto[asign.proyecto_id] = []
-      const { activo: _activo, ...resto } = trabajador
+      // Solo el capataz queda obligado al QR -- un PM vinculado a Personal
+      // no está obligado a estar en la obra, así que sigue con horas
+      // editables a mano (ver migración 055).
+      const { activo: _activo, usuario_rol, ...resto } = trabajador
+      const trabajadorFinal = { ...resto, requiere_qr: usuario_rol === "capataz" }
       // El rol específico de este proyecto (si se definió) reemplaza al rol general
       // solo para lo que se muestra aquí -- no toca el registro de Personal.
-      if (asign.rol_obra_proyecto) resto.rol_obra = asign.rol_obra_proyecto
-      trabajadoresPorProyecto[asign.proyecto_id].push(resto)
+      if (asign.rol_obra_proyecto) trabajadorFinal.rol_obra = asign.rol_obra_proyecto
+      trabajadoresPorProyecto[asign.proyecto_id].push(trabajadorFinal)
     }
     for (const pid of Object.keys(trabajadoresPorProyecto)) {
       trabajadoresPorProyecto[pid].sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo))
