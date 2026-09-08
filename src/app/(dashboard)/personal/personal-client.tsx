@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import {
   Search, UserCheck, UserX, Phone, Calendar, DollarSign,
-  Star, Plus, X, ChevronDown, ChevronUp, QrCode, Pencil, MapPin, ShieldAlert, Wallet,
+  Star, Plus, X, ChevronDown, ChevronUp, QrCode, Pencil, MapPin, ShieldAlert, Wallet, Coins,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -70,6 +71,66 @@ function formatMXN(n: number | null, moneda = "USD") {
 }
 
 export type TarifaTrabajo = { id: string; rol_obra: string; tarifa_hora: number | null }
+
+// Ganancias del día -- lo que un trabajador ganó en una fecha puntual,
+// desglosado por actividad (viene de asistencia_actividad_diaria, que ya
+// alimenta costos_reales y nómina -- ver migraciones 050/054).
+export type GananciaDetalle = {
+  proyecto: string; actividad: string; horas: number
+  avance_cantidad: number | null; modo_pago: string; costo: number
+}
+export type GananciaTrabajador = { total: number; detalle: GananciaDetalle[] }
+
+function formatUSD(n: number) {
+  return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+}
+
+// Ganancias del día para un trabajador -- mismo patrón desplegable que
+// TarifasPorRol, pero de solo lectura (el monto ya quedó calculado y
+// guardado desde el Reporte Diario, no se edita aquí).
+function GananciasDelDia({ ganancia }: { ganancia: GananciaTrabajador | undefined }) {
+  const [abierto, setAbierto] = useState(false)
+  if (!ganancia || ganancia.total <= 0) {
+    return (
+      <div className="mt-2 pt-2 border-t border-slate-100 flex items-center gap-1.5 text-xs text-slate-300">
+        <Coins className="h-3 w-3" />
+        Sin ganancias registradas hoy
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-2 pt-2 border-t border-slate-100">
+      <button
+        onClick={() => setAbierto((v) => !v)}
+        className="flex items-center gap-1.5 text-xs text-emerald-700 hover:text-emerald-900 font-medium"
+      >
+        <Coins className="h-3 w-3" />
+        Ganó hoy: {formatUSD(ganancia.total)}
+        {abierto ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+
+      {abierto && (
+        <div className="mt-2 space-y-1.5">
+          {ganancia.detalle.map((d, i) => (
+            <div key={i} className="text-xs bg-emerald-50/60 rounded-lg px-2 py-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-700 truncate">{d.actividad}</span>
+                <span className="font-medium text-emerald-700 shrink-0">{formatUSD(d.costo)}</span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                {d.proyecto}
+                {d.modo_pago === "destajo" && d.avance_cantidad != null
+                  ? ` · ${d.avance_cantidad} a destajo`
+                  : ` · ${d.horas}h`}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Tarifas específicas por rol -- para cuando el mismo trabajador gana
 // distinto según la actividad que hace (ej. $80/h como ayudante, $150/h
@@ -174,6 +235,8 @@ interface PersonalClientProps {
   empresaId: string
   tarifasPorTrabajador?: Record<string, TarifaTrabajo[]>
   usuariosSistema?: UsuarioSistema[]
+  gananciasPorTrabajador?: Record<string, GananciaTrabajador>
+  fechaGanancias?: string
 }
 
 export function PersonalClient({
@@ -183,7 +246,10 @@ export function PersonalClient({
   empresaId,
   tarifasPorTrabajador = {},
   usuariosSistema = [],
+  gananciasPorTrabajador = {},
+  fechaGanancias,
 }: PersonalClientProps) {
+  const router = useRouter()
   const [trabajadores, setTrabajadores] = useState(initial)
   const [busqueda, setBusqueda] = useState("")
   const [filtroActivo, setFiltroActivo] = useState<"todos" | "activo" | "inactivo">("todos")
@@ -281,6 +347,19 @@ export function PersonalClient({
                 ))}
               </select>
               <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+            </div>
+          )}
+
+          {/* Fecha de las "ganancias del día" que se muestran en cada tarjeta */}
+          {puedeEditar && fechaGanancias && (
+            <div className="flex items-center gap-1.5">
+              <Coins className="h-4 w-4 text-emerald-500 shrink-0" />
+              <input
+                type="date"
+                value={fechaGanancias}
+                onChange={(e) => router.push(`/personal?fecha=${e.target.value}`)}
+                className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900"
+              />
             </div>
           )}
 
@@ -395,6 +474,10 @@ export function PersonalClient({
                       tarifasIniciales={tarifasPorTrabajador[t.id] ?? []}
                       puedeEditar={puedeEditar}
                     />
+                  )}
+
+                  {puedeEditar && t.activo && (
+                    <GananciasDelDia ganancia={gananciasPorTrabajador[t.id]} />
                   )}
 
                   <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
