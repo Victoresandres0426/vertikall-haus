@@ -97,12 +97,14 @@ export function ReporteClient({
   actividadesPorProyecto,
   trabajadoresPorProyecto,
   tarifaManoObraPorActividad,
+  horasQrPorTrabajador,
 }: {
   proyectos: ProyectoSimple[]
   todosLosProyectos: ProyectoSimple[]
   actividadesPorProyecto: Record<string, ActividadDB[]>
   trabajadoresPorProyecto: Record<string, TrabajadorDB[]>
   tarifaManoObraPorActividad: Record<string, number>
+  horasQrPorTrabajador: Record<string, number>
 }) {
   const [proyectoId, setProyectoId] = useState(proyectos[0]?.id ?? "")
   const [paso, setPaso] = useState(1)
@@ -122,13 +124,16 @@ export function ReporteClient({
       : []
 
   const [trabajadores, setTrabajadores] = useState<TrabajadorLocal[]>(
-    (trabajadoresPorProyecto[proyectos[0]?.id ?? ""] ?? []).map((t) => ({
-      ...t,
-      asistencia: "presente" as AsistenciaState,
-      horas: 8,
-      extra: 0,
-      splits: splitInicial(t, 8, actividadesPorProyecto[proyectos[0]?.id ?? ""] ?? []),
-    }))
+    (trabajadoresPorProyecto[proyectos[0]?.id ?? ""] ?? []).map((t) => {
+      const horas = horasQrPorTrabajador[t.id] ?? 8
+      return {
+        ...t,
+        asistencia: "presente" as AsistenciaState,
+        horas,
+        extra: 0,
+        splits: splitInicial(t, horas, actividadesPorProyecto[proyectos[0]?.id ?? ""] ?? []),
+      }
+    })
   )
 
   const [actividades, setActividades] = useState<ActividadLocal[]>(
@@ -153,13 +158,16 @@ export function ReporteClient({
       }))
     )
     setTrabajadores(
-      (trabajadoresPorProyecto[id] ?? []).map((t) => ({
-        ...t,
-        asistencia: "presente" as AsistenciaState,
-        horas: 8,
-        extra: 0,
-        splits: splitInicial(t, 8, nuevasActividades),
-      }))
+      (trabajadoresPorProyecto[id] ?? []).map((t) => {
+        const horas = horasQrPorTrabajador[t.id] ?? 8
+        return {
+          ...t,
+          asistencia: "presente" as AsistenciaState,
+          horas,
+          extra: 0,
+          splits: splitInicial(t, horas, nuevasActividades),
+        }
+      })
     )
     setPaso(1)
   }
@@ -549,6 +557,17 @@ export function ReporteClient({
                               className="w-28 text-sm"
                             />
                           </div>
+                        )}
+                        {t.asistencia === "presente" && (
+                          horasQrPorTrabajador[t.id] !== undefined ? (
+                            <p className="text-[11px] text-violet-600 font-medium mt-1">
+                              ✓ Según check-in QR de hoy ({horasQrPorTrabajador[t.id]}h) -- puedes ajustarlo si hace falta
+                            </p>
+                          ) : (
+                            <p className="text-[11px] text-amber-600 mt-1">
+                              Sin registro de check-in QR hoy -- horas ingresadas a mano
+                            </p>
+                          )
                         )}
 
                         {/* Reparto de horas por actividad (y rol) -- solo si hay actividades activas */}

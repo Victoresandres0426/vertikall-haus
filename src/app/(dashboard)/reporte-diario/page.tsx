@@ -10,6 +10,7 @@ async function getData(): Promise<{
   actividadesPorProyecto: Record<string, ActividadDB[]>
   trabajadoresPorProyecto: Record<string, TrabajadorDB[]>
   tarifaManoObraPorActividad: Record<string, number>
+  horasQrPorTrabajador: Record<string, number>
 }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -114,11 +115,36 @@ async function getData(): Promise<{
     } catch { /* migración 054 no aplicada aún */ }
   }
 
-  return { proyectos, todosLosProyectos, actividadesPorProyecto, trabajadoresPorProyecto, tarifaManoObraPorActividad }
+  // Horas reales del día según el check-in QR (entrada/salida) -- cuando
+  // existen, el reporte se precarga con esto en vez de un default a
+  // ciegas de 8h. Requiere que el trabajador haya escaneado el QR y ya
+  // tenga una "salida" registrada hoy (manual o por cierre automático);
+  // si aún no la tiene, el reporte sigue con el default editable.
+  const horasQrPorTrabajador: Record<string, number> = {}
+  if (proyectoActivo) {
+    const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" })
+    try {
+      const { data: qrRaw } = await supabase
+        .from("registros_asistencia_qr")
+        .select("trabajador_id, horas_trabajadas")
+        .eq("proyecto_id", proyectoActivo.id)
+        .eq("fecha", hoy)
+        .eq("tipo", "salida")
+        .not("trabajador_id", "is", null)
+
+      for (const r of (qrRaw ?? []) as { trabajador_id: string | null; horas_trabajadas: number | null }[]) {
+        if (r.trabajador_id && r.horas_trabajadas != null) {
+          horasQrPorTrabajador[r.trabajador_id] = (horasQrPorTrabajador[r.trabajador_id] ?? 0) + Number(r.horas_trabajadas)
+        }
+      }
+    } catch { /* si aún no existe registros_asistencia_qr, no rompe el reporte */ }
+  }
+
+  return { proyectos, todosLosProyectos, actividadesPorProyecto, trabajadoresPorProyecto, tarifaManoObraPorActividad, horasQrPorTrabajador }
 }
 
 export default async function ReporteDiarioPage() {
-  const { proyectos, todosLosProyectos, actividadesPorProyecto, trabajadoresPorProyecto, tarifaManoObraPorActividad } = await getData()
+  const { proyectos, todosLosProyectos, actividadesPorProyecto, trabajadoresPorProyecto, tarifaManoObraPorActividad, horasQrPorTrabajador } = await getData()
 
   return (
     <ReporteClient
@@ -127,6 +153,7 @@ export default async function ReporteDiarioPage() {
       actividadesPorProyecto={actividadesPorProyecto}
       trabajadoresPorProyecto={trabajadoresPorProyecto}
       tarifaManoObraPorActividad={tarifaManoObraPorActividad}
+      horasQrPorTrabajador={horasQrPorTrabajador}
     />
   )
 }
