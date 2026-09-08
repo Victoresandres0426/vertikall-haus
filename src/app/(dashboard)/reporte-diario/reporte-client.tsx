@@ -170,13 +170,29 @@ export function ReporteClient({
         if (t.id !== id) return t
         const horas = tipo === "ausente" ? 0 : tipo === "medio_dia" ? 4 : 8
         // Si solo hay un split (el caso común), lo mantenemos sincronizado
-        // con el total de horas para no obligar a re-escribirlo.
+        // con el total de horas para no obligar a re-escribirlo; si hay
+        // varios, se recalcula el primero para que sigan sumando el total.
         const splits = t.splits.length <= 1
           ? splitInicial(t, horas, actividadesPorProyecto[proyectoId] ?? [])
-          : t.splits
+          : reconciliarPrimario(t.splits, horas)
         return { ...t, asistencia: tipo, horas, splits }
       })
     )
+  }
+
+  // El primer split de cada trabajador representa "el resto del día" (para
+  // el capataz, sus horas de supervisión; para cualquier otro, simplemente
+  // su primera tarea) -- sus horas NO se escriben a mano cuando hay más de
+  // un split: se recalculan solas como horasTotal menos lo que ya se le
+  // asignó a las demás tareas del día. Así nunca se puede duplicar ni
+  // perder horas entre "supervisar" y "hacer una tarea extra" -- si dedicó
+  // 3h a una tarea de destajo, automáticamente le quedan 5h de supervisión,
+  // no 8 + 3.
+  const reconciliarPrimario = (splits: SplitActividad[], horasTotal: number): SplitActividad[] => {
+    if (splits.length === 0) return splits
+    const restoAsignado = splits.slice(1).reduce((s, sp) => s + (sp.horas || 0), 0)
+    const horasPrimario = Math.max(0, horasTotal - restoAsignado)
+    return splits.map((s, i) => (i === 0 ? { ...s, horas: horasPrimario } : s))
   }
 
   // ── Edición de los splits (actividad + rol + horas) de un trabajador ──
@@ -184,7 +200,8 @@ export function ReporteClient({
     setTrabajadores((prev) =>
       prev.map((t) => {
         if (t.id !== trabajadorId) return t
-        const splits = t.splits.map((s, i) => i === index ? { ...s, [campo]: valor } : s)
+        const splitsEditados = t.splits.map((s, i) => i === index ? { ...s, [campo]: valor } : s)
+        const splits = campo === "horas" ? reconciliarPrimario(splitsEditados, t.horas) : splitsEditados
         return { ...t, splits }
       })
     )
@@ -195,17 +212,19 @@ export function ReporteClient({
       prev.map((t) => {
         if (t.id !== trabajadorId) return t
         const primeraActividad = (actividadesPorProyecto[proyectoId] ?? [])[0]?.id ?? ""
-        return {
-          ...t,
-          splits: [...t.splits, { actividadId: primeraActividad, rol: t.rol_obra ?? t.especialidad ?? "", horas: 0, avance: 0 }],
-        }
+        const splits = [...t.splits, { actividadId: primeraActividad, rol: t.rol_obra ?? t.especialidad ?? "", horas: 0, avance: 0 }]
+        return { ...t, splits: reconciliarPrimario(splits, t.horas) }
       })
     )
   }
 
   const quitarSplit = (trabajadorId: string, index: number) => {
     setTrabajadores((prev) =>
-      prev.map((t) => t.id === trabajadorId ? { ...t, splits: t.splits.filter((_, i) => i !== index) } : t)
+      prev.map((t) => {
+        if (t.id !== trabajadorId) return t
+        const splits = t.splits.filter((_, i) => i !== index)
+        return { ...t, splits: reconciliarPrimario(splits, t.horas) }
+      })
     )
   }
 
@@ -510,7 +529,7 @@ export function ReporteClient({
                                     if (w.id !== t.id) return w
                                     const splits = w.splits.length <= 1
                                       ? splitInicial(w, horas, actividadesPorProyecto[proyectoId] ?? [])
-                                      : w.splits
+                                      : reconciliarPrimario(w.splits, horas)
                                     return { ...w, horas, splits }
                                   })
                                 )
@@ -571,10 +590,14 @@ export function ReporteClient({
                                     <div className="flex items-center gap-0.5">
                                       <input
                                         type="number"
-                                        title="Horas"
+                                        title={i === 0 && t.splits.length > 1 ? "Resto del día -- se calcula solo" : "Horas"}
                                         value={s.horas}
+                                        disabled={i === 0 && t.splits.length > 1}
                                         onChange={(e) => updateSplit(t.id, i, "horas", Number(e.target.value))}
-                                        className="w-12 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                                        className={cn(
+                                          "w-12 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900",
+                                          i === 0 && t.splits.length > 1 && "bg-slate-100 text-slate-400"
+                                        )}
                                       />
                                       <span className="text-[10px] text-slate-400">h</span>
                                     </div>
@@ -590,8 +613,11 @@ export function ReporteClient({
                                       <span className="text-[10px] text-slate-400 truncate">{unidad}</span>
                                     </div>
                                   </div>
-                                  {(actividadSplit || montoDestajo !== null) && (
+                                  {(actividadSplit || montoDestajo !== null || (i === 0 && t.splits.length > 1)) && (
                                     <p className="text-[10px] text-slate-400 pl-0.5">
+                                      {i === 0 && t.splits.length > 1 && (
+                                        <>Resto del día (después de las otras tareas) · </>
+                                      )}
                                       {actividadSplit && actividadSplit.cantidad_objetivo ? (
                                         <>Presupuestado: {actividadSplit.cantidad_objetivo} {unidad} · Llevas: {(actividadSplit.cantidad_ejecutada ?? 0).toFixed(1)} ({actividadSplit.avance_porcentaje}%){montoDestajo !== null ? " · " : ""}</>
                                       ) : null}
