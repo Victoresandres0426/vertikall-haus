@@ -47,10 +47,15 @@ type AsistenciaState = "presente" | "ausente" | "medio_dia"
 // Cómo repartió sus horas del día entre actividades -- cada una puede
 // llevar un rol distinto (ej. medio día de ayudante, medio día de
 // electricista), para que el costo se calcule con la tarifa correcta.
+// "avance" es cuánto de la unidad de esa actividad (m², ml, etc.)
+// produjo ESTE trabajador ese día -- si la actividad tiene una tarifa
+// de mano de obra presupuestada, el pago se calcula a destajo sobre
+// eso en vez de por hora (ver tarifaManoObraPorActividad).
 type SplitActividad = {
   actividadId: string
   rol: string
   horas: number
+  avance: number
 }
 
 type TrabajadorLocal = TrabajadorDB & {
@@ -91,11 +96,13 @@ export function ReporteClient({
   todosLosProyectos,
   actividadesPorProyecto,
   trabajadoresPorProyecto,
+  tarifaManoObraPorActividad,
 }: {
   proyectos: ProyectoSimple[]
   todosLosProyectos: ProyectoSimple[]
   actividadesPorProyecto: Record<string, ActividadDB[]>
   trabajadoresPorProyecto: Record<string, TrabajadorDB[]>
+  tarifaManoObraPorActividad: Record<string, number>
 }) {
   const [proyectoId, setProyectoId] = useState(proyectos[0]?.id ?? "")
   const [paso, setPaso] = useState(1)
@@ -111,7 +118,7 @@ export function ReporteClient({
   // de costo de mano de obra por actividad sin trabajo extra.
   const splitInicial = (t: TrabajadorDB, horas: number, actividadesDelProyecto: ActividadDB[]): SplitActividad[] =>
     actividadesDelProyecto.length > 0
-      ? [{ actividadId: actividadesDelProyecto[0].id, rol: t.rol_obra ?? t.especialidad ?? "", horas }]
+      ? [{ actividadId: actividadesDelProyecto[0].id, rol: t.rol_obra ?? t.especialidad ?? "", horas, avance: 0 }]
       : []
 
   const [trabajadores, setTrabajadores] = useState<TrabajadorLocal[]>(
@@ -190,7 +197,7 @@ export function ReporteClient({
         const primeraActividad = (actividadesPorProyecto[proyectoId] ?? [])[0]?.id ?? ""
         return {
           ...t,
-          splits: [...t.splits, { actividadId: primeraActividad, rol: t.rol_obra ?? t.especialidad ?? "", horas: 0 }],
+          splits: [...t.splits, { actividadId: primeraActividad, rol: t.rol_obra ?? t.especialidad ?? "", horas: 0, avance: 0 }],
         }
       })
     )
@@ -200,6 +207,37 @@ export function ReporteClient({
     setTrabajadores((prev) =>
       prev.map((t) => t.id === trabajadorId ? { ...t, splits: t.splits.filter((_, i) => i !== index) } : t)
     )
+  }
+
+  // Al pasar de Asistencia a Avance, precarga el avance de cada actividad
+  // con la SUMA de lo que cada trabajador reportó en sus splits -- el
+  // capataz puede seguir ajustándolo a mano en el paso 2 (por ejemplo,
+  // para actividades sin un trabajador específico asignado, como
+  // subcontratos). Solo se sobreescriben las actividades que sí tuvieron
+  // avance reportado por algún trabajador.
+  const handleContinuarAvance = () => {
+    const sumas: Record<string, number> = {}
+    for (const t of trabajadores) {
+      if (t.asistencia === "ausente") continue
+      for (const s of t.splits) {
+        if (!s.actividadId || !s.avance || s.avance <= 0) continue
+        sumas[s.actividadId] = (sumas[s.actividadId] ?? 0) + s.avance
+      }
+    }
+    if (Object.keys(sumas).length > 0) {
+      setActividades((prev) =>
+        prev.map((a) => {
+          const suma = sumas[a.id]
+          if (suma === undefined) return a
+          const objetivo = a.cantidad_objetivo ?? 0
+          const anterior = a.cantidad_ejecutada ?? 0
+          const total = anterior + suma
+          const pct = objetivo > 0 ? Math.min(100, Math.round((total / objetivo) * 100)) : a.avance_porcentaje
+          return { ...a, cantidad_hoy: suma, avance_porcentaje: pct }
+        })
+      )
+    }
+    setPaso(2)
   }
 
   const updateCantidad = (id: string, cantidad: number) => {
@@ -243,12 +281,13 @@ export function ReporteClient({
           .filter((t) => t.asistencia !== "ausente")
           .flatMap((t) =>
             t.splits
-              .filter((s) => s.actividadId && s.horas > 0)
+              .filter((s) => s.actividadId && (s.horas > 0 || s.avance > 0))
               .map((s) => ({
                 trabajador_id: t.id,
                 actividad_id: s.actividadId,
                 rol_aplicado: s.rol || null,
                 horas: s.horas,
+                avance_cantidad: s.avance > 0 ? s.avance : undefined,
               }))
           ),
       })
@@ -499,36 +538,73 @@ export function ReporteClient({
                             <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">
                               Actividad(es) de hoy
                             </p>
-                            {t.splits.map((s, i) => (
-                              <div key={i} className="flex items-center gap-1.5">
-                                <select
-                                  value={s.actividadId}
-                                  onChange={(e) => updateSplit(t.id, i, "actividadId", e.target.value)}
-                                  className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
-                                >
-                                  {(actividadesPorProyecto[proyectoId] ?? []).map((a) => (
-                                    <option key={a.id} value={a.id}>{a.nombre}</option>
-                                  ))}
-                                </select>
-                                <input
-                                  value={s.rol}
-                                  onChange={(e) => updateSplit(t.id, i, "rol", e.target.value)}
-                                  placeholder="Rol"
-                                  className="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
-                                />
-                                <input
-                                  type="number"
-                                  value={s.horas}
-                                  onChange={(e) => updateSplit(t.id, i, "horas", Number(e.target.value))}
-                                  className="w-14 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
-                                />
-                                {t.splits.length > 1 && (
-                                  <button onClick={() => quitarSplit(t.id, i)} className="text-slate-300 hover:text-red-500 shrink-0">
-                                    <X className="h-3.5 w-3.5" />
-                                  </button>
-                                )}
-                              </div>
-                            ))}
+                            {t.splits.map((s, i) => {
+                              const actividadSplit = (actividadesPorProyecto[proyectoId] ?? []).find((a) => a.id === s.actividadId)
+                              const unidad = actividadSplit?.unidad ?? "und"
+                              const tarifaUnitaria = tarifaManoObraPorActividad[s.actividadId]
+                              const montoDestajo = tarifaUnitaria && s.avance > 0 ? s.avance * tarifaUnitaria : null
+                              return (
+                                <div key={i} className="space-y-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <select
+                                      value={s.actividadId}
+                                      onChange={(e) => updateSplit(t.id, i, "actividadId", e.target.value)}
+                                      className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
+                                    >
+                                      {(actividadesPorProyecto[proyectoId] ?? []).map((a) => (
+                                        <option key={a.id} value={a.id}>{a.nombre}</option>
+                                      ))}
+                                    </select>
+                                    {t.splits.length > 1 && (
+                                      <button onClick={() => quitarSplit(t.id, i)} className="text-slate-300 hover:text-red-500 shrink-0">
+                                        <X className="h-3.5 w-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      value={s.rol}
+                                      onChange={(e) => updateSplit(t.id, i, "rol", e.target.value)}
+                                      placeholder="Rol"
+                                      className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                                    />
+                                    <div className="flex items-center gap-0.5">
+                                      <input
+                                        type="number"
+                                        title="Horas"
+                                        value={s.horas}
+                                        onChange={(e) => updateSplit(t.id, i, "horas", Number(e.target.value))}
+                                        className="w-12 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                                      />
+                                      <span className="text-[10px] text-slate-400">h</span>
+                                    </div>
+                                    <div className="flex items-center gap-0.5 flex-1">
+                                      <input
+                                        type="number"
+                                        title="Avance producido"
+                                        placeholder="Avance"
+                                        value={s.avance || ""}
+                                        onChange={(e) => updateSplit(t.id, i, "avance", Number(e.target.value))}
+                                        className="w-16 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                                      />
+                                      <span className="text-[10px] text-slate-400 truncate">{unidad}</span>
+                                    </div>
+                                  </div>
+                                  {(actividadSplit || montoDestajo !== null) && (
+                                    <p className="text-[10px] text-slate-400 pl-0.5">
+                                      {actividadSplit && actividadSplit.cantidad_objetivo ? (
+                                        <>Presupuestado: {actividadSplit.cantidad_objetivo} {unidad} · Llevas: {(actividadSplit.cantidad_ejecutada ?? 0).toFixed(1)} ({actividadSplit.avance_porcentaje}%){montoDestajo !== null ? " · " : ""}</>
+                                      ) : null}
+                                      {montoDestajo !== null && (
+                                        <span className="text-emerald-600 font-medium">
+                                          ≈ ${montoDestajo.toLocaleString("es-MX", { maximumFractionDigits: 0 })} a destajo
+                                        </span>
+                                      )}
+                                    </p>
+                                  )}
+                                </div>
+                              )
+                            })}
                             <button
                               onClick={() => agregarSplit(t.id)}
                               className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800"
@@ -545,7 +621,7 @@ export function ReporteClient({
             </Card>
 
             <div className="flex justify-end">
-              <Button onClick={() => setPaso(2)}>Continuar con Avance →</Button>
+              <Button onClick={handleContinuarAvance}>Continuar con Avance →</Button>
             </div>
           </div>
         )}

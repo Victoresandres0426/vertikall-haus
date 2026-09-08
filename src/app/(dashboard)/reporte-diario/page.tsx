@@ -9,6 +9,7 @@ async function getData(): Promise<{
   todosLosProyectos: ProyectoSimple[]
   actividadesPorProyecto: Record<string, ActividadDB[]>
   trabajadoresPorProyecto: Record<string, TrabajadorDB[]>
+  tarifaManoObraPorActividad: Record<string, number>
 }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -89,11 +90,35 @@ async function getData(): Promise<{
     }
   }
 
-  return { proyectos, todosLosProyectos, actividadesPorProyecto, trabajadoresPorProyecto }
+  // Tarifa de mano de obra presupuestada por actividad (para el pago a
+  // destajo del reporte diario) -- viene de la partida del presupuesto
+  // vigente con tipo_recurso='mano_obra'. Si una actividad no tiene una
+  // partida así, simplemente no aparece en el mapa y el reporte cae de
+  // vuelta al pago por hora (ver registrar_asistencia_actividad, migración 054).
+  const tarifaManoObraPorActividad: Record<string, number> = {}
+  const actividadIds = Object.values(actividadesPorProyecto).flat().map((a) => a.id)
+  if (actividadIds.length > 0) {
+    try {
+      const { data: partidasRaw } = await supabase
+        .from("partidas_presupuesto")
+        .select("actividad_id, precio_unitario, presupuestos!inner(es_baseline_actual)")
+        .in("actividad_id", actividadIds)
+        .eq("tipo_recurso", "mano_obra")
+        .eq("presupuestos.es_baseline_actual", true)
+
+      for (const p of (partidasRaw ?? []) as unknown as { actividad_id: string | null; precio_unitario: number | null }[]) {
+        if (p.actividad_id && p.precio_unitario != null) {
+          tarifaManoObraPorActividad[p.actividad_id] = Number(p.precio_unitario)
+        }
+      }
+    } catch { /* migración 054 no aplicada aún */ }
+  }
+
+  return { proyectos, todosLosProyectos, actividadesPorProyecto, trabajadoresPorProyecto, tarifaManoObraPorActividad }
 }
 
 export default async function ReporteDiarioPage() {
-  const { proyectos, todosLosProyectos, actividadesPorProyecto, trabajadoresPorProyecto } = await getData()
+  const { proyectos, todosLosProyectos, actividadesPorProyecto, trabajadoresPorProyecto, tarifaManoObraPorActividad } = await getData()
 
   return (
     <ReporteClient
@@ -101,6 +126,7 @@ export default async function ReporteDiarioPage() {
       todosLosProyectos={todosLosProyectos}
       actividadesPorProyecto={actividadesPorProyecto}
       trabajadoresPorProyecto={trabajadoresPorProyecto}
+      tarifaManoObraPorActividad={tarifaManoObraPorActividad}
     />
   )
 }

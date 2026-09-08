@@ -24,6 +24,7 @@ type EntradaHorasActividad = {
   actividad_id: string
   rol_aplicado: string | null
   horas: number
+  avance_cantidad?: number
 }
 
 export async function crearReporteDiario(input: {
