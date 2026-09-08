@@ -112,3 +112,118 @@ export async function revocarInvitacion(invitacionId: string): Promise<{ error?:
   revalidatePath("/configuracion")
   return {}
 }
+
+// ── Gestión del equipo: cambiar rol / activar-desactivar una cuenta ──
+// Mismo nivel de permiso que invitar (dueno/superadmin/administrador),
+// pero con guardas extra para que un administrador no pueda tocar
+// cuentas de dueño/superadmin ni ascender a nadie a esos roles --
+// mismo patrón de "narrowing" ya usado en proyecto_usuarios_asignados
+// (migración 053): un rol de gestión no puede auto-escalarse ni tocar
+// a quien está por encima de él.
+const ROLES_GESTION_EQUIPO = ["dueno", "superadmin", "administrador"] as const
+const ROLES_PROTEGIDOS = ["dueno", "superadmin"] as const
+
+async function verificarPermisoGestionEquipo(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  targetId: string
+): Promise<{ error?: string; actorRol?: string; empresaId?: string; targetRolActual?: string }> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  if (user.id === targetId) return { error: "No puedes editar tu propia cuenta desde aquí" }
+
+  const { data: perfil } = await supabase
+    .from("perfiles_usuario")
+    .select("rol, empresa_id")
+    .eq("id", user.id)
+    .single()
+
+  if (!perfil || !ROLES_GESTION_EQUIPO.includes(perfil.rol as typeof ROLES_GESTION_EQUIPO[number])) {
+    return { error: "No tienes permisos para gestionar el equipo" }
+  }
+
+  const { data: target } = await supabase
+    .from("perfiles_usuario")
+    .select("rol, empresa_id")
+    .eq("id", targetId)
+    .single()
+
+  if (!target || target.empresa_id !== perfil.empresa_id) {
+    return { error: "Usuario no encontrado" }
+  }
+
+  if (
+    perfil.rol === "administrador" &&
+    ROLES_PROTEGIDOS.includes(target.rol as typeof ROLES_PROTEGIDOS[number])
+  ) {
+    return { error: "Un administrador no puede editar cuentas de dueño o superadmin" }
+  }
+
+  return { actorRol: perfil.rol, empresaId: perfil.empresa_id, targetRolActual: target.rol }
+}
+
+export async function actualizarRolUsuario(usuarioId: string, nuevoRol: string): Promise<{ error?: string }> {
+  if (!ROLES_VALIDOS.includes(nuevoRol as RolValido)) return { error: "Rol inválido" }
+
+  const supabase = await createClient()
+  const check = await verificarPermisoGestionEquipo(supabase, usuarioId)
+  if (check.error) return { error: check.error }
+
+  if (
+    check.actorRol === "administrador" &&
+    ROLES_PROTEGIDOS.includes(nuevoRol as typeof ROLES_PROTEGIDOS[number])
+  ) {
+    return { error: "Un administrador no puede asignar el rol de dueño o superadmin" }
+  }
+
+  // No dejar a la empresa sin ningún dueño activo.
+  if (check.targetRolActual === "dueno" && nuevoRol !== "dueno") {
+    const { count } = await supabase
+      .from("perfiles_usuario")
+      .select("id", { count: "exact", head: true })
+      .eq("empresa_id", check.empresaId)
+      .eq("rol", "dueno")
+      .eq("activo", true)
+    if ((count ?? 0) <= 1) {
+      return { error: "No puedes quitarle el rol de dueño al único dueño activo de la empresa" }
+    }
+  }
+
+  const { error } = await supabase
+    .from("perfiles_usuario")
+    .update({ rol: nuevoRol })
+    .eq("id", usuarioId)
+
+  if (error) return { error: "No se pudo actualizar el rol" }
+
+  revalidatePath("/configuracion")
+  return {}
+}
+
+export async function cambiarActivoUsuario(usuarioId: string, activo: boolean): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const check = await verificarPermisoGestionEquipo(supabase, usuarioId)
+  if (check.error) return { error: check.error }
+
+  if (!activo && check.targetRolActual === "dueno") {
+    const { count } = await supabase
+      .from("perfiles_usuario")
+      .select("id", { count: "exact", head: true })
+      .eq("empresa_id", check.empresaId)
+      .eq("rol", "dueno")
+      .eq("activo", true)
+    if ((count ?? 0) <= 1) {
+      return { error: "No puedes desactivar al único dueño activo de la empresa" }
+    }
+  }
+
+  const { error } = await supabase
+    .from("perfiles_usuario")
+    .update({ activo })
+    .eq("id", usuarioId)
+
+  if (error) return { error: "No se pudo actualizar la cuenta" }
+
+  revalidatePath("/configuracion")
+  return {}
+}

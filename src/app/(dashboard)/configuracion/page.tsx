@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/header"
 import { Building2, Users, Settings, Bell, Shield, UserPlus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { InvitarUsuarioButton, InvitacionesPendientes } from "./invitar-client"
+import { EquipoLista } from "./equipo-client"
 import { RespaldoButton } from "./respaldo-client"
 import { DatabaseBackup } from "lucide-react"
 
@@ -221,32 +222,13 @@ export default async function ConfiguracionPage() {
             </div>
           </div>
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <div className="divide-y divide-slate-50">
-              {equipo.map((u) => (
-                <div key={u.id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors">
-                  <div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
-                    <span className="text-sm font-semibold text-slate-600">
-                      {u.nombre_completo.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-slate-800">{u.nombre_completo}</span>
-                      {!u.activo && (
-                        <span className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">Inactivo</span>
-                      )}
-                      {u.id === perfil.id && (
-                        <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">Tú</span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-400">{u.email}</p>
-                  </div>
-                  <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium shrink-0", rolColor[u.rol] ?? "bg-slate-100 text-slate-600")}>
-                    {rolLabel[u.rol] ?? u.rol}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <EquipoLista
+              equipo={equipo}
+              perfilActualId={perfil.id}
+              perfilActualRol={perfil.rol}
+              rolLabel={rolLabel}
+              rolColor={rolColor}
+            />
           </div>
 
           {/* Invitaciones */}
