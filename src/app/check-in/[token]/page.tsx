@@ -4,7 +4,7 @@ import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { Building2, MapPin, Calendar, CheckCircle, AlertCircle, Loader2, Clock, LogIn, LogOut, ChevronLeft, ClipboardList } from "lucide-react"
+import { Building2, MapPin, Calendar, CheckCircle, AlertCircle, Loader2, Clock, LogIn, LogOut, ChevronLeft, ClipboardList, Wallet } from "lucide-react"
 
 type ProyectoInfo = {
   id: string
@@ -267,6 +267,12 @@ export default function CheckInPage({ params }: { params: Promise<{ token: strin
             className="mt-3 flex items-center justify-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors"
           >
             <ClipboardList className="h-4 w-4" /> Ver actividades del proyecto
+          </Link>
+          <Link
+            href={`/mi-obra/${token}/desempeno`}
+            className="mt-2 flex items-center justify-center gap-1.5 text-sm text-emerald-400 hover:text-emerald-300 transition-colors"
+          >
+            <Wallet className="h-4 w-4" /> Ver mi desempeño de la semana
           </Link>
         </div>
       </div>

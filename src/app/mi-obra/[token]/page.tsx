@@ -3,7 +3,8 @@
 import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { Building2, MapPin, Loader2, AlertCircle, ChevronLeft, CalendarClock, Hammer, CalendarDays } from "lucide-react"
+import Link from "next/link"
+import { Building2, MapPin, Loader2, AlertCircle, ChevronLeft, CalendarClock, Hammer, CalendarDays, Wallet } from "lucide-react"
 
 type ProyectoInfo = {
   id: string
@@ -193,6 +194,12 @@ export default function MiObraPage({ params }: { params: Promise<{ token: string
               <MapPin className="h-3 w-3" /> {proyecto!.ubicacion}
             </p>
           )}
+          <Link
+            href={`/mi-obra/${token}/desempeno`}
+            className="mt-3 inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+          >
+            <Wallet className="h-3.5 w-3.5" /> Ver mi desempeño de la semana
+          </Link>
         </div>
 
         {/* En curso */}
