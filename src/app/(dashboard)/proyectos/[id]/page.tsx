@@ -10,6 +10,7 @@ import {
 import { CircularProgress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import { EquipoProyecto, type TrabajadorEquipo } from "./equipo-proyecto"
+import { AccesoProyecto, type UsuarioAcceso } from "./acceso-proyecto"
 import { ClienteEmail } from "./cliente-email"
 import { TelefonoCliente } from "./telefono-cliente"
 import { CoordenadasObra } from "./coordenadas-obra"
@@ -180,6 +181,35 @@ async function getData(id: string) {
   const puedeEditarCliente = !!perfil && ROLES_CLIENTE.includes(perfil.rol)
   const esDueno = !!perfil && perfil.rol === 'dueno'
 
+  const ROLES_GESTION_ACCESO = ['dueno', 'superadmin', 'administrador']
+  const puedeGestionarAcceso = !!perfil && ROLES_GESTION_ACCESO.includes(perfil.rol)
+
+  // ── Acceso de capataz/PM a este proyecto (requiere migración 053) ──
+  let usuariosAsignados: UsuarioAcceso[] = []
+  let usuariosDisponibles: UsuarioAcceso[] = []
+  try {
+    if (perfil?.empresa_id) {
+      const [{ data: candidatos }, { data: asignacionesData }] = await Promise.all([
+        supabase
+          .from("perfiles_usuario")
+          .select("id, nombre_completo, rol")
+          .eq("empresa_id", perfil.empresa_id)
+          .eq("activo", true)
+          .in("rol", ["capataz", "project_manager"])
+          .order("nombre_completo"),
+        supabase
+          .from("proyecto_usuarios_asignados")
+          .select("usuario_id")
+          .eq("proyecto_id", id),
+      ])
+
+      const asignadosIds = new Set((asignacionesData ?? []).map((a) => a.usuario_id as string))
+      const todos = (candidatos ?? []) as UsuarioAcceso[]
+      usuariosAsignados = todos.filter((u) => asignadosIds.has(u.id))
+      usuariosDisponibles = todos.filter((u) => !asignadosIds.has(u.id))
+    }
+  } catch { /* migración 053 no aplicada aún */ }
+
   // ── Equipo autorizado (requiere migration 009) ────────────────
   let equipoAuth: TrabajadorEquipo[] = []
   let equipoDisponibles: TrabajadorEquipo[] = []
@@ -264,6 +294,9 @@ async function getData(id: string) {
     equipoDisponibles,
     puedeGestionarEquipo,
     puedeEditarCliente,
+    usuariosAsignados,
+    usuariosDisponibles,
+    puedeGestionarAcceso,
   }
 }
 
@@ -324,7 +357,7 @@ function TendIcon({ t }: { t: string | null }) {
 
 export default async function ProyectoDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { proyecto, archivos, usuarioId, procesos, iidp, alertas, changeOrders, costos, qrToken, asistenciaHoy, esDueno, equipoAuth, equipoDisponibles, puedeGestionarEquipo, puedeEditarCliente } = await getData(id)
+  const { proyecto, archivos, usuarioId, procesos, iidp, alertas, changeOrders, costos, qrToken, asistenciaHoy, esDueno, equipoAuth, equipoDisponibles, puedeGestionarEquipo, puedeEditarCliente, usuariosAsignados, usuariosDisponibles, puedeGestionarAcceso } = await getData(id)
 
   const ultimoIIDP = iidp[0] ?? null
 
@@ -712,6 +745,14 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
           equipo={equipoAuth}
           disponibles={equipoDisponibles}
           puedeGestionar={puedeGestionarEquipo}
+        />
+
+        {/* ── Acceso de capataz/PM a este proyecto ── */}
+        <AccesoProyecto
+          proyectoId={proyecto.id}
+          asignados={usuariosAsignados}
+          disponibles={usuariosDisponibles}
+          puedeGestionar={puedeGestionarAcceso}
         />
 
         {/* ── Archivos del proyecto ── */}
