@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { Building2, Loader2, AlertCircle, ChevronLeft, Wallet, ClipboardList } from "lucide-react"
+import { MI_OBRA_DESEMPENO_HABILITADO } from "@/lib/feature-flags"
 
 const DEVICE_TOKEN_KEY = "vh_checkin_device_token"
 
@@ -63,6 +64,10 @@ export default function MiDesempenoPage({ params }: { params: Promise<{ token: s
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    if (!MI_OBRA_DESEMPENO_HABILITADO) {
+      setIsLoading(false)
+      return
+    }
     async function load() {
       const { data: proyData, error: proyError } = await supabase
         .rpc("checkin_datos_proyecto", { p_qr_token: token })
@@ -98,6 +103,21 @@ export default function MiDesempenoPage({ params }: { params: Promise<{ token: s
     }
     load()
   }, [token])
+
+  if (!MI_OBRA_DESEMPENO_HABILITADO) {
+    return (
+      <div className="relative min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+        <div className="absolute top-4 left-4"><BotonVolver /></div>
+        <div className="text-center max-w-xs">
+          <Wallet className="h-16 w-16 text-slate-600 mx-auto mb-4" />
+          <h1 className="text-xl font-bold text-white mb-2">No disponible por ahora</h1>
+          <p className="text-slate-400 text-sm">
+            Esta sección está temporalmente desactivada. Vuelve a intentarlo más adelante.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   if (isLoading) {
     return (
