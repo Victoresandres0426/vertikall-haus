@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input, Textarea } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { actualizarReporteDiario } from "../actions"
+import { actualizarReporteDiario } from "../../actions"
 
 export type TrabajadorHist = { id: string; nombre_completo: string; rol_obra: string | null }
 export type ActividadHist = {
