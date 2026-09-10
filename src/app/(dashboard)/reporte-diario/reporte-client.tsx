@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import Link from "next/link"
 import {
   CheckCircle, Clock, Send, CloudSun, HardHat, Users,
-  ChevronDown, Plus, X, History,
+  ChevronDown, Plus, X, History, CalendarClock,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Header } from "@/components/layout/header"
@@ -98,10 +98,14 @@ function fechaHoyISO() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 }
 
-function fechaHoyLabel() {
+// Formatea una fecha ISO ("YYYY-MM-DD")
+// cualquiera -- se usa cuando dueño/PM/administrador atrasan el
+// reporte a un día anterior (ver selector de fecha en Paso 1).
+function formatearFechaLabel(fechaISO: string) {
+  const [y, m, d] = fechaISO.split("-").map(Number)
   return new Intl.DateTimeFormat("es-MX", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
-  }).format(new Date())
+  }).format(new Date(y, (m ?? 1) - 1, d ?? 1))
 }
 
 // ──────────────────────────────────────────────
@@ -126,6 +130,11 @@ export function ReporteClient({
 }) {
   const [proyectoId, setProyectoId] = useState(proyectos[0]?.id ?? "")
   const [paso, setPaso] = useState(1)
+  // Por defecto siempre es hoy -- solo dueño/PM/administrador pueden
+  // atrasarlo a un día anterior (ej. se les pasó enviarlo). El capataz
+  // normal sigue viendo esto fijo en "hoy", sin selector.
+  const [fecha, setFecha] = useState(fechaHoyISO())
+  const esHoy = fecha === fechaHoyISO()
   const [clima, setClima] = useState("Soleado")
   const [observaciones, setObservaciones] = useState("")
   const [enviado, setEnviado] = useState(false)
@@ -330,7 +339,7 @@ export function ReporteClient({
     startTransition(async () => {
       const result = await crearReporteDiario({
         proyecto_id: proyectoId,
-        fecha: fechaHoyISO(),
+        fecha,
         clima,
         observaciones,
         avances: actividades
@@ -403,7 +412,7 @@ export function ReporteClient({
       <div>
         <Header
           titulo="Reporte Diario"
-          subtitulo={fechaHoyLabel()}
+          subtitulo={formatearFechaLabel(fecha)}
           acciones={
             <div className="flex items-center gap-3">
               {puedeVerHistorial && (
@@ -428,7 +437,7 @@ export function ReporteClient({
             </div>
             <h2 className="text-xl font-semibold text-slate-900 mb-2">¡Reporte enviado!</h2>
             <p className="text-slate-500 mb-1">
-              {proyectoActual?.nombre ?? "Proyecto"} · {fechaHoyLabel()}
+              {proyectoActual?.nombre ?? "Proyecto"} · {formatearFechaLabel(fecha)}
             </p>
             <p className="text-sm text-slate-400 mb-6">
               Los avances se actualizaron. El sistema detectará alertas automáticamente.
@@ -449,7 +458,7 @@ export function ReporteClient({
     <div>
       <Header
         titulo="Reporte Diario"
-        subtitulo={fechaHoyLabel()}
+        subtitulo={formatearFechaLabel(fecha)}
         acciones={
           <div className="flex items-center gap-3">
             {puedeVerHistorial && (
@@ -519,6 +528,33 @@ export function ReporteClient({
         {/* ── PASO 1: Asistencia ── */}
         {paso === 1 && (
           <div className="space-y-4">
+            {puedeVerHistorial && (
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-3">
+                    <CalendarClock className="h-5 w-5 text-slate-400 shrink-0" />
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-slate-500 mb-1">
+                        Fecha del reporte
+                      </label>
+                      <input
+                        type="date"
+                        value={fecha}
+                        max={fechaHoyISO()}
+                        onChange={(e) => setFecha(e.target.value || fechaHoyISO())}
+                        className="w-full sm:w-52 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                      />
+                      {!esHoy && (
+                        <p className="text-[11px] text-amber-600 mt-1">
+                          Estás llenando un día anterior. Si algún trabajador tiene sus horas bloqueadas por QR, aquí quedan editables a mano -- ajústalas según corresponda a esta fecha.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardContent className="pt-4">
                 <div className="flex items-center gap-3">
@@ -593,8 +629,14 @@ export function ReporteClient({
                               type="number"
                               placeholder="Horas regulares"
                               value={t.horas}
-                              disabled={t.requiere_qr}
-                              title={t.requiere_qr ? "Capataz vinculado -- sus horas salen del check-in QR, no se editan a mano" : undefined}
+                              disabled={t.requiere_qr && esHoy}
+                              title={
+                                t.requiere_qr && esHoy
+                                  ? "Capataz vinculado -- sus horas salen del check-in QR, no se editan a mano"
+                                  : t.requiere_qr
+                                    ? "Fecha pasada: el valor que ves es el QR de HOY, no el de esta fecha -- ajústalo a mano"
+                                    : undefined
+                              }
                               onChange={(e) => {
                                 const horas = Number(e.target.value)
                                 setTrabajadores((prev) =>
@@ -624,7 +666,7 @@ export function ReporteClient({
                           </div>
                         )}
                         {t.asistencia === "presente" && (
-                          t.requiere_qr ? (
+                          t.requiere_qr && esHoy ? (
                             horasQrPorTrabajador[t.id] !== undefined ? (
                               <p className="text-[11px] text-violet-600 font-medium mt-1">
                                 🔒 Bloqueado -- según check-in QR de hoy ({horasQrPorTrabajador[t.id]}h)
@@ -634,6 +676,10 @@ export function ReporteClient({
                                 🔒 Sin check-in QR hoy -- 0h hasta que escanee entrada y salida
                               </p>
                             )
+                          ) : t.requiere_qr ? (
+                            <p className="text-[11px] text-amber-600 mt-1">
+                              Fecha pasada -- el QR mostrado es el de hoy, no el de esta fecha. Ajusta las horas a mano.
+                            </p>
                           ) : (
                             horasQrPorTrabajador[t.id] !== undefined ? (
                               <p className="text-[11px] text-violet-600 font-medium mt-1">
