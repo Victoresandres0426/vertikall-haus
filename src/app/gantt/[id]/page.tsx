@@ -2,6 +2,7 @@ import { Fragment } from "react"
 import { createClient } from "@/lib/supabase/server"
 import { redirect, notFound } from "next/navigation"
 import { BotonImprimir } from "./boton-imprimir"
+import { BotonRecalcular } from "./boton-recalcular"
 
 type Actividad = {
   id: string
@@ -148,7 +149,10 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
           <p className="text-xs text-slate-400 font-mono">{proyecto.codigo}</p>
           <h1 className="text-lg font-bold text-slate-900">{proyecto.nombre} — Diagrama de Gantt</h1>
         </div>
-        <BotonImprimir />
+        <div className="flex items-center gap-2">
+          <BotonRecalcular proyectoId={proyecto.id} />
+          <BotonImprimir />
+        </div>
       </div>
 
       {tramos.map((tramo, tramoIdx) => {
