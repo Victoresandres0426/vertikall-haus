@@ -28,6 +28,8 @@ export type ActividadDB = {
   cantidad_objetivo: number | null
   cantidad_ejecutada: number | null
   estado: string
+  fecha_inicio_plan: string | null
+  fecha_fin_plan: string | null
 }
 
 export type TrabajadorDB = {
@@ -108,6 +110,34 @@ function formatearFechaLabel(fechaISO: string) {
   }).format(new Date(y, (m ?? 1) - 1, d ?? 1))
 }
 
+// ¿Esta actividad "debería" estar ejecutándose hoy según el cronograma?
+// -- ya está en_progreso (así arrancó tarde o temprano, sigue siendo
+//    relevante hoy), o la fecha de hoy cae dentro de su rango plan.
+// Las que no tienen fechas planeadas quedan fuera del filtro principal
+// (se ven con "+ Ver más actividades").
+function enCalendarioHoy(a: ActividadDB, hoyISO: string): boolean {
+  if (a.estado === "en_progreso") return true
+  if (!a.fecha_inicio_plan) return false
+  const finPlan = a.fecha_fin_plan ?? a.fecha_inicio_plan
+  return hoyISO >= a.fecha_inicio_plan && hoyISO <= finPlan
+}
+
+// Separa una lista de actividades en "las que tocan hoy según
+// calendario" (se muestran primero) y "el resto" (detrás del botón
+// + Ver más actividades).
+function separarPorCalendario(actividades: ActividadDB[], hoyISO: string): { principales: ActividadDB[]; resto: ActividadDB[] } {
+  const principales: ActividadDB[] = []
+  const resto: ActividadDB[] = []
+  for (const a of actividades) {
+    (enCalendarioHoy(a, hoyISO) ? principales : resto).push(a)
+  }
+  // Si por alguna razón ninguna actividad cae "en calendario" (ej. un
+  // proyecto sin fechas cargadas todavía), no tiene sentido esconderlas
+  // todas detrás del botón -- se muestran todas de una vez.
+  if (principales.length === 0) return { principales: actividades, resto: [] }
+  return { principales, resto }
+}
+
 // ──────────────────────────────────────────────
 // Componente
 // ──────────────────────────────────────────────
@@ -141,14 +171,26 @@ export function ReporteClient({
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
+  // Por defecto el selector de actividad de cada split y la lista de
+  // avance solo muestran lo que "toca" según el cronograma (en_progreso
+  // o dentro de su rango de fechas plan) -- el resto queda detrás de un
+  // "+ Ver más actividades" para no enterrar al capataz en una lista
+  // larga de actividades que todavía no arrancan.
+  const [splitsExpandido, setSplitsExpandido] = useState<Set<string>>(new Set())
+  const [mostrarTodasAvance, setMostrarTodasAvance] = useState(false)
+
   // Split inicial: por defecto toda la jornada se atribuye a la primera
   // actividad activa del proyecto, con el rol que el trabajador tiene
   // en ese proyecto -- así, si nadie divide nada, igual queda un registro
   // de costo de mano de obra por actividad sin trabajo extra.
-  const splitInicial = (t: TrabajadorDB, horas: number, actividadesDelProyecto: ActividadDB[]): SplitActividad[] =>
-    actividadesDelProyecto.length > 0
-      ? [{ actividadId: actividadesDelProyecto[0].id, rol: t.rol_obra ?? t.especialidad ?? "", horas, avance: 0 }]
-      : []
+  const splitInicial = (t: TrabajadorDB, horas: number, actividadesDelProyecto: ActividadDB[]): SplitActividad[] => {
+    if (actividadesDelProyecto.length === 0) return []
+    // Preferimos arrancar en una actividad que "toque" hoy según
+    // cronograma -- si ninguna aplica, caemos de vuelta a la primera de
+    // la lista completa (mismo comportamiento de siempre).
+    const primeraRelevante = separarPorCalendario(actividadesDelProyecto, fecha).principales[0] ?? actividadesDelProyecto[0]
+    return [{ actividadId: primeraRelevante.id, rol: t.rol_obra ?? t.especialidad ?? "", horas, avance: 0 }]
+  }
 
   // Un trabajador vinculado a una cuenta de capataz podría estar llenando
   // su PROPIO reporte -- para él, las horas NO se pueden escribir a mano
@@ -273,7 +315,8 @@ export function ReporteClient({
     setTrabajadores((prev) =>
       prev.map((t) => {
         if (t.id !== trabajadorId) return t
-        const primeraActividad = (actividadesPorProyecto[proyectoId] ?? [])[0]?.id ?? ""
+        const todasDelProyecto = actividadesPorProyecto[proyectoId] ?? []
+        const primeraActividad = (separarPorCalendario(todasDelProyecto, fecha).principales[0] ?? todasDelProyecto[0])?.id ?? ""
         const splits = [...t.splits, { actividadId: primeraActividad, rol: t.rol_obra ?? t.especialidad ?? "", horas: 0, avance: 0 }]
         return { ...t, splits: t.requiere_qr ? reconciliarPrimario(splits, t.horas) : splits }
       })
@@ -704,17 +747,32 @@ export function ReporteClient({
                               const unidad = actividadSplit?.unidad ?? "und"
                               const tarifaUnitaria = tarifaManoObraPorActividad[s.actividadId]
                               const montoDestajo = tarifaUnitaria && s.avance > 0 ? s.avance * tarifaUnitaria * FACTOR_RESERVA_DESTAJO : null
+                              const todasActividades = actividadesPorProyecto[proyectoId] ?? []
+                              const { principales, resto } = separarPorCalendario(todasActividades, fecha)
+                              const splitKey = `${t.id}-${i}`
+                              const seleccionadaEnResto = resto.some((a) => a.id === s.actividadId)
+                              const expandido = splitsExpandido.has(splitKey) || seleccionadaEnResto || resto.length === 0
+                              const opcionesSelect = expandido ? todasActividades : principales
                               return (
                                 <div key={i} className="space-y-1">
                                   <div className="flex items-center gap-1.5">
                                     <select
                                       value={s.actividadId}
-                                      onChange={(e) => updateSplit(t.id, i, "actividadId", e.target.value)}
+                                      onChange={(e) => {
+                                        if (e.target.value === "__mas__") {
+                                          setSplitsExpandido((prev) => new Set(prev).add(splitKey))
+                                          return
+                                        }
+                                        updateSplit(t.id, i, "actividadId", e.target.value)
+                                      }}
                                       className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
                                     >
-                                      {(actividadesPorProyecto[proyectoId] ?? []).map((a) => (
+                                      {opcionesSelect.map((a) => (
                                         <option key={a.id} value={a.id}>{a.nombre}</option>
                                       ))}
+                                      {!expandido && resto.length > 0 && (
+                                        <option value="__mas__">+ Ver más actividades ({resto.length})</option>
+                                      )}
                                     </select>
                                     {t.splits.length > 1 && (
                                       <button onClick={() => quitarSplit(t.id, i)} className="text-slate-300 hover:text-red-500 shrink-0">
@@ -809,8 +867,17 @@ export function ReporteClient({
                   <p className="text-sm text-slate-400 text-center py-6">
                     No hay actividades activas en este proyecto.
                   </p>
-                ) : (
-                  actividades.map((a) => (
+                ) : (() => {
+                  const { principales, resto } = separarPorCalendario(actividades, fecha)
+                  // Si ya se le cargó algo a una actividad "fuera de calendario"
+                  // (avance o incidencia), la dejamos visible aunque la lista
+                  // esté colapsada -- no queremos esconder datos ya capturados.
+                  const restoConDatos = resto.filter((a) => a.cantidad_hoy > 0 || a.incidencias)
+                  const restoSinDatos = resto.filter((a) => !(a.cantidad_hoy > 0 || a.incidencias))
+                  const visibles = mostrarTodasAvance ? actividades : [...principales, ...restoConDatos]
+                  return (
+                    <>
+                  {visibles.map((a) => (
                     <div key={a.id} className="border border-slate-200 rounded-lg p-3.5">
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <div>
@@ -855,8 +922,18 @@ export function ReporteClient({
                         className="mt-2 text-xs"
                       />
                     </div>
-                  ))
-                )}
+                  ))}
+                  {!mostrarTodasAvance && restoSinDatos.length > 0 && (
+                    <button
+                      onClick={() => setMostrarTodasAvance(true)}
+                      className="w-full text-center text-xs font-medium text-slate-500 hover:text-slate-800 py-2 border border-dashed border-slate-200 rounded-lg"
+                    >
+                      + Ver más actividades ({restoSinDatos.length})
+                    </button>
+                  )}
+                    </>
+                  )
+                })()}
               </CardContent>
             </Card>
 

@@ -52,6 +52,7 @@ async function getData(): Promise<{
       .select(`
         id, codigo, nombre, unidad,
         avance_porcentaje, cantidad_objetivo, cantidad_ejecutada, estado,
+        fecha_inicio_plan, fecha_fin_plan,
         proyecto_id
       `)
       .in("proyecto_id", proyectoIds)
