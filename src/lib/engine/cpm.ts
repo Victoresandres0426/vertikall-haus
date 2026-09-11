@@ -12,6 +12,10 @@
 // inicio_a_inicio, fin_a_fin, inicio_a_fin) con lag/lead en días,
 // y usa aritmética de índices de día (enteros) para evitar
 // problemas de precisión con fechas.
+//
+// Todo el cálculo (duración, holgura, fechas reprogramadas) se hace en
+// DÍAS HÁBILES -- sábados y domingos se saltan, igual que en el Gantt
+// (que ya los marca como no laborables) y en el importador de Excel.
 
 export type ActividadCPM = {
   id: string
@@ -44,13 +48,58 @@ function parseFechaSegura(iso: string | null): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-/** Duración en días de una actividad, con fallback razonable si falta el dato. */
+// Las fechas se parsean como ISO (medianoche UTC), así que hay que usar
+// getUTCDay() -- no getDay() -- para saber el día de la semana; con
+// getDay() el resultado depende de la zona horaria del servidor y
+// puede salir corrido un día.
+function esFinDeSemana(d: Date): boolean {
+  const dow = d.getUTCDay() // 0 = domingo, 6 = sábado
+  return dow === 0 || dow === 6
+}
+
+// Días HÁBILES (lunes a viernes) con signo entre dos fechas -- saltando
+// sábados y domingos. Se usa tanto para medir la duración de una
+// actividad como para ubicar sus fechas dentro del cronograma, de modo
+// que el cálculo de ruta crítica sea consistente con el resto de la
+// app: el Gantt ya marca los fines de semana como no laborables, y el
+// importador de Excel también los salta al convertir offsets a fechas.
+function diasHabilesEntre(a: Date, b: Date): number {
+  if (a.getTime() === b.getTime()) return 0
+  const paso = b.getTime() > a.getTime() ? 1 : -1
+  let cur = new Date(a)
+  let contados = 0
+  while (cur.getTime() !== b.getTime()) {
+    cur = new Date(cur.getTime() + paso * MS_DIA)
+    if (!esFinDeSemana(cur)) contados += paso
+  }
+  return contados
+}
+
+// Suma (o resta, si n es negativo) N días hábiles a una fecha, saltando
+// fines de semana -- es la inversa de diasHabilesEntre.
+function sumarDiasHabiles(fecha: Date, n: number): Date {
+  let cur = new Date(fecha)
+  let restante = n
+  const paso = restante >= 0 ? 1 : -1
+  while (restante !== 0) {
+    cur = new Date(cur.getTime() + paso * MS_DIA)
+    if (!esFinDeSemana(cur)) restante -= paso
+  }
+  return cur
+}
+
+/**
+ * Duración en DÍAS HÁBILES de una actividad, con fallback razonable si
+ * falta el dato. Si la actividad no trae duracion_plan_dias explícita,
+ * se calcula a partir de sus fechas plan -- contando solo lunes a
+ * viernes, no días de calendario.
+ */
 function duracionDias(a: ActividadCPM): number {
   if (a.duracion_plan_dias && a.duracion_plan_dias > 0) return a.duracion_plan_dias
   const ini = parseFechaSegura(a.fecha_inicio_plan)
   const fin = parseFechaSegura(a.fecha_fin_plan)
   if (ini && fin && fin.getTime() > ini.getTime()) {
-    return Math.max(1, Math.round((fin.getTime() - ini.getTime()) / MS_DIA))
+    return Math.max(1, diasHabilesEntre(ini, fin))
   }
   return 1
 }
@@ -83,14 +132,19 @@ export function calcularRutaCritica(
     : new Date()
   epoca.setUTCHours(0, 0, 0, 0)
 
+  // "Índice de día" = cuántos días HÁBILES hay entre la época y la
+  // fecha (con signo). Antes esto contaba días de calendario -- ahora
+  // salta fines de semana, así que la duración, la holgura y las
+  // fechas reprogramadas en cascada nunca caen ni se cuentan sobre un
+  // sábado/domingo.
   function indiceDia(iso: string | null): number {
     const d = parseFechaSegura(iso)
     if (!d) return 0
-    return Math.round((d.getTime() - epoca.getTime()) / MS_DIA)
+    return diasHabilesEntre(epoca, d)
   }
 
   function fechaDeIndice(idx: number): string {
-    return new Date(epoca.getTime() + idx * MS_DIA).toISOString().slice(0, 10)
+    return sumarDiasHabiles(epoca, idx).toISOString().slice(0, 10)
   }
 
   // Filtra dependencias válidas (ambos extremos deben existir en el set de actividades)
