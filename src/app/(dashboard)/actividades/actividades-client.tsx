@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, type ReactNode } from "react"
 import {
   CheckCircle, Play, Ban, Circle, AlertTriangle,
   Pencil, Trash2, Plus, Check, X, Loader2,
@@ -73,6 +73,19 @@ const actividadVacia: ActividadInput = {
   fecha_inicio_plan: null,
   fecha_fin_plan: null,
   es_critica: false,
+}
+
+// Envuelve un input con su etiqueta arriba -- para que cualquiera que
+// use la app (no solo quien la construyó) entienda de un vistazo qué
+// es cada casilla del formulario, sin depender de adivinar por el
+// tooltip o el placeholder.
+function CampoEtiquetado({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <div className={cn("flex flex-col gap-0.5", className)}>
+      <label className="text-[10px] text-slate-400 leading-none">{label}</label>
+      {children}
+    </div>
+  )
 }
 
 function EstadoIcon({ estado }: { estado: string }) {
@@ -364,22 +377,42 @@ export function ActividadesClient({
                       {acts.map((act) => (
                         editandoActividadId === act.id && draftActividad ? (
                           <div key={act.id} className="px-4 py-3 bg-slate-50/50 flex flex-col gap-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <input value={draftActividad.codigo} onChange={(e) => setDraftActividad({ ...draftActividad, codigo: e.target.value })} className={cn(inputCls, "w-16")} placeholder="Código" />
-                              <input value={draftActividad.nombre} onChange={(e) => setDraftActividad({ ...draftActividad, nombre: e.target.value })} className={cn(inputCls, "flex-1 min-w-[180px]")} placeholder="Nombre" />
+                            <div className="flex items-end gap-2 flex-wrap">
+                              <CampoEtiquetado label="Código">
+                                <input value={draftActividad.codigo} onChange={(e) => setDraftActividad({ ...draftActividad, codigo: e.target.value })} className={cn(inputCls, "w-16")} placeholder="Código" />
+                              </CampoEtiquetado>
+                              <CampoEtiquetado label="Nombre de la actividad" className="flex-1 min-w-[180px]">
+                                <input value={draftActividad.nombre} onChange={(e) => setDraftActividad({ ...draftActividad, nombre: e.target.value })} className={cn(inputCls, "w-full")} placeholder="Nombre" />
+                              </CampoEtiquetado>
                             </div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <input type="number" value={draftActividad.cantidad_objetivo ?? ""} onChange={(e) => setDraftActividad({ ...draftActividad, cantidad_objetivo: e.target.value === "" ? null : parseFloat(e.target.value) || 0 })} className={cn(inputCls, "w-16")} title="Cantidad" placeholder="Cant." />
-                              <input value={draftActividad.unidad ?? ""} onChange={(e) => setDraftActividad({ ...draftActividad, unidad: e.target.value || null })} className={cn(inputCls, "w-14")} title="Unidad" placeholder="UM" />
-                              <input type="number" value={draftActividad.costo_material} onChange={(e) => setDraftActividad({ ...draftActividad, costo_material: parseFloat(e.target.value) || 0 })} className={cn(inputCls, "w-20")} title="Costo material ($)" placeholder="Material $" />
-                              <input type="number" value={draftActividad.costo_mano_obra} onChange={(e) => setDraftActividad({ ...draftActividad, costo_mano_obra: parseFloat(e.target.value) || 0 })} className={cn(inputCls, "w-20")} title="Costo mano de obra ($)" placeholder="M.O. $" />
-                              <input type="number" value={draftActividad.duracion_plan_dias} onChange={(e) => setDraftActividad({ ...draftActividad, duracion_plan_dias: parseFloat(e.target.value) || 1 })} className={cn(inputCls, "w-16")} title="Días de duración" placeholder="Días" />
-                              <input type="date" value={draftActividad.fecha_inicio_plan ?? ""} onChange={(e) => setDraftActividad({ ...draftActividad, fecha_inicio_plan: e.target.value || null })} className={cn(inputCls, "w-36")} title="Fecha inicio plan" />
-                              <input type="date" value={draftActividad.fecha_fin_plan ?? ""} onChange={(e) => setDraftActividad({ ...draftActividad, fecha_fin_plan: e.target.value || null })} className={cn(inputCls, "w-36")} title="Fecha fin plan" />
-                              <input value={draftActividad.disciplina ?? ""} onChange={(e) => setDraftActividad({ ...draftActividad, disciplina: e.target.value || null })} className={cn(inputCls, "w-28")} title="Disciplina / cuadrilla" placeholder="Disciplina" />
-                              <label className="flex items-center gap-1 text-xs text-slate-500 shrink-0">
+                            <div className="flex items-end gap-2 flex-wrap">
+                              <CampoEtiquetado label="Cantidad propuesta">
+                                <input type="number" value={draftActividad.cantidad_objetivo ?? ""} onChange={(e) => setDraftActividad({ ...draftActividad, cantidad_objetivo: e.target.value === "" ? null : parseFloat(e.target.value) || 0 })} className={cn(inputCls, "w-16")} title="Cantidad" placeholder="Cant." />
+                              </CampoEtiquetado>
+                              <CampoEtiquetado label="Unidad de medida">
+                                <input value={draftActividad.unidad ?? ""} onChange={(e) => setDraftActividad({ ...draftActividad, unidad: e.target.value || null })} className={cn(inputCls, "w-14")} title="Unidad" placeholder="UM" />
+                              </CampoEtiquetado>
+                              <CampoEtiquetado label="Presupuesto material ($)">
+                                <input type="number" value={draftActividad.costo_material} onChange={(e) => setDraftActividad({ ...draftActividad, costo_material: parseFloat(e.target.value) || 0 })} className={cn(inputCls, "w-20")} title="Costo material ($)" placeholder="Material $" />
+                              </CampoEtiquetado>
+                              <CampoEtiquetado label="Presupuesto mano de obra ($)">
+                                <input type="number" value={draftActividad.costo_mano_obra} onChange={(e) => setDraftActividad({ ...draftActividad, costo_mano_obra: parseFloat(e.target.value) || 0 })} className={cn(inputCls, "w-20")} title="Costo mano de obra ($)" placeholder="M.O. $" />
+                              </CampoEtiquetado>
+                              <CampoEtiquetado label="Duración (días)">
+                                <input type="number" value={draftActividad.duracion_plan_dias} onChange={(e) => setDraftActividad({ ...draftActividad, duracion_plan_dias: parseFloat(e.target.value) || 1 })} className={cn(inputCls, "w-16")} title="Días de duración" placeholder="Días" />
+                              </CampoEtiquetado>
+                              <CampoEtiquetado label="Fecha inicio (plan)">
+                                <input type="date" value={draftActividad.fecha_inicio_plan ?? ""} onChange={(e) => setDraftActividad({ ...draftActividad, fecha_inicio_plan: e.target.value || null })} className={cn(inputCls, "w-36")} title="Fecha inicio plan" />
+                              </CampoEtiquetado>
+                              <CampoEtiquetado label="Fecha fin (plan)">
+                                <input type="date" value={draftActividad.fecha_fin_plan ?? ""} onChange={(e) => setDraftActividad({ ...draftActividad, fecha_fin_plan: e.target.value || null })} className={cn(inputCls, "w-36")} title="Fecha fin plan" />
+                              </CampoEtiquetado>
+                              <CampoEtiquetado label="Disciplina / cuadrilla">
+                                <input value={draftActividad.disciplina ?? ""} onChange={(e) => setDraftActividad({ ...draftActividad, disciplina: e.target.value || null })} className={cn(inputCls, "w-28")} title="Disciplina / cuadrilla" placeholder="Disciplina" />
+                              </CampoEtiquetado>
+                              <label className="flex items-center gap-1 text-xs text-slate-500 shrink-0 pb-1.5" title="Si se marca a mano, el motor de ruta crítica la puede volver a recalcular después">
                                 <input type="checkbox" checked={draftActividad.es_critica} onChange={(e) => setDraftActividad({ ...draftActividad, es_critica: e.target.checked })} className="h-3.5 w-3.5" />
-                                Crítica
+                                Ruta crítica
                               </label>
                             </div>
                             <div className="flex items-center gap-2 justify-end">
@@ -410,22 +443,28 @@ export function ActividadesClient({
                                 const excedeCantidad = (act.cantidad_objetivo ?? 0) > 0 && (act.cantidad_ejecutada ?? 0) > (act.cantidad_objetivo as number)
                                 const excedeCosto = (act.costo_presupuesto ?? 0) > 0 && (act.costo_real ?? 0) > act.costo_presupuesto
                                 return (
-                              <div className="flex items-center gap-3 mt-1 flex-wrap">
+                              <div className="flex items-center gap-3 mt-1 flex-wrap" title="Avance: % ejecutado vs. lo reportado hasta hoy">
                                 <Progress value={act.avance_porcentaje ?? 0} className="w-24 h-1" />
-                                <span className="text-xs text-slate-500">{act.avance_porcentaje ?? 0}%</span>
+                                <span className="text-xs text-slate-500">Avance: {act.avance_porcentaje ?? 0}%</span>
                                 {act.cantidad_objetivo != null && (
-                                  <span className={cn("text-xs", excedeCantidad ? "text-red-600 font-semibold" : "text-slate-400")}>
-                                    {act.cantidad_ejecutada != null ? `${act.cantidad_ejecutada} / ` : ""}{act.cantidad_objetivo} {act.unidad ?? ""}
+                                  <span
+                                    className={cn("text-xs", excedeCantidad ? "text-red-600 font-semibold" : "text-slate-400")}
+                                    title="Cantidad ejecutada / cantidad propuesta"
+                                  >
+                                    Cant: {act.cantidad_ejecutada != null ? `${act.cantidad_ejecutada} / ` : ""}{act.cantidad_objetivo} {act.unidad ?? ""}
                                   </span>
                                 )}
-                                <span className={cn("text-xs", excedeCosto ? "text-red-600 font-semibold" : "text-slate-400")}>
-                                  ${(act.costo_real ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} / ${(act.costo_presupuesto ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                <span
+                                  className={cn("text-xs", excedeCosto ? "text-red-600 font-semibold" : "text-slate-400")}
+                                  title="Costo real / costo presupuestado (material + mano de obra)"
+                                >
+                                  Costo: ${(act.costo_real ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} / ${(act.costo_presupuesto ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </span>
                                 {act.fecha_fin_plan && (
-                                  <span className="text-xs text-slate-400">Fin plan: {act.fecha_fin_plan}</span>
+                                  <span className="text-xs text-slate-400" title="Fecha planeada de finalización">Fin plan: {act.fecha_fin_plan}</span>
                                 )}
                                 {(act.holgura_dias ?? 0) > 0 && (
-                                  <span className="text-xs text-slate-400">Holgura: {act.holgura_dias}d</span>
+                                  <span className="text-xs text-slate-400" title="Días de margen antes de atrasar el proyecto -- 0 = ruta crítica">Holgura: {act.holgura_dias}d</span>
                                 )}
                               </div>
                                 )
@@ -458,18 +497,36 @@ export function ActividadesClient({
 
                       {puedeEditar && creandoActividadEn?.procesoId === proc.id && (
                         <div className="px-4 py-3 bg-slate-50/50 flex flex-col gap-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <input value={draftNuevaActividad.codigo} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, codigo: e.target.value })} className={cn(inputCls, "w-16")} placeholder="Código" />
-                            <input value={draftNuevaActividad.nombre} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, nombre: e.target.value })} className={cn(inputCls, "flex-1 min-w-[180px]")} placeholder="Nombre de la actividad" />
+                          <div className="flex items-end gap-2 flex-wrap">
+                            <CampoEtiquetado label="Código">
+                              <input value={draftNuevaActividad.codigo} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, codigo: e.target.value })} className={cn(inputCls, "w-16")} placeholder="Código" />
+                            </CampoEtiquetado>
+                            <CampoEtiquetado label="Nombre de la actividad" className="flex-1 min-w-[180px]">
+                              <input value={draftNuevaActividad.nombre} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, nombre: e.target.value })} className={cn(inputCls, "w-full")} placeholder="Nombre de la actividad" />
+                            </CampoEtiquetado>
                           </div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <input type="number" value={draftNuevaActividad.cantidad_objetivo ?? ""} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, cantidad_objetivo: e.target.value === "" ? null : parseFloat(e.target.value) || 0 })} className={cn(inputCls, "w-16")} placeholder="Cant." />
-                            <input value={draftNuevaActividad.unidad ?? ""} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, unidad: e.target.value || null })} className={cn(inputCls, "w-14")} placeholder="UM" />
-                            <input type="number" value={draftNuevaActividad.costo_material} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, costo_material: parseFloat(e.target.value) || 0 })} className={cn(inputCls, "w-20")} placeholder="Material $" />
-                            <input type="number" value={draftNuevaActividad.costo_mano_obra} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, costo_mano_obra: parseFloat(e.target.value) || 0 })} className={cn(inputCls, "w-20")} placeholder="M.O. $" />
-                            <input type="number" value={draftNuevaActividad.duracion_plan_dias} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, duracion_plan_dias: parseFloat(e.target.value) || 1 })} className={cn(inputCls, "w-16")} placeholder="Días" />
-                            <input type="date" value={draftNuevaActividad.fecha_inicio_plan ?? ""} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, fecha_inicio_plan: e.target.value || null })} className={cn(inputCls, "w-36")} />
-                            <input type="date" value={draftNuevaActividad.fecha_fin_plan ?? ""} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, fecha_fin_plan: e.target.value || null })} className={cn(inputCls, "w-36")} />
+                          <div className="flex items-end gap-2 flex-wrap">
+                            <CampoEtiquetado label="Cantidad propuesta">
+                              <input type="number" value={draftNuevaActividad.cantidad_objetivo ?? ""} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, cantidad_objetivo: e.target.value === "" ? null : parseFloat(e.target.value) || 0 })} className={cn(inputCls, "w-16")} placeholder="Cant." />
+                            </CampoEtiquetado>
+                            <CampoEtiquetado label="Unidad de medida">
+                              <input value={draftNuevaActividad.unidad ?? ""} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, unidad: e.target.value || null })} className={cn(inputCls, "w-14")} placeholder="UM" />
+                            </CampoEtiquetado>
+                            <CampoEtiquetado label="Presupuesto material ($)">
+                              <input type="number" value={draftNuevaActividad.costo_material} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, costo_material: parseFloat(e.target.value) || 0 })} className={cn(inputCls, "w-20")} placeholder="Material $" />
+                            </CampoEtiquetado>
+                            <CampoEtiquetado label="Presupuesto mano de obra ($)">
+                              <input type="number" value={draftNuevaActividad.costo_mano_obra} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, costo_mano_obra: parseFloat(e.target.value) || 0 })} className={cn(inputCls, "w-20")} placeholder="M.O. $" />
+                            </CampoEtiquetado>
+                            <CampoEtiquetado label="Duración (días)">
+                              <input type="number" value={draftNuevaActividad.duracion_plan_dias} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, duracion_plan_dias: parseFloat(e.target.value) || 1 })} className={cn(inputCls, "w-16")} placeholder="Días" />
+                            </CampoEtiquetado>
+                            <CampoEtiquetado label="Fecha inicio (plan)">
+                              <input type="date" value={draftNuevaActividad.fecha_inicio_plan ?? ""} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, fecha_inicio_plan: e.target.value || null })} className={cn(inputCls, "w-36")} />
+                            </CampoEtiquetado>
+                            <CampoEtiquetado label="Fecha fin (plan)">
+                              <input type="date" value={draftNuevaActividad.fecha_fin_plan ?? ""} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, fecha_fin_plan: e.target.value || null })} className={cn(inputCls, "w-36")} />
+                            </CampoEtiquetado>
                           </div>
                           <div className="flex items-center gap-2 justify-end">
                             <button onClick={() => { setCreandoActividadEn(null); setDraftNuevaActividad(actividadVacia) }} disabled={isPending} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-slate-200 text-xs text-slate-600 hover:bg-slate-50">
