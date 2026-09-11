@@ -40,15 +40,24 @@ const NOMBRES_MES = [
 const DIA_SEMANA = ["D", "L", "M", "M", "J", "V", "S"]
 
 // Color de la barra según el estado real de la actividad -- prioridad:
-// completada (verde) > atrasada (rojo, fin plan ya pasó y no se terminó)
-// > en progreso (ámbar) > programada/no iniciada (azul). La ruta crítica
-// ya no se distingue por color (chocaría con "atrasada" en rojo) sino
-// con un borde oscuro encima del color de estado, para poder ver ambas
-// cosas a la vez.
+// completada (verde) > atrasada (rojo) > en progreso (ámbar) >
+// programada/no iniciada (azul). La ruta crítica ya no se distingue por
+// color (chocaría con "atrasada" en rojo) sino con un borde oscuro
+// encima del color de estado, para poder ver ambas cosas a la vez.
+//
+// "Atrasada" cubre DOS casos, no solo uno:
+//   - Ya pasó la fecha de fin plan y no está completada.
+//   - Ya pasó la fecha de INICIO plan y todavía no arrancó (sigue
+//     "no_iniciada"/"bloqueada") -- una actividad que debía haber
+//     empezado ayer y sigue sin arrancar ya está atrasada, aunque su
+//     fecha de fin todavía no haya llegado.
 function colorBarra(act: Actividad, hoy: Date): string {
   if (act.estado === "completada") return "bg-emerald-500"
+  const inicioPlan = act.fecha_inicio_plan ? parseISO(act.fecha_inicio_plan) : null
   const finPlan = act.fecha_fin_plan ? parseISO(act.fecha_fin_plan) : null
-  if (finPlan && finPlan < hoy) return "bg-red-500"
+  const noTerminoATiempo = finPlan !== null && finPlan < hoy
+  const noArrancoATiempo = act.estado !== "en_progreso" && inicioPlan !== null && inicioPlan < hoy
+  if (noTerminoATiempo || noArrancoATiempo) return "bg-red-500"
   if (act.estado === "en_progreso") return "bg-amber-500"
   return "bg-[#3B72D8]"
 }
@@ -171,7 +180,7 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-[#3B72D8] rounded-sm" /> Programada</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-amber-500 rounded-sm" /> En progreso</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-emerald-500 rounded-sm" /> Completada</span>
-                <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-red-500 rounded-sm" /> Atrasada</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-red-500 rounded-sm" /> Atrasada (no arrancó o no terminó a tiempo)</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-[#3B72D8] rounded-sm border-2 border-slate-900" /> Ruta crítica</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-slate-200 rounded-sm" /> Fin de semana</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-0.5 h-2.5 bg-violet-600" /> Hoy</span>
