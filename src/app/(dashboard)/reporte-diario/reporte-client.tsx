@@ -125,9 +125,9 @@ function enCalendarioHoy(a: ActividadDB, hoyISO: string): boolean {
 // Separa una lista de actividades en "las que tocan hoy según
 // calendario" (se muestran primero) y "el resto" (detrás del botón
 // + Ver más actividades).
-function separarPorCalendario(actividades: ActividadDB[], hoyISO: string): { principales: ActividadDB[]; resto: ActividadDB[] } {
-  const principales: ActividadDB[] = []
-  const resto: ActividadDB[] = []
+function separarPorCalendario<T extends ActividadDB>(actividades: T[], hoyISO: string): { principales: T[]; resto: T[] } {
+  const principales: T[] = []
+  const resto: T[] = []
   for (const a of actividades) {
     (enCalendarioHoy(a, hoyISO) ? principales : resto).push(a)
   }
