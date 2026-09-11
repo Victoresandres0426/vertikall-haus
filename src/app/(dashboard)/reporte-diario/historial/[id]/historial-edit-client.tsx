@@ -32,6 +32,14 @@ type WorkerState = {
 
 type AvanceRow = { actividadId: string; cantidadHoy: number; porcentajeTotal: number | null; incidencias: string }
 
+// Texto de una opción del <select> de actividades -- incluye el % de
+// avance reportado hasta ahora para poder identificar de un vistazo
+// cuáles ya van avanzadas sin tener que salir a consultar Actividades.
+function labelActividad(a: ActividadHist): string {
+  const pct = a.avance_porcentaje ?? 0
+  return `${a.codigo} — ${a.nombre} (${pct}%)`
+}
+
 function estadoInicial(a: AsistenciaInicial | undefined): AsistenciaState {
   if (!a) return "ausente"
   if (!a.presente) return "ausente"
@@ -261,41 +269,51 @@ export function HistorialEditClient({
 
                   <div className="pt-2 border-t border-slate-100 space-y-2">
                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Actividad(es) de ese día</p>
-                    {w.splits.map((s, idx) => (
-                      <div key={idx} className="flex items-center gap-2 flex-wrap bg-slate-50 rounded-lg p-2">
-                        <select
-                          value={s.actividadId}
-                          onChange={(e) => updateSplit(w.id, idx, "actividadId", e.target.value)}
-                          className="flex-1 min-w-40 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
-                        >
-                          {actividades.map((a) => (
-                            <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
-                          ))}
-                        </select>
-                        <input
-                          value={s.rol}
-                          onChange={(e) => updateSplit(w.id, idx, "rol", e.target.value)}
-                          placeholder="Rol"
-                          className="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
-                        />
-                        <input
-                          type="number" value={s.horas}
-                          onChange={(e) => updateSplit(w.id, idx, "horas", Number(e.target.value))}
-                          placeholder="Horas"
-                          className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
-                        />
-                        <input
-                          type="number" value={s.avance}
-                          onChange={(e) => updateSplit(w.id, idx, "avance", Number(e.target.value))}
-                          placeholder="Avance"
-                          className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
-                        />
-                        <span className="text-[10px] text-slate-400">{actividadPorId.get(s.actividadId)?.unidad ?? ""}</span>
-                        <button onClick={() => quitarSplit(w.id, idx)} className="text-slate-300 hover:text-red-500">
-                          <X className="h-3.5 w-3.5" />
-                        </button>
+                    {w.splits.map((s, idx) => {
+                      const actSel = actividadPorId.get(s.actividadId)
+                      return (
+                      <div key={idx} className="bg-slate-50 rounded-lg p-2 space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <select
+                            value={s.actividadId}
+                            onChange={(e) => updateSplit(w.id, idx, "actividadId", e.target.value)}
+                            className="flex-1 min-w-40 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
+                          >
+                            {actividades.map((a) => (
+                              <option key={a.id} value={a.id}>{labelActividad(a)}</option>
+                            ))}
+                          </select>
+                          <input
+                            value={s.rol}
+                            onChange={(e) => updateSplit(w.id, idx, "rol", e.target.value)}
+                            placeholder="Rol"
+                            className="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
+                          />
+                          <input
+                            type="number" value={s.horas}
+                            onChange={(e) => updateSplit(w.id, idx, "horas", Number(e.target.value))}
+                            placeholder="Horas"
+                            className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
+                          />
+                          <input
+                            type="number" value={s.avance}
+                            onChange={(e) => updateSplit(w.id, idx, "avance", Number(e.target.value))}
+                            placeholder="Avance"
+                            className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
+                          />
+                          <span className="text-[10px] text-slate-400">{actSel?.unidad ?? ""}</span>
+                          <button onClick={() => quitarSplit(w.id, idx)} className="text-slate-300 hover:text-red-500">
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        {actSel && (
+                          <p className="text-[11px] text-slate-400 pl-1">
+                            Propuesto: {actSel.cantidad_objetivo ?? "—"} {actSel.unidad ?? ""} · Ejecutado a la fecha: {actSel.cantidad_ejecutada ?? 0} {actSel.unidad ?? ""} · {actSel.avance_porcentaje ?? 0}% avance
+                          </p>
+                        )}
                       </div>
-                    ))}
+                      )
+                    })}
                     <button
                       onClick={() => agregarSplit(w.id)}
                       className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1"
@@ -321,7 +339,14 @@ export function HistorialEditClient({
             return (
               <div key={r.actividadId} className="border border-slate-100 rounded-xl p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-800 truncate">{act?.codigo} — {act?.nombre ?? "—"}</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-800 truncate">{act?.codigo} — {act?.nombre ?? "—"}</p>
+                    {act && (
+                      <p className="text-[11px] text-slate-400">
+                        Propuesto: {act.cantidad_objetivo ?? "—"} {act.unidad ?? ""} · Ejecutado a la fecha: {act.cantidad_ejecutada ?? 0} {act.unidad ?? ""} · {act.avance_porcentaje ?? 0}% avance
+                      </p>
+                    )}
+                  </div>
                   <button onClick={() => quitarAvance(r.actividadId)} className="text-slate-300 hover:text-red-500 shrink-0">
                     <X className="h-4 w-4" />
                   </button>
@@ -355,7 +380,7 @@ export function HistorialEditClient({
             >
               <option value="">+ Agregar avance de otra actividad...</option>
               {actividadesDisponiblesParaAvance.map((a) => (
-                <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                <option key={a.id} value={a.id}>{labelActividad(a)}</option>
               ))}
             </select>
           )}
