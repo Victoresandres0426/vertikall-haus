@@ -11,6 +11,7 @@ type Actividad = {
   fecha_fin_plan: string | null
   es_critica: boolean
   activa: boolean | null
+  estado: string | null
 }
 
 type Proceso = {
@@ -38,6 +39,20 @@ const NOMBRES_MES = [
 
 const DIA_SEMANA = ["D", "L", "M", "M", "J", "V", "S"]
 
+// Color de la barra según el estado real de la actividad -- prioridad:
+// completada (verde) > atrasada (rojo, fin plan ya pasó y no se terminó)
+// > en progreso (ámbar) > programada/no iniciada (azul). La ruta crítica
+// ya no se distingue por color (chocaría con "atrasada" en rojo) sino
+// con un borde oscuro encima del color de estado, para poder ver ambas
+// cosas a la vez.
+function colorBarra(act: Actividad, hoy: Date): string {
+  if (act.estado === "completada") return "bg-emerald-500"
+  const finPlan = act.fecha_fin_plan ? parseISO(act.fecha_fin_plan) : null
+  if (finPlan && finPlan < hoy) return "bg-red-500"
+  if (act.estado === "en_progreso") return "bg-amber-500"
+  return "bg-[#3B72D8]"
+}
+
 export default async function GanttPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
@@ -52,7 +67,7 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
       procesos (
         id, codigo, nombre, orden,
         actividades (
-          id, codigo, nombre, fecha_inicio_plan, fecha_fin_plan, es_critica, activa
+          id, codigo, nombre, fecha_inicio_plan, fecha_fin_plan, es_critica, activa, estado
         )
       )
     `)
@@ -83,6 +98,11 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
 
   const rangeStart = parseISO(todasFechas.reduce((min, f) => (f < min ? f : min)))
   const rangeEnd = parseISO(todasFechas.reduce((max, f) => (f > max ? f : max)))
+
+  // "Hoy" en la misma zona horaria que usa el resto de la app (Reporte
+  // Diario, check-in, etc.) -- así la línea de hoy cae en el día correcto
+  // sin importar en qué servidor/zona corre el build.
+  const hoy = parseISO(new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" }))
 
   // ── Partimos el rango completo en tramos mensuales — una hoja impresa por mes ──
   type Tramo = { inicio: Date; fin: Date }
@@ -131,6 +151,14 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
         const pctFijo = 30 // % del ancho para código + nombre
         const pctDia = (100 - pctFijo) / nDias
 
+        // Línea vertical de "hoy" -- solo se dibuja si la fecha actual cae
+        // dentro de este tramo/mes. Se posiciona con un div absoluto sobre
+        // la tabla en vez de partir columnas, porque las barras usan
+        // colSpan y eso complicaría dibujar una línea continua.
+        const hoyEnTramo = hoy >= tramo.inicio && hoy <= tramo.fin
+        const hoyIdx = hoyEnTramo ? diasEntre(tramo.inicio, hoy) : -1
+        const hoyOffsetPct = pctFijo + (hoyIdx + 0.5) * pctDia
+
         return (
           <div key={tramoIdx} className="pagina-gantt mb-8">
             <div className="mb-2">
@@ -139,14 +167,25 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
                 {NOMBRES_MES[tramo.inicio.getMonth()]} {tramo.inicio.getFullYear()}
                 {tramo.inicio.getMonth() !== tramo.fin.getMonth() && ` – ${NOMBRES_MES[tramo.fin.getMonth()]} ${tramo.fin.getFullYear()}`}
               </h2>
-              <div className="flex items-center gap-4 text-[10px] text-slate-500 mt-1">
-                <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-[#3B72D8] rounded-sm" /> Actividad normal</span>
-                <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-red-500 rounded-sm" /> Ruta crítica</span>
+              <div className="flex items-center gap-4 text-[10px] text-slate-500 mt-1 flex-wrap">
+                <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-[#3B72D8] rounded-sm" /> Programada</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-amber-500 rounded-sm" /> En progreso</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-emerald-500 rounded-sm" /> Completada</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-red-500 rounded-sm" /> Atrasada</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-[#3B72D8] rounded-sm border-2 border-slate-900" /> Ruta crítica</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-slate-200 rounded-sm" /> Fin de semana</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-0.5 h-2.5 bg-violet-600" /> Hoy</span>
                 <span>◀ = continúa de la hoja anterior · ▶ = continúa en la siguiente</span>
               </div>
             </div>
 
+            <div className="relative">
+              {hoyEnTramo && (
+                <div
+                  className="absolute top-0 bottom-0 w-[2px] bg-violet-600 z-10 pointer-events-none print:block"
+                  style={{ left: `${hoyOffsetPct}%` }}
+                />
+              )}
             <table className="gantt text-[8px]">
               <colgroup>
                 <col style={{ width: "5%" }} />
@@ -201,7 +240,7 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
                           {startIdx > 0 && <td colSpan={startIdx} />}
                           <td colSpan={colSpanBar} className="p-0">
                             <div
-                              className={`h-3 mx-px flex items-center justify-center text-white text-[7px] ${act.es_critica ? "bg-red-500" : "bg-[#3B72D8]"}`}
+                              className={`h-3 mx-px flex items-center justify-center text-white text-[7px] ${colorBarra(act, hoy)} ${act.es_critica ? "border-2 border-slate-900" : ""}`}
                               style={{
                                 borderTopLeftRadius: antes ? 0 : 4,
                                 borderBottomLeftRadius: antes ? 0 : 4,
@@ -220,6 +259,7 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )
       })}
