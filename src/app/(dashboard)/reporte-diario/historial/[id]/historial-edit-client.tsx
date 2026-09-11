@@ -306,11 +306,18 @@ export function HistorialEditClient({
                             <X className="h-3.5 w-3.5" />
                           </button>
                         </div>
-                        {actSel && (
-                          <p className="text-[11px] text-slate-400 pl-1">
-                            Propuesto: {actSel.cantidad_objetivo ?? "—"} {actSel.unidad ?? ""} · Ejecutado a la fecha: {actSel.cantidad_ejecutada ?? 0} {actSel.unidad ?? ""} · {actSel.avance_porcentaje ?? 0}% avance
-                          </p>
-                        )}
+                        {actSel && (() => {
+                          const seSobregira = (actSel.cantidad_objetivo ?? 0) > 0 && (actSel.cantidad_ejecutada ?? 0) > (actSel.cantidad_objetivo as number)
+                          return (
+                            <p className="text-[11px] text-slate-400 pl-1">
+                              Propuesto: {actSel.cantidad_objetivo ?? "—"} {actSel.unidad ?? ""} · Ejecutado a la fecha:{" "}
+                              <span className={cn(seSobregira ? "text-red-600 font-semibold" : undefined)}>
+                                {actSel.cantidad_ejecutada ?? 0} {actSel.unidad ?? ""}
+                              </span>
+                              {" "}· <span className={cn(seSobregira ? "text-red-600 font-semibold" : undefined)}>{actSel.avance_porcentaje ?? 0}%</span> avance
+                            </p>
+                          )
+                        })()}
                       </div>
                       )
                     })}
@@ -344,7 +351,11 @@ export function HistorialEditClient({
                     <p className="text-sm font-medium text-slate-800 truncate">{act?.codigo} — {act?.nombre ?? "—"}</p>
                     {act && (
                       <p className="text-[11px] text-slate-400">
-                        Propuesto: {act.cantidad_objetivo ?? "—"} {act.unidad ?? ""} · Ejecutado a la fecha: {act.cantidad_ejecutada ?? 0} {act.unidad ?? ""} · {act.avance_porcentaje ?? 0}% avance
+                        Propuesto: {act.cantidad_objetivo ?? "—"} {act.unidad ?? ""} · Ejecutado a la fecha:{" "}
+                        <span className={cn(excedePresupuesto ? "text-red-600 font-semibold" : undefined)}>
+                          {act.cantidad_ejecutada ?? 0} {act.unidad ?? ""}
+                        </span>
+                        {" "}· <span className={cn(excedePresupuesto ? "text-red-600 font-semibold" : undefined)}>{act.avance_porcentaje ?? 0}%</span> avance
                       </p>
                     )}
                     {excedePresupuesto && (
