@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import Link from "next/link"
 import {
   CheckCircle, Clock, Send, CloudSun, HardHat, Users,
-  ChevronDown, Plus, X, History, CalendarClock,
+  ChevronDown, Plus, X, History, CalendarClock, AlertTriangle,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Header } from "@/components/layout/header"
@@ -877,7 +877,14 @@ export function ReporteClient({
                   const visibles = mostrarTodasAvance ? actividades : [...principales, ...restoConDatos]
                   return (
                     <>
-                  {visibles.map((a) => (
+                  {visibles.map((a) => {
+                    const acumulado = (a.cantidad_ejecutada ?? 0) + a.cantidad_hoy
+                    // Si lo acumulado (incluyendo lo de hoy) ya pasó la cantidad
+                    // presupuestada para esta actividad, avisamos -- es la causa
+                    // más común de "sobrecosto" sin que haya sobretrabajo real:
+                    // un error de tecleo en la cantidad reportada.
+                    const excedePresupuesto = (a.cantidad_objetivo ?? 0) > 0 && acumulado > (a.cantidad_objetivo as number)
+                    return (
                     <div key={a.id} className="border border-slate-200 rounded-lg p-3.5">
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <div>
@@ -898,7 +905,7 @@ export function ReporteClient({
                       <div className="space-y-1">
                         <div className="flex justify-between text-xs text-slate-500">
                           <span>
-                            Acum: {((a.cantidad_ejecutada ?? 0) + a.cantidad_hoy).toFixed(1)} {a.unidad ?? "und"} de {a.cantidad_objetivo ?? "—"}
+                            Acum: {acumulado.toFixed(1)} {a.unidad ?? "und"} de {a.cantidad_objetivo ?? "—"}
                           </span>
                           <span className={cn(
                             "font-medium",
@@ -909,6 +916,12 @@ export function ReporteClient({
                           </span>
                         </div>
                         <Progress value={a.avance_porcentaje} showLabel={false} size="sm" />
+                        {excedePresupuesto && (
+                          <p className="flex items-center gap-1.5 text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-md px-2 py-1 mt-1.5">
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                            Esto supera la cantidad presupuestada ({a.cantidad_objetivo} {a.unidad ?? "und"}). Revisa que la cantidad reportada sea correcta.
+                          </p>
+                        )}
                       </div>
                       <Input
                         label=""
@@ -922,7 +935,8 @@ export function ReporteClient({
                         className="mt-2 text-xs"
                       />
                     </div>
-                  ))}
+                    )
+                  })}
                   {!mostrarTodasAvance && restoSinDatos.length > 0 && (
                     <button
                       onClick={() => setMostrarTodasAvance(true)}

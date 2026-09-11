@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, X, Save, ArrowLeft } from "lucide-react"
+import { Plus, X, Save, ArrowLeft, AlertTriangle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input, Textarea } from "@/components/ui/input"
@@ -336,6 +336,7 @@ export function HistorialEditClient({
         <CardContent className="space-y-3">
           {avanceRows.map((r) => {
             const act = actividadPorId.get(r.actividadId)
+            const excedePresupuesto = !!act && (act.cantidad_objetivo ?? 0) > 0 && (act.cantidad_ejecutada ?? 0) > (act.cantidad_objetivo as number)
             return (
               <div key={r.actividadId} className="border border-slate-100 rounded-xl p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
@@ -344,6 +345,12 @@ export function HistorialEditClient({
                     {act && (
                       <p className="text-[11px] text-slate-400">
                         Propuesto: {act.cantidad_objetivo ?? "—"} {act.unidad ?? ""} · Ejecutado a la fecha: {act.cantidad_ejecutada ?? 0} {act.unidad ?? ""} · {act.avance_porcentaje ?? 0}% avance
+                      </p>
+                    )}
+                    {excedePresupuesto && (
+                      <p className="flex items-center gap-1.5 text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-md px-2 py-1 mt-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        Lo ejecutado ya supera la cantidad presupuestada. Revisa si la cantidad reportada es correcta.
                       </p>
                     )}
                   </div>
