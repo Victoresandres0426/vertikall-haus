@@ -33,6 +33,7 @@ type Actividad = {
   costo_material: number | null
   costo_mano_obra: number | null
   cantidad_objetivo: number | null
+  cantidad_ejecutada: number | null
   unidad: string | null
 }
 
@@ -405,15 +406,24 @@ export function ActividadesClient({
                                 {act.riesgo_nivel === "amarillo" && <AlertaBadge nivel="amarillo" />}
                               </div>
 
+                              {(() => {
+                                const excedeCantidad = (act.cantidad_objetivo ?? 0) > 0 && (act.cantidad_ejecutada ?? 0) > (act.cantidad_objetivo as number)
+                                const excedeCosto = (act.costo_presupuesto ?? 0) > 0 && (act.costo_real ?? 0) > act.costo_presupuesto
+                                return (
                               <div className="flex items-center gap-3 mt-1 flex-wrap">
                                 <Progress value={act.avance_porcentaje ?? 0} className="w-24 h-1" />
                                 <span className="text-xs text-slate-500">{act.avance_porcentaje ?? 0}%</span>
                                 {act.cantidad_objetivo != null && (
-                                  <span className="text-xs text-slate-400">{act.cantidad_objetivo} {act.unidad ?? ""}</span>
+                                  <span className={cn("text-xs", excedeCantidad ? "text-red-600 font-semibold" : "text-slate-400")}>
+                                    {act.cantidad_ejecutada != null ? `${act.cantidad_ejecutada} / ` : ""}{act.cantidad_objetivo} {act.unidad ?? ""}
+                                  </span>
                                 )}
-                                <span className="text-xs text-slate-400">
-                                  ${(act.costo_presupuesto ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                <span className={cn("text-xs", excedeCosto ? "text-red-600 font-semibold" : "text-slate-400")}>
+                                  ${(act.costo_real ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} / ${(act.costo_presupuesto ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </span>
+                              </div>
+                                )
+                              })()}
                                 {act.fecha_fin_plan && (
                                   <span className="text-xs text-slate-400">Fin plan: {act.fecha_fin_plan}</span>
                                 )}
