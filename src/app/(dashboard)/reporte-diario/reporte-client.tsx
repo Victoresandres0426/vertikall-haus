@@ -356,7 +356,9 @@ export function ReporteClient({
           const objetivo = a.cantidad_objetivo ?? 0
           const anterior = a.cantidad_ejecutada ?? 0
           const total = anterior + suma
-          const pct = objetivo > 0 ? Math.min(100, Math.round((total / objetivo) * 100)) : a.avance_porcentaje
+          // Sin tope en 100 -- si se reporta de más, el % debe reflejarlo
+          // tal cual (ej. 278%) para que sea visible el sobregiro real.
+          const pct = objetivo > 0 ? Math.round((total / objetivo) * 100) : a.avance_porcentaje
           return { ...a, cantidad_hoy: suma, avance_porcentaje: pct }
         })
       )
@@ -371,7 +373,7 @@ export function ReporteClient({
         const objetivo = a.cantidad_objetivo ?? 0
         const anterior = a.cantidad_ejecutada ?? 0
         const total = anterior + cantidad
-        const pct = objetivo > 0 ? Math.min(100, Math.round((total / objetivo) * 100)) : a.avance_porcentaje
+        const pct = objetivo > 0 ? Math.round((total / objetivo) * 100) : a.avance_porcentaje
         return { ...a, cantidad_hoy: cantidad, avance_porcentaje: pct }
       })
     )
