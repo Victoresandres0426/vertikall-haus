@@ -2,6 +2,24 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { ejecutarMotorDiario } from "@/lib/engine/motor"
+
+// Tras crear/editar una actividad (sobre todo si cambian sus fechas o
+// duración), recalcula la ruta crítica de todo el proyecto -- esto
+// reprograma en cascada las actividades sucesoras si el cambio las
+// afecta, y refresca es_critica/holgura y las alertas de cronograma. No
+// debe romper el guardado si falla: la actividad ya se guardó, que es
+// lo crítico; el error queda en logs.
+async function recalcularCronograma(supabase: Awaited<ReturnType<typeof createClient>>, proyectoId: string) {
+  try {
+    const motor = await ejecutarMotorDiario(supabase, proyectoId, new Date())
+    if (motor.errores.length > 0) {
+      console.error("Motor de reglas (tras editar actividad) terminó con errores:", motor.errores)
+    }
+  } catch (e) {
+    console.error("Motor de reglas (tras editar actividad) falló:", e)
+  }
+}
 
 const ROLES_EDITAN = ["project_manager", "administrador", "dueno", "superadmin"]
 
@@ -222,7 +240,12 @@ export async function crearActividad(
     return { error: "Error al crear la actividad." }
   }
 
+  await recalcularCronograma(supabase, proyectoId)
+
   revalidatePath("/actividades")
+  revalidatePath("/gantt")
+  revalidatePath("/dashboard")
+  revalidatePath("/alertas")
   return { id: data.id }
 }
 
@@ -239,7 +262,7 @@ export async function actualizarActividad(
   const costoMaterial = input.costo_material || 0
   const costoManoObra = input.costo_mano_obra || 0
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("actividades")
     .update({
       codigo: input.codigo?.trim() || "",
@@ -256,13 +279,24 @@ export async function actualizarActividad(
       es_critica: !!input.es_critica,
     })
     .eq("id", actividadId)
+    .select("proyecto_id")
+    .single()
 
   if (error) {
     console.error("actualizarActividad error:", error)
     return { error: "Error al actualizar la actividad." }
   }
 
+  // Si se tocó la fecha/duración, esto puede correr o atrasar toda la
+  // ruta crítica -- recalculamos el cronograma completo del proyecto
+  // (ver recalcularCronograma arriba) para que las actividades sucesoras
+  // se reprogramen automáticamente si corresponde.
+  if (data?.proyecto_id) await recalcularCronograma(supabase, data.proyecto_id)
+
   revalidatePath("/actividades")
+  revalidatePath("/gantt")
+  revalidatePath("/dashboard")
+  revalidatePath("/alertas")
   return {}
 }
 

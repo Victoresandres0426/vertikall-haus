@@ -36,7 +36,7 @@ export type ResultadoMotor = {
   alertas_actualizadas: number
   alertas_resueltas: number
   iidp: { score_total: number; tendencia: string } | null
-  ruta_critica: { actividades_criticas: number; actividades_actualizadas: number } | null
+  ruta_critica: { actividades_criticas: number; actividades_actualizadas: number; actividades_reprogramadas: number } | null
   conocimiento: { decisiones_evaluadas: number } | null
   errores: string[]
 }
@@ -138,24 +138,57 @@ export async function ejecutarMotorDiario(
 
       const cpm = calcularRutaCritica(actividadesCPM, dependenciasCPM)
 
+      // Solo reprogramamos actividades que YA tenían ambas fechas
+      // cargadas -- si una actividad nunca tuvo plan (ej. una partida
+      // "por definir" o de un change order aún sin fecha), no le vamos a
+      // inventar una fecha solo porque el CPM necesitó un valor de
+      // partida (usa "hoy" como piso interno para esos casos).
+      const teniaFechas = new Map(actividades.map((a) => [a.id, a.fecha_inicio_plan !== null && a.fecha_fin_plan !== null]))
+
       let criticas = 0
       let actualizadas = 0
+      let reprogramadas = 0
       for (const a of actividades) {
         const r = cpm.get(a.id)
         if (!r) continue
         if (r.es_critica) criticas++
-        // Sobrescribe es_critica en memoria para que las alertas de este
-        // mismo ciclo usen el valor recién calculado (no el que traía la BD).
-        const cambioEstado = a.es_critica !== r.es_critica
-        a.es_critica = r.es_critica
 
-        if (cambioEstado) {
+        const puedeReprogramar = teniaFechas.get(a.id) === true
+
+        // Reprogramación en cascada: si esta actividad depende de otra que
+        // se movió (o si su propia fecha manual quedaba antes de lo que
+        // sus predecesoras permiten), el pase hacia adelante del CPM ya
+        // calculó la fecha más temprana factible -- la persistimos de
+        // vuelta en fecha_inicio_plan/fecha_fin_plan para que el
+        // cronograma completo (Gantt, alertas, etc.) quede consistente,
+        // no solo el indicador es_critica/holgura.
+        const fechaCambio =
+          puedeReprogramar &&
+          (a.fecha_inicio_plan !== r.fecha_inicio_calculada || a.fecha_fin_plan !== r.fecha_fin_calculada)
+        const cambioEstado = a.es_critica !== r.es_critica
+
+        // Sobrescribe en memoria para que las alertas de este mismo ciclo
+        // (más abajo) usen los valores recién calculados, no los viejos.
+        a.es_critica = r.es_critica
+        if (puedeReprogramar) {
+          a.fecha_inicio_plan = r.fecha_inicio_calculada
+          a.fecha_fin_plan = r.fecha_fin_calculada
+        }
+
+        if (cambioEstado || fechaCambio) {
           const { error: errUpd } = await supabase
             .from("actividades")
-            .update({ es_critica: r.es_critica, holgura_dias: r.holgura_dias })
+            .update({
+              es_critica: r.es_critica,
+              holgura_dias: r.holgura_dias,
+              ...(fechaCambio ? { fecha_inicio_plan: r.fecha_inicio_calculada, fecha_fin_plan: r.fecha_fin_calculada } : {}),
+            })
             .eq("id", a.id)
           if (errUpd) errores.push(`Error guardando ruta crítica de ${a.codigo}: ${errUpd.message}`)
-          else actualizadas++
+          else {
+            actualizadas++
+            if (fechaCambio) reprogramadas++
+          }
         } else {
           const { error: errUpd } = await supabase
             .from("actividades")
@@ -164,7 +197,7 @@ export async function ejecutarMotorDiario(
           if (errUpd) errores.push(`Error guardando holgura de ${a.codigo}: ${errUpd.message}`)
         }
       }
-      resultado.ruta_critica = { actividades_criticas: criticas, actividades_actualizadas: actualizadas }
+      resultado.ruta_critica = { actividades_criticas: criticas, actividades_actualizadas: actualizadas, actividades_reprogramadas: reprogramadas }
     }
   } catch (e) {
     errores.push(`Error calculando ruta crítica: ${e instanceof Error ? e.message : String(e)}`)
