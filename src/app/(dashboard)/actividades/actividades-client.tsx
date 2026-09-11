@@ -421,9 +421,6 @@ export function ActividadesClient({
                                 <span className={cn("text-xs", excedeCosto ? "text-red-600 font-semibold" : "text-slate-400")}>
                                   ${(act.costo_real ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} / ${(act.costo_presupuesto ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </span>
-                              </div>
-                                )
-                              })()}
                                 {act.fecha_fin_plan && (
                                   <span className="text-xs text-slate-400">Fin plan: {act.fecha_fin_plan}</span>
                                 )}
@@ -431,6 +428,8 @@ export function ActividadesClient({
                                   <span className="text-xs text-slate-400">Holgura: {act.holgura_dias}d</span>
                                 )}
                               </div>
+                                )
+                              })()}
                             </div>
 
                             <div className="shrink-0 text-right hidden sm:block">
