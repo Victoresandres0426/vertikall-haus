@@ -56,18 +56,22 @@ export async function crearReporteDiario(input: {
 
   if (errReporte) return { error: errReporte.message }
 
-  // Insertar avances
+  // Insertar avances -- upsert (no insert) por (reporte_id, actividad_id):
+  // nunca debería llegar la misma actividad dos veces en un mismo envío,
+  // pero si por algún bug llegara a pasar, esto la reemplaza en vez de
+  // duplicarla (migración 065 agrega el candado único a nivel de BD).
   if (input.avances.length > 0) {
     const { error: errAvance } = await supabase
       .from("avance_diario")
-      .insert(
+      .upsert(
         input.avances.map((a) => ({
           reporte_id: reporte.id,
           actividad_id: a.actividad_id,
           cantidad_ejecutada_dia: a.cantidad_ejecutada_dia,
           porcentaje_avance_total: a.porcentaje_avance_total,
           incidencias: a.incidencias ?? null,
-        }))
+        })),
+        { onConflict: "reporte_id,actividad_id" }
       )
     if (errAvance) return { error: errAvance.message }
   }
