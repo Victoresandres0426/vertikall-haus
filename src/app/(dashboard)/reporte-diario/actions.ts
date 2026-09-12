@@ -104,19 +104,13 @@ export async function crearReporteDiario(input: {
     }
   }
 
-  // Actualizar avance_porcentaje en actividades
-  for (const avance of input.avances) {
-    if (avance.porcentaje_avance_total > 0) {
-      await supabase
-        .from("actividades")
-        .update({
-          avance_porcentaje: avance.porcentaje_avance_total,
-          cantidad_ejecutada: avance.cantidad_ejecutada_dia, // acumulado real del día
-          estado: avance.porcentaje_avance_total >= 100 ? "completada" : "en_progreso",
-        })
-        .eq("id", avance.actividad_id)
-    }
-  }
+  // NOTA: ya no hace falta actualizar aquí avance_porcentaje/
+  // cantidad_ejecutada/estado a mano -- el trigger
+  // trg_avance_diario_sync_cantidad (migración 064) se dispara solo con
+  // el INSERT INTO avance_diario de arriba, y recalcula esos campos
+  // como la SUMA real acumulada de todos los reportes de la actividad
+  // (antes se sobreescribían con solo lo de ESTE reporte, perdiendo lo
+  // acumulado en reportes anteriores).
 
   // ── Motor de reglas: recalcula desviaciones, alertas e IIDP ──
   // No debe romper el guardado del reporte si falla: el capataz ya
