@@ -92,3 +92,26 @@ export function truncar(texto: string, longitud: number): string {
   if (texto.length <= longitud) return texto
   return texto.substring(0, longitud) + '...'
 }
+
+// Procesa `items` en lotes de tamaño `tamanoLote`: cada lote corre en
+// paralelo, pero se espera a que termine antes de arrancar el siguiente.
+// Úsalo en vez de Promise.all(items.map(fn)) cuando fn hace una llamada
+// a la base de datos y `items` puede tener decenas o cientos de
+// elementos -- dispararlas TODAS a la vez puede agotar el pool de
+// conexiones del proyecto (sobre todo en Supabase en el plan gratis) y
+// dejar las últimas esperando un turno que nunca llega. En la práctica
+// eso se siente como que la operación se quedó colgada, sin ningún
+// error -- justo el síntoma que este helper evita.
+export async function procesarEnLotes<T, R>(
+  items: T[],
+  tamanoLote: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const resultados: R[] = []
+  for (let i = 0; i < items.length; i += tamanoLote) {
+    const lote = items.slice(i, i + tamanoLote)
+    const resultadosLote = await Promise.all(lote.map(fn))
+    resultados.push(...resultadosLote)
+  }
+  return resultados
+}

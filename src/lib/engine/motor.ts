@@ -17,6 +17,7 @@ import { calcularIIDP, calcularTendencia, type IIDPInputs } from "./iidp"
 import { agregarRendimiento, type ActividadPlanRendimiento, type TrabajadorDia } from "./rendimiento"
 import { umbralesDesdeConfig, pesosDesdeConfig, type ConfiguracionEmpresa } from "./types"
 import { calcularRutaCritica, type ActividadCPM, type DependenciaCPM } from "./cpm"
+import { procesarEnLotes } from "@/lib/utils"
 import {
   evaluarDecision,
   mejorAlternativaConocida,
@@ -156,11 +157,20 @@ export async function ejecutarMotorDiario(
       // UNA POR CADA CORRIDA DEL MOTOR (que se dispara tras cada reporte
       // diario, y también tras el backfill de Excel). Cada actividad es
       // independiente, así que ahora se arma la lista de actualizaciones
-      // necesarias y se disparan todas juntas con Promise.all. También se
-      // deja de forzar una escritura cuando NADA cambió (antes el branch
-      // "else" actualizaba holgura_dias en cada corrida aunque fuera
-      // idéntica a la que ya tenía la actividad).
-      const actualizacionesCPM: Promise<void>[] = []
+      // pendientes y se procesan en lotes de 10 en paralelo (procesarEnLotes
+      // -- disparar TODAS a la vez de un solo golpe puede agotar el pool de
+      // conexiones del proyecto de Supabase y dejar varias esperando un
+      // turno que nunca llega). También se deja de forzar una escritura
+      // cuando NADA cambió (antes el branch "else" actualizaba
+      // holgura_dias en cada corrida aunque fuera idéntica a la que ya
+      // tenía la actividad).
+      type PendienteCPM = {
+        actividadId: string
+        codigo: string
+        cambios: Record<string, unknown>
+        esReprogramacion: boolean
+      }
+      const pendientesCPM: PendienteCPM[] = []
       for (const a of actividades) {
         const r = cpm.get(a.id)
         if (!r) continue
@@ -194,32 +204,33 @@ export async function ejecutarMotorDiario(
         if (cambioEstado || fechaCambio) {
           if (fechaCambio) reprogramadas++
           actualizadas++
-          actualizacionesCPM.push(
-            supabase
-              .from("actividades")
-              .update({
-                es_critica: r.es_critica,
-                holgura_dias: r.holgura_dias,
-                ...(fechaCambio ? { fecha_inicio_plan: r.fecha_inicio_calculada, fecha_fin_plan: r.fecha_fin_calculada } : {}),
-              })
-              .eq("id", a.id)
-              .then(({ error: errUpd }: { error: { message: string } | null }) => {
-                if (errUpd) errores.push(`Error guardando ruta crítica de ${a.codigo}: ${errUpd.message}`)
-              })
-          )
+          pendientesCPM.push({
+            actividadId: a.id,
+            codigo: a.codigo,
+            esReprogramacion: true,
+            cambios: {
+              es_critica: r.es_critica,
+              holgura_dias: r.holgura_dias,
+              ...(fechaCambio ? { fecha_inicio_plan: r.fecha_inicio_calculada, fecha_fin_plan: r.fecha_fin_calculada } : {}),
+            },
+          })
         } else {
-          actualizacionesCPM.push(
-            supabase
-              .from("actividades")
-              .update({ holgura_dias: r.holgura_dias })
-              .eq("id", a.id)
-              .then(({ error: errUpd }: { error: { message: string } | null }) => {
-                if (errUpd) errores.push(`Error guardando holgura de ${a.codigo}: ${errUpd.message}`)
-              })
-          )
+          pendientesCPM.push({
+            actividadId: a.id,
+            codigo: a.codigo,
+            esReprogramacion: false,
+            cambios: { holgura_dias: r.holgura_dias },
+          })
         }
       }
-      await Promise.all(actualizacionesCPM)
+      await procesarEnLotes(pendientesCPM, 10, async (p) => {
+        const { error: errUpd } = await supabase.from("actividades").update(p.cambios).eq("id", p.actividadId)
+        if (errUpd) {
+          errores.push(
+            `Error guardando ${p.esReprogramacion ? "ruta crítica" : "holgura"} de ${p.codigo}: ${errUpd.message}`
+          )
+        }
+      })
       resultado.ruta_critica = { actividades_criticas: criticas, actividades_actualizadas: actualizadas, actividades_reprogramadas: reprogramadas }
     }
   } catch (e) {

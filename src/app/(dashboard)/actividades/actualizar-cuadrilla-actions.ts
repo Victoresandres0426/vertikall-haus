@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import { ejecutarMotorDiario } from "@/lib/engine/motor"
 import { extraerFilasCuadrillaDeExcel, type FilaCuadrilla } from "@/lib/importar-cuadrilla"
+import { procesarEnLotes } from "@/lib/utils"
 
 const ROLES_EDITAN = ["project_manager", "administrador", "dueno", "superadmin"]
 
@@ -129,11 +130,12 @@ export async function aplicarActualizacionCuadrilla(
   // actividades eso son ~90 idas y vueltas SECUENCIALES a Supabase antes
   // de siquiera llegar al motor (que hace su propia tanda de llamadas
   // secuenciales), lo que en la práctica se sentía como que el botón
-  // "Aplicar" se quedaba colgado varios minutos. Cada fila es
-  // independiente (filas distintas = actividades distintas), así que se
-  // disparan todas en paralelo con Promise.all y se espera el conjunto.
-  const resultados = await Promise.all(
-    filasAplicables.map(async (f) => {
+  // "Aplicar" se quedaba colgado varios minutos. Disparar las 90 a la
+  // vez con un solo Promise.all tampoco funcionó bien en la práctica --
+  // probablemente agota el pool de conexiones del proyecto de Supabase,
+  // dejando varias esperando un turno que nunca llega (mismo síntoma:
+  // colgado, sin error). Se procesan en lotes de 10 en paralelo.
+  const resultados = await procesarEnLotes(filasAplicables, 10, async (f) => {
       // personal_planeado/composicion_cuadrilla/productividad_plan_texto son
       // siempre de referencia (null si el Excel no traía nada). Cantidad,
       // duración y costos SOLO se tocan si el Excel trajo un número --
@@ -158,8 +160,7 @@ export async function aplicarActualizacionCuadrilla(
 
       if (error) console.error(`aplicarActualizacionCuadrilla - actividad ${f.actividadId}:`, error)
       return { codigo: f.codigo, ok: !error }
-    })
-  )
+  })
 
   let actualizadas = 0
   const errores: string[] = []
