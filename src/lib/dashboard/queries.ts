@@ -303,13 +303,26 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
     .eq("fecha", hoy)
     .eq("asistencia_diaria.presente", true)
 
-  // Avance global del proyecto: promedio ponderado de actividades
-  const avancePct =
-    avancePorProceso.length > 0
-      ? Math.round(
-          avancePorProceso.reduce((s, p) => s + p.real_pct, 0) / avancePorProceso.length
-        )
-      : 0
+  // Avance global del proyecto: promedio ponderado por costo_presupuesto
+  // de TODAS las actividades del proyecto (antes promediaba el real_pct
+  // YA ponderado de cada proceso, pero sin ponderar entre procesos --
+  // un proceso de 1 actividad pesaba igual que uno de 30, y por eso este
+  // número no coincidía con "Avance físico" de la ficha del proyecto,
+  // que sí pondera todas las actividades juntas). Misma convención que
+  // scoreCronograma/scoreFinanzas en lib/engine/iidp.ts.
+  const todasActividadesGlobal = ((procesosData ?? []) as (Proceso & {
+    actividades: Array<{ avance_porcentaje: number; costo_presupuesto: number }>
+  })[]).flatMap((p) => p.actividades ?? [])
+  const pesoTotalGlobal = todasActividadesGlobal.reduce(
+    (s, a) => s + (a.costo_presupuesto > 0 ? a.costo_presupuesto : 1), 0
+  )
+  const avancePct = pesoTotalGlobal > 0
+    ? Math.round(
+        todasActividadesGlobal.reduce(
+          (s, a) => s + (a.avance_porcentaje ?? 0) * (a.costo_presupuesto > 0 ? a.costo_presupuesto : 1), 0
+        ) / pesoTotalGlobal
+      )
+    : 0
 
   return {
     proyecto: proyecto as Proyecto,

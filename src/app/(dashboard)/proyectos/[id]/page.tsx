@@ -419,10 +419,17 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
   const desviacionPct = proyecto.presupuesto_base > 0
     ? ((costoTotal - proyecto.presupuesto_base) / proyecto.presupuesto_base) * 100 : 0
 
-  // Avance global (promedio ponderado de actividades)
+  // Avance global: promedio ponderado por costo_presupuesto de TODAS las
+  // actividades del proyecto (antes era un promedio simple sin ponderar
+  // -- el comentario decía "ponderado" pero no lo era, y por eso no
+  // coincidía con el % que muestra el Dashboard, que sí pondera por
+  // costo dentro de cada proceso). Misma convención que scoreCronograma/
+  // scoreFinanzas en lib/engine/iidp.ts: actividades sin presupuesto
+  // cuentan con peso 1.
   const todasActividades = procesos.flatMap((p) => p.actividades)
-  const avanceGlobal = todasActividades.length > 0
-    ? todasActividades.reduce((s, a) => s + (a.avance_porcentaje ?? 0), 0) / todasActividades.length
+  const pesoTotalAvance = todasActividades.reduce((s, a) => s + (a.costo_presupuesto > 0 ? a.costo_presupuesto : 1), 0)
+  const avanceGlobal = pesoTotalAvance > 0
+    ? todasActividades.reduce((s, a) => s + (a.avance_porcentaje ?? 0) * (a.costo_presupuesto > 0 ? a.costo_presupuesto : 1), 0) / pesoTotalAvance
     : 0
 
   const actividadesCriticas = todasActividades.filter((a) => a.es_critica && a.estado !== "completada")
