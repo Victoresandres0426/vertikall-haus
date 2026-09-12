@@ -19,6 +19,8 @@ import { ZonaHoraria } from "./zona-horaria"
 import { ArchivosProyecto, type ArchivoProyecto } from "./archivos-proyecto"
 import { EstadoProyecto } from "./estado-proyecto"
 import { SeccionDesplegable } from "./seccion-desplegable"
+import { scoreProductividad } from "@/lib/engine/iidp"
+import { pesosDesdeConfig } from "@/lib/engine/types"
 
 // ── Tipos ────────────────────────────────────────────────────
 
@@ -93,7 +95,7 @@ async function getData(id: string) {
     .select(`
       id, codigo, nombre, cliente, cliente_email, cliente_telefono, coordenadas, hora_entrada_esperada, ubicacion, zona_horaria, estado,
       fecha_inicio_plan, fecha_fin_plan, fecha_inicio_real, fecha_fin_forecast,
-      presupuesto_base, presupuesto_venta, margen_objetivo
+      presupuesto_base, presupuesto_venta, margen_objetivo, configuracion
     `)
     .eq("id", id)
     .single()
@@ -281,12 +283,59 @@ async function getData(id: string) {
     }
   } catch { /* migración no aplicada aún */ }
 
+  // Productividad "en vivo": el snapshot más reciente POR FECHA (iidp[0])
+  // puede quedarse con un score_productividad viejo si lo último que se
+  // editó fue un reporte de un día PASADO (vía historial) -- solo ese día
+  // se recalcula, no el snapshot más reciente. Se recalcula sumando las
+  // columnas crudas de TODOS los snapshots del proyecto (misma fórmula
+  // que usa el motor), y se parcha sobre el snapshot más reciente antes
+  // de devolverlo.
+  const { data: totalesRendimientoRaw } = await supabase
+    .from("iidp_snapshots")
+    .select("horas_reales_dia, horas_equivalentes_plan_dia")
+    .eq("proyecto_id", id)
+
+  let sumaHorasReales = 0
+  let sumaHorasEquivPlan = 0
+  for (const s of (totalesRendimientoRaw ?? []) as { horas_reales_dia: number | null; horas_equivalentes_plan_dia: number | null }[]) {
+    sumaHorasReales += Number(s.horas_reales_dia ?? 0)
+    sumaHorasEquivPlan += Number(s.horas_equivalentes_plan_dia ?? 0)
+  }
+  const productividadActual = scoreProductividad(sumaHorasEquivPlan, sumaHorasReales)
+
+  // Los pesos del IIDP viven en empresas.configuracion (no en
+  // proyectos.configuracion, que solo guarda umbrales) -- mismo lugar de
+  // donde los lee el motor (ver lib/engine/motor.ts).
+  let pesosConfig: { iidp_pesos?: Record<string, number> } | null = null
+  if (perfil?.empresa_id) {
+    const { data: empresaRow } = await supabase
+      .from("empresas")
+      .select("configuracion")
+      .eq("id", perfil.empresa_id)
+      .single()
+    pesosConfig = (empresaRow?.configuracion ?? null) as { iidp_pesos?: Record<string, number> } | null
+  }
+  const pesos = pesosDesdeConfig(pesosConfig as never)
+
+  const iidpSnapshots = (iidpRes.data ?? []) as unknown as IIDPSnapshot[]
+  if (iidpSnapshots.length > 0) {
+    const s = iidpSnapshots[0]
+    const scoreTotalActual =
+      s.score_cronograma * pesos.cronograma +
+      s.score_finanzas * pesos.finanzas +
+      productividadActual * pesos.productividad +
+      s.score_calidad * pesos.calidad +
+      s.score_logistica * pesos.logistica +
+      s.score_gestion * pesos.gestion
+    iidpSnapshots[0] = { ...s, score_productividad: productividadActual, score_total: scoreTotalActual }
+  }
+
   return {
     proyecto: proyecto as Proyecto,
     archivos,
     usuarioId: user.id,
     procesos: (procesosRes.data ?? []) as unknown as Proceso[],
-    iidp: (iidpRes.data ?? []) as unknown as IIDPSnapshot[],
+    iidp: iidpSnapshots,
     alertas: (alertasRes.data ?? []) as unknown as Alerta[],
     changeOrders: (coRes.data ?? []) as unknown as ChangeOrder[],
     costos: (costosRes.data ?? []) as unknown as CostoReal[],

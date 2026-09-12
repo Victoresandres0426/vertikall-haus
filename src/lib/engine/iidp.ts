@@ -92,7 +92,16 @@ function scoreFinanzas(actividades: ActividadParaMotor[]): number {
 // por trabajador/actividad/día. Un rendimiento >100% (se avanzó más
 // rápido de lo planeado) se recorta a 100 para el score -- el detalle
 // sin recortar queda disponible en `detalle` para quien quiera revisarlo.
-function scoreProductividad(horasEquivalentesPlanAcum: number, horasRealesAcum: number): number {
+// Exportada: además de usarse aquí, la usan las páginas de dashboard y
+// proyecto/[id] para recalcular Productividad "en vivo" a partir de la
+// SUMA de horas_reales_dia/horas_equivalentes_plan_dia de TODOS los
+// snapshots del proyecto -- no basta con confiar en el score_productividad
+// ya guardado en el snapshot más reciente por fecha, porque al editar un
+// reporte de un día PASADO (vía historial) solo se recalcula el snapshot
+// de ESE día; el snapshot más reciente (ej. el de hoy) no se toca y se
+// queda con su score viejo (a veces el 70 de respaldo) aunque la
+// productividad acumulada real ya haya cambiado.
+export function scoreProductividad(horasEquivalentesPlanAcum: number, horasRealesAcum: number): number {
   if (horasRealesAcum <= 0) return 70 // todavía no hay historial: valor neutral, no se penaliza
   return clamp0a100((horasEquivalentesPlanAcum / horasRealesAcum) * 100)
 }

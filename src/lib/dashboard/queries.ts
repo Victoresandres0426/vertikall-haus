@@ -6,6 +6,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import type { Proyecto, Alerta, IIDPSnapshot, Proceso } from "@/types/database"
+import { scoreProductividad } from "@/lib/engine/iidp"
 
 // ─── TIPOS DE RESPUESTA ───────────────────────────────────────
 
@@ -152,16 +153,49 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
     calidad: 0.15, logistica: 0.10, gestion: 0.05,
   }
 
+  // Productividad "en vivo": no basta con el score_productividad ya
+  // guardado en ultimoSnap (el snapshot más reciente POR FECHA) -- si lo
+  // último que se editó fue un reporte de un día PASADO (vía historial),
+  // solo se recalculó el snapshot de ese día; el más reciente por fecha
+  // (ej. el de hoy) se queda con su score viejo. Para que Productividad
+  // siempre refleje la última edición sin importar qué día se tocó, se
+  // sumán las columnas crudas de TODOS los snapshots del proyecto y se
+  // recalcula el score al vuelo (misma fórmula que usa el motor).
+  const { data: totalesRendimientoRaw } = await supabase
+    .from("iidp_snapshots")
+    .select("horas_reales_dia, horas_equivalentes_plan_dia")
+    .eq("proyecto_id", pid)
+
+  let sumaHorasReales = 0
+  let sumaHorasEquivPlan = 0
+  for (const s of (totalesRendimientoRaw ?? []) as { horas_reales_dia: number | null; horas_equivalentes_plan_dia: number | null }[]) {
+    sumaHorasReales += Number(s.horas_reales_dia ?? 0)
+    sumaHorasEquivPlan += Number(s.horas_equivalentes_plan_dia ?? 0)
+  }
+  const productividadActual = scoreProductividad(sumaHorasEquivPlan, sumaHorasReales)
+
   const scoreComponentes: ComponenteIIDP[] = ultimoSnap
     ? [
         { label: "Cronograma", score: Math.round(ultimoSnap.score_cronograma), peso: `${Math.round(pesos.cronograma * 100)}%` },
         { label: "Finanzas", score: Math.round(ultimoSnap.score_finanzas), peso: `${Math.round(pesos.finanzas * 100)}%` },
-        { label: "Productividad", score: Math.round(ultimoSnap.score_productividad), peso: `${Math.round(pesos.productividad * 100)}%` },
+        { label: "Productividad", score: Math.round(productividadActual), peso: `${Math.round(pesos.productividad * 100)}%` },
         { label: "Calidad", score: Math.round(ultimoSnap.score_calidad), peso: `${Math.round(pesos.calidad * 100)}%` },
         { label: "Logística", score: Math.round(ultimoSnap.score_logistica), peso: `${Math.round(pesos.logistica * 100)}%` },
         { label: "Gestión", score: Math.round(ultimoSnap.score_gestion), peso: `${Math.round(pesos.gestion * 100)}%` },
       ]
     : []
+
+  // score_total recalculado con la productividad fresca (los demás
+  // componentes sí reflejan el último snapshot corrido, no tienen el
+  // mismo problema de "día equivocado").
+  const scoreTotalActual = ultimoSnap
+    ? ultimoSnap.score_cronograma * pesos.cronograma +
+      ultimoSnap.score_finanzas * pesos.finanzas +
+      productividadActual * pesos.productividad +
+      ultimoSnap.score_calidad * pesos.calidad +
+      ultimoSnap.score_logistica * pesos.logistica +
+      ultimoSnap.score_gestion * pesos.gestion
+    : 0
 
   // 4. Alertas activas
   const { data: alertasData } = await supabase
@@ -279,7 +313,7 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
 
   return {
     proyecto: proyecto as Proyecto,
-    iidpActual: ultimoSnap ? Math.round(ultimoSnap.score_total) : 0,
+    iidpActual: ultimoSnap ? Math.round(scoreTotalActual) : 0,
     iidpHistorial,
     scoreComponentes,
     alertas,
