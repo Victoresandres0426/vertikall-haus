@@ -73,16 +73,31 @@ function CampoEtiquetado({ label, className, children }: { label: string; classN
 // Color según qué tan cerca (o lejos) del plan quedó el rendimiento --
 // no es una nota "buena/mala" absoluta, solo resalta lo que más se aleja
 // de 100% (tanto por debajo -- se produjo menos de lo esperado -- como
-// muy por encima, que suele indicar que avance_cantidad se cargó mal).
+// muy por encima, que casi siempre es plan mal calibrado, no que de
+// verdad se produjo varias veces más rápido de lo humanamente posible).
 function colorRendimiento(pct: number | null): string {
   if (pct === null) return "text-slate-400"
   if (pct < 70) return "text-red-600"
   if (pct < 90) return "text-amber-600"
+  if (pct > 150) return "text-amber-600"
   return "text-emerald-600"
 }
 
 function formatoPct(pct: number | null): string {
   return pct === null ? "—" : `${Math.round(pct)}%`
+}
+
+// Un rendimiento muy por encima de 100% casi nunca significa que se
+// trabajó varias veces más rápido de lo planeado -- lo más común es que
+// el plan de la actividad (cantidad propuesta / duración en días /
+// personal planeado) todavía no está calibrado para este cálculo por
+// hora-hombre (ej. una duración puesta a ojo antes de que existiera este
+// indicador). Se avisa en vez de dejar el número solo, que se ve como un
+// error del sistema cuando en realidad es un dato de plan por revisar.
+function avisoRendimiento(pct: number | null): string | null {
+  if (pct === null) return null
+  if (pct > 150) return "revisa cantidad, duración o personal planeado de la actividad"
+  return null
 }
 
 function estadoInicial(a: AsistenciaInicial | undefined): AsistenciaState {
@@ -372,20 +387,30 @@ export function HistorialEditClient({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex items-center gap-2">
-            <span className={cn("text-2xl font-bold", colorRendimiento(rendimientoDia.pct))}>
-              {formatoPct(rendimientoDia.pct)}
-            </span>
-            <span className="text-xs text-slate-400">rendimiento del día completo</span>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className={cn("text-2xl font-bold", colorRendimiento(rendimientoDia.pct))}>
+                {formatoPct(rendimientoDia.pct)}
+              </span>
+              <span className="text-xs text-slate-400">rendimiento del día completo</span>
+            </div>
+            {avisoRendimiento(rendimientoDia.pct) && (
+              <p className="text-xs text-amber-600 mt-0.5">⚠ {avisoRendimiento(rendimientoDia.pct)}</p>
+            )}
           </div>
           {rendimientoPorTrabajador.length === 0 ? (
             <p className="text-sm text-slate-400">Sin avance por actividad registrado este día.</p>
           ) : (
             <div className="space-y-1.5">
               {rendimientoPorTrabajador.map((r) => (
-                <div key={r.trabajadorId} className="flex items-center justify-between gap-2 text-sm border-b border-slate-50 pb-1.5 last:border-0">
-                  <span className="text-slate-700">{r.nombre}</span>
-                  <span className={cn("font-semibold", colorRendimiento(r.pct))}>{formatoPct(r.pct)}</span>
+                <div key={r.trabajadorId} className="border-b border-slate-50 pb-1.5 last:border-0">
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <span className="text-slate-700">{r.nombre}</span>
+                    <span className={cn("font-semibold", colorRendimiento(r.pct))}>{formatoPct(r.pct)}</span>
+                  </div>
+                  {avisoRendimiento(r.pct) && (
+                    <p className="text-[11px] text-amber-600">⚠ {avisoRendimiento(r.pct)}</p>
+                  )}
                 </div>
               ))}
             </div>
