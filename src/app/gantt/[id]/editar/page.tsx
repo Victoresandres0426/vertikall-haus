@@ -32,7 +32,7 @@ export default async function GanttEditarPage({ params }: { params: Promise<{ id
   const { data: proyecto, error } = await supabase
     .from("proyectos")
     .select(`
-      id, codigo, nombre,
+      id, codigo, nombre, fecha_inicio_plan,
       procesos (
         id, codigo, nombre, orden,
         actividades (
@@ -70,8 +70,16 @@ export default async function GanttEditarPage({ params }: { params: Promise<{ id
   const rangeStartReal = parseISO(todasFechas.reduce((min, f) => (f < min ? f : min)))
   const rangeEndReal = parseISO(todasFechas.reduce((max, f) => (f > max ? f : max)))
 
-  const rangeStart = new Date(rangeStartReal)
-  rangeStart.setDate(rangeStart.getDate() - COLCHON_ANTES_DIAS)
+  const rangeStartConColchon = new Date(rangeStartReal)
+  rangeStartConColchon.setDate(rangeStartConColchon.getDate() - COLCHON_ANTES_DIAS)
+
+  // El colchón nunca debe cruzar hacia atrás del inicio oficial del
+  // proyecto -- si el proyecto empieza el 7 de sept, no tiene sentido
+  // mostrar (ni dejar arrastrar una barra hacia) días antes de esa
+  // fecha, aunque la actividad más temprana ya caiga justo ahí.
+  const inicioProyecto = proyecto.fecha_inicio_plan ? parseISO(proyecto.fecha_inicio_plan) : null
+  const rangeStart = inicioProyecto && inicioProyecto > rangeStartConColchon ? inicioProyecto : rangeStartConColchon
+
   const rangeEnd = new Date(rangeEndReal)
   rangeEnd.setDate(rangeEnd.getDate() + COLCHON_DESPUES_DIAS)
 
