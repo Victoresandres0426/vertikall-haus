@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
 import Link from "next/link"
 import {
   CheckCircle, Clock, Send, CloudSun, HardHat, Users,
@@ -87,6 +87,10 @@ type TrabajadorLocal = TrabajadorDB & {
 type ActividadLocal = ActividadDB & {
   cantidad_hoy: number
   incidencias: string
+  // true mientras "cantidad_hoy" siga viniendo automáticamente de la suma
+  // de los splits de Asistencia -- se apaga (false) en cuanto el capataz
+  // edita el número a mano en el Paso 2, para no pisarle su corrección.
+  auto: boolean
 }
 
 // ──────────────────────────────────────────────
@@ -220,6 +224,7 @@ export function ReporteClient({
       ...a,
       cantidad_hoy: 0,
       incidencias: "",
+      auto: true,
     }))
   )
 
@@ -234,6 +239,7 @@ export function ReporteClient({
         ...a,
         cantidad_hoy: 0,
         incidencias: "",
+        auto: true,
       }))
     )
     setTrabajadores(
@@ -333,13 +339,23 @@ export function ReporteClient({
     )
   }
 
-  // Al pasar de Asistencia a Avance, precarga el avance de cada actividad
-  // con la SUMA de lo que cada trabajador reportó en sus splits -- el
-  // capataz puede seguir ajustándolo a mano en el paso 2 (por ejemplo,
-  // para actividades sin un trabajador específico asignado, como
-  // subcontratos). Solo se sobreescriben las actividades que sí tuvieron
-  // avance reportado por algún trabajador.
+  // El avance de cada actividad se mantiene sincronizado EN VIVO con la
+  // SUMA de lo que los trabajadores reportaron en sus splits de
+  // Asistencia (ver efecto más abajo) -- así no depende de dar clic en
+  // "Continuar con Avance" para que se refleje: si el capataz agrega o
+  // corrige un split después, aunque salte directo al paso 2 con el
+  // selector de arriba, el avance ya aparece. Aquí solo se cambia de paso.
   const handleContinuarAvance = () => {
+    setPaso(2)
+  }
+
+  // Mientras "auto" siga en true, cantidad_hoy de cada actividad se
+  // recalcula solo, como la suma de los splits (de cualquier trabajador
+  // no ausente) que apunten a ella. En cuanto el capataz edita el número
+  // a mano en el Paso 2, se apaga "auto" para esa actividad y deja de
+  // tocarse aquí -- así no se le pisa su corrección (ej. para
+  // subcontratos sin trabajador de planilla asignado).
+  useEffect(() => {
     const sumas: Record<string, number> = {}
     for (const t of trabajadores) {
       if (t.asistencia === "ausente") continue
@@ -348,23 +364,25 @@ export function ReporteClient({
         sumas[s.actividadId] = (sumas[s.actividadId] ?? 0) + s.avance
       }
     }
-    if (Object.keys(sumas).length > 0) {
-      setActividades((prev) =>
-        prev.map((a) => {
-          const suma = sumas[a.id]
-          if (suma === undefined) return a
-          const objetivo = a.cantidad_objetivo ?? 0
-          const anterior = a.cantidad_ejecutada ?? 0
-          const total = anterior + suma
-          // Sin tope en 100 -- si se reporta de más, el % debe reflejarlo
-          // tal cual (ej. 278%) para que sea visible el sobregiro real.
-          const pct = objetivo > 0 ? Math.round((total / objetivo) * 100) : a.avance_porcentaje
-          return { ...a, cantidad_hoy: suma, avance_porcentaje: pct }
-        })
-      )
-    }
-    setPaso(2)
-  }
+    setActividades((prev) => {
+      let cambio = false
+      const next = prev.map((a) => {
+        if (!a.auto) return a
+        const suma = sumas[a.id] ?? 0
+        if (suma === a.cantidad_hoy) return a
+        cambio = true
+        const objetivo = a.cantidad_objetivo ?? 0
+        const anterior = a.cantidad_ejecutada ?? 0
+        const total = anterior + suma
+        // Sin tope en 100 -- si se reporta de más, el % debe reflejarlo
+        // tal cual (ej. 278%) para que sea visible el sobregiro real.
+        const pct = objetivo > 0 ? Math.round((total / objetivo) * 100) : a.avance_porcentaje
+        return { ...a, cantidad_hoy: suma, avance_porcentaje: pct }
+      })
+      return cambio ? next : prev
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trabajadores])
 
   const updateCantidad = (id: string, cantidad: number) => {
     setActividades((prev) =>
@@ -374,7 +392,9 @@ export function ReporteClient({
         const anterior = a.cantidad_ejecutada ?? 0
         const total = anterior + cantidad
         const pct = objetivo > 0 ? Math.round((total / objetivo) * 100) : a.avance_porcentaje
-        return { ...a, cantidad_hoy: cantidad, avance_porcentaje: pct }
+        // El capataz editó el número a mano -- deja de auto-sincronizarse
+        // con los splits de Asistencia para esta actividad.
+        return { ...a, cantidad_hoy: cantidad, avance_porcentaje: pct, auto: false }
       })
     )
   }

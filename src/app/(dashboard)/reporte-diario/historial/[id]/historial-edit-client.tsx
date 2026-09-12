@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, X, Save, ArrowLeft, AlertTriangle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -30,7 +30,12 @@ type WorkerState = {
   splits: { actividadId: string; rol: string; horas: number; avance: number }[]
 }
 
-type AvanceRow = { actividadId: string; cantidadHoy: number; porcentajeTotal: number | null; incidencias: string }
+// "auto" = true mientras cantidadHoy siga viniendo automáticamente de la
+// suma de los splits de Asistencia que apuntan a esta actividad -- se
+// apaga (false) en cuanto alguien la agrega a mano con "+ Agregar avance
+// de otra actividad" o edita el número directamente en su tarjeta, para
+// no pisarle esa corrección.
+type AvanceRow = { actividadId: string; cantidadHoy: number; porcentajeTotal: number | null; incidencias: string; auto: boolean }
 
 // Texto de una opción del <select> de actividades -- incluye el % de
 // avance reportado hasta ahora para poder identificar de un vistazo
@@ -98,6 +103,9 @@ export function HistorialEditClient({
       cantidadHoy: v.cantidad_ejecutada_dia,
       porcentajeTotal: v.porcentaje_avance_total,
       incidencias: v.incidencias,
+      // Ya guardado previamente -- se trata como dato manual/definitivo,
+      // no se sobreescribe solo porque coincida con un split.
+      auto: false,
     }))
   )
 
@@ -138,7 +146,7 @@ export function HistorialEditClient({
 
   const agregarAvance = (actividadId: string) => {
     if (!actividadId) return
-    setAvanceRows((prev) => [...prev, { actividadId, cantidadHoy: 0, porcentajeTotal: actividadPorId.get(actividadId)?.avance_porcentaje ?? 0, incidencias: "" }])
+    setAvanceRows((prev) => [...prev, { actividadId, cantidadHoy: 0, porcentajeTotal: actividadPorId.get(actividadId)?.avance_porcentaje ?? 0, incidencias: "", auto: false }])
   }
 
   const quitarAvance = (actividadId: string) => {
@@ -146,8 +154,61 @@ export function HistorialEditClient({
   }
 
   const updateAvance = (actividadId: string, field: "cantidadHoy" | "porcentajeTotal" | "incidencias", value: string | number) => {
-    setAvanceRows((prev) => prev.map((r) => (r.actividadId === actividadId ? { ...r, [field]: value } : r)))
+    setAvanceRows((prev) => prev.map((r) => {
+      if (r.actividadId !== actividadId) return r
+      // Edición manual -- deja de auto-sincronizarse con los splits de Asistencia.
+      const dejaDeSerAuto = field === "cantidadHoy" || field === "porcentajeTotal"
+      return { ...r, [field]: value, auto: dejaDeSerAuto ? false : r.auto }
+    }))
   }
+
+  // Mantiene "Avance por actividad" sincronizado en vivo con lo que se
+  // asigna en los splits de Asistencia de cada trabajador: si una
+  // actividad recibe cantidad ahí y todavía no tiene su tarjeta de
+  // avance, se crea sola; si ya la tiene y sigue siendo "auto", se
+  // actualiza. Las filas ya guardadas antes (o editadas a mano) no se
+  // tocan -- solo las que el propio sistema generó automáticamente.
+  useEffect(() => {
+    const sumas: Record<string, number> = {}
+    for (const w of workers) {
+      if (w.asistencia === "ausente") continue
+      for (const s of w.splits) {
+        if (!s.actividadId || !s.avance || s.avance <= 0) continue
+        sumas[s.actividadId] = (sumas[s.actividadId] ?? 0) + s.avance
+      }
+    }
+    setAvanceRows((prev) => {
+      let cambio = false
+      const conservadas = prev.filter((r) => {
+        if (!r.auto) return true
+        const sigueVigente = sumas[r.actividadId] !== undefined
+        if (!sigueVigente) cambio = true
+        return sigueVigente
+      })
+      const next = conservadas.map((r) => {
+        if (!r.auto) return r
+        const suma = sumas[r.actividadId]
+        if (suma === r.cantidadHoy) return r
+        cambio = true
+        const act = actividadPorId.get(r.actividadId)
+        const objetivo = act?.cantidad_objetivo ?? 0
+        const base = act?.cantidad_ejecutada ?? 0
+        const pct = objetivo > 0 ? Math.round(((base + suma) / objetivo) * 100) : r.porcentajeTotal
+        return { ...r, cantidadHoy: suma, porcentajeTotal: pct }
+      })
+      for (const [actividadId, suma] of Object.entries(sumas)) {
+        if (next.some((r) => r.actividadId === actividadId)) continue
+        cambio = true
+        const act = actividadPorId.get(actividadId)
+        const objetivo = act?.cantidad_objetivo ?? 0
+        const base = act?.cantidad_ejecutada ?? 0
+        const pct = objetivo > 0 ? Math.round(((base + suma) / objetivo) * 100) : (act?.avance_porcentaje ?? 0)
+        next.push({ actividadId, cantidadHoy: suma, porcentajeTotal: pct, incidencias: "", auto: true })
+      }
+      return cambio ? next : prev
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workers])
 
   const handleGuardar = () => {
     setError("")
