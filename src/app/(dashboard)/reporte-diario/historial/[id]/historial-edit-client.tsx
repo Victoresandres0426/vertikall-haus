@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useEffect } from "react"
+import { useState, useTransition, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, X, Save, ArrowLeft, AlertTriangle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -20,6 +20,13 @@ export type AvanceInicial = { cantidad_ejecutada_dia: number; porcentaje_avance_
 
 type AsistenciaState = "presente" | "medio_dia" | "ausente"
 
+// "horasAuto" = true mientras las horas de ese renglón sigan viniendo
+// del reparto automático de las horas regulares del trabajador entre
+// sus actividades del día (en vez de un número puesto a mano) -- se
+// apaga (false) en cuanto el capataz edita el campo "Horas" de ese
+// renglón directamente, para no pisarle esa corrección.
+type SplitState = { actividadId: string; rol: string; horas: number; avance: number; horasAuto: boolean }
+
 type WorkerState = {
   id: string
   nombre_completo: string
@@ -27,7 +34,7 @@ type WorkerState = {
   asistencia: AsistenciaState
   horasRegulares: number
   horasExtra: number
-  splits: { actividadId: string; rol: string; horas: number; avance: number }[]
+  splits: SplitState[]
 }
 
 // "auto" = true mientras cantidadHoy siga viniendo automáticamente de la
@@ -43,6 +50,19 @@ type AvanceRow = { actividadId: string; cantidadHoy: number; porcentajeTotal: nu
 function labelActividad(a: ActividadHist): string {
   const pct = a.avance_porcentaje ?? 0
   return `${a.codigo} — ${a.nombre} (${pct}%)`
+}
+
+// Envuelve un input con una etiqueta pequeña y siempre visible arriba
+// -- a diferencia de un placeholder, no desaparece al escribir, así que
+// cualquiera que use la app puede saber qué significa cada casilla sin
+// tener que adivinar.
+function CampoEtiquetado({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <div className={cn("flex flex-col gap-0.5", className)}>
+      <label className="text-[10px] text-slate-400 leading-none">{label}</label>
+      {children}
+    </div>
+  )
 }
 
 function estadoInicial(a: AsistenciaInicial | undefined): AsistenciaState {
@@ -92,7 +112,11 @@ export function HistorialEditClient({
         asistencia: estadoInicial(a),
         horasRegulares: a?.horas_regulares ?? 0,
         horasExtra: a?.horas_extra ?? 0,
-        splits: (splitsPorTrabajador[t.id] ?? []).map((s) => ({ actividadId: s.actividadId, rol: s.rol, horas: s.horas, avance: s.avance })),
+        // Un renglón guardado con 0 horas normalmente es porque nunca se
+        // llenó a mano (se pagó todo a destajo por cantidad) -- se marca
+        // como "auto" para que en vez de mostrar 0 se vea un reparto real
+        // de las horas del día. Si ya tenía horas puestas, se respeta tal cual.
+        splits: (splitsPorTrabajador[t.id] ?? []).map((s) => ({ actividadId: s.actividadId, rol: s.rol, horas: s.horas, avance: s.avance, horasAuto: s.horas === 0 })),
       }
     })
   )
@@ -128,7 +152,7 @@ export function HistorialEditClient({
     setWorkers((prev) => prev.map((w) => {
       if (w.id !== workerId) return w
       const primeraActividad = actividades[0]?.id ?? ""
-      return { ...w, splits: [...w.splits, { actividadId: primeraActividad, rol: w.rol_obra ?? "", horas: 0, avance: 0 }] }
+      return { ...w, splits: [...w.splits, { actividadId: primeraActividad, rol: w.rol_obra ?? "", horas: 0, avance: 0, horasAuto: true }] }
     }))
   }
 
@@ -139,7 +163,8 @@ export function HistorialEditClient({
   const updateSplit = (workerId: string, idx: number, field: "actividadId" | "rol" | "horas" | "avance", value: string | number) => {
     setWorkers((prev) => prev.map((w) => {
       if (w.id !== workerId) return w
-      const splits = w.splits.map((s, i) => (i === idx ? { ...s, [field]: value } : s))
+      // Si edita "Horas" a mano, ese renglón deja de repartirse solo.
+      const splits = w.splits.map((s, i) => (i === idx ? { ...s, [field]: value, horasAuto: field === "horas" ? false : s.horasAuto } : s))
       return { ...w, splits }
     }))
   }
@@ -205,6 +230,37 @@ export function HistorialEditClient({
         const pct = objetivo > 0 ? Math.round(((base + suma) / objetivo) * 100) : (act?.avance_porcentaje ?? 0)
         next.push({ actividadId, cantidadHoy: suma, porcentajeTotal: pct, incidencias: "", auto: true })
       }
+      return cambio ? next : prev
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workers])
+
+  // Reparte solas las horas regulares del trabajador entre los
+  // renglones cuyo campo "Horas" nadie ha puesto a mano (horasAuto) --
+  // en vez de mostrar 0 (que da a entender que no se trabajó nada en esa
+  // tarea), se ve cuánto de la jornada le tocaría a cada actividad. Los
+  // renglones que sí tienen una hora puesta a mano se respetan tal cual,
+  // y lo que sobra de horasRegulares se reparte entre el resto.
+  useEffect(() => {
+    setWorkers((prev) => {
+      let cambio = false
+      const next = prev.map((w) => {
+        const autoIdx = w.splits.reduce<number[]>((acc, s, i) => (s.horasAuto ? [...acc, i] : acc), [])
+        if (autoIdx.length === 0) return w
+        const manual = w.splits.filter((s) => !s.horasAuto).reduce((sum, s) => sum + (s.horas || 0), 0)
+        const restante = Math.max(0, w.horasRegulares - manual)
+        const cadaUna = Math.round((restante / autoIdx.length) * 100) / 100
+        let huboCambio = false
+        const splits = w.splits.map((s) => {
+          if (!s.horasAuto) return s
+          if (s.horas === cadaUna) return s
+          huboCambio = true
+          return { ...s, horas: cadaUna }
+        })
+        if (!huboCambio) return w
+        cambio = true
+        return { ...w, splits }
+      })
       return cambio ? next : prev
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -334,36 +390,46 @@ export function HistorialEditClient({
                       const actSel = actividadPorId.get(s.actividadId)
                       return (
                       <div key={idx} className="bg-slate-50 rounded-lg p-2 space-y-1.5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <select
-                            value={s.actividadId}
-                            onChange={(e) => updateSplit(w.id, idx, "actividadId", e.target.value)}
-                            className="flex-1 min-w-40 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
-                          >
-                            {actividades.map((a) => (
-                              <option key={a.id} value={a.id}>{labelActividad(a)}</option>
-                            ))}
-                          </select>
-                          <input
-                            value={s.rol}
-                            onChange={(e) => updateSplit(w.id, idx, "rol", e.target.value)}
-                            placeholder="Rol"
-                            className="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
-                          />
-                          <input
-                            type="number" value={s.horas}
-                            onChange={(e) => updateSplit(w.id, idx, "horas", Number(e.target.value))}
-                            placeholder="Horas"
-                            className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
-                          />
-                          <input
-                            type="number" value={s.avance}
-                            onChange={(e) => updateSplit(w.id, idx, "avance", Number(e.target.value))}
-                            placeholder="Avance"
-                            className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
-                          />
-                          <span className="text-[10px] text-slate-400">{actSel?.unidad ?? ""}</span>
-                          <button onClick={() => quitarSplit(w.id, idx)} className="text-slate-300 hover:text-red-500">
+                        <div className="flex items-end gap-2 flex-wrap">
+                          <CampoEtiquetado label="Actividad" className="flex-1 min-w-40">
+                            <select
+                              value={s.actividadId}
+                              onChange={(e) => updateSplit(w.id, idx, "actividadId", e.target.value)}
+                              className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
+                            >
+                              {actividades.map((a) => (
+                                <option key={a.id} value={a.id}>{labelActividad(a)}</option>
+                              ))}
+                            </select>
+                          </CampoEtiquetado>
+                          <CampoEtiquetado label="Rol aplicado">
+                            <input
+                              value={s.rol}
+                              onChange={(e) => updateSplit(w.id, idx, "rol", e.target.value)}
+                              placeholder="Ej. Carpintero"
+                              className="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
+                            />
+                          </CampoEtiquetado>
+                          <CampoEtiquetado label={s.horasAuto ? "Horas (auto)" : "Horas"}>
+                            <input
+                              type="number" value={s.horas}
+                              onChange={(e) => updateSplit(w.id, idx, "horas", Number(e.target.value))}
+                              title={s.horasAuto ? "Repartido solo entre las horas regulares del día -- edítalo para fijarlo a mano" : undefined}
+                              className={cn(
+                                "w-20 border rounded-lg px-2 py-1.5 text-xs",
+                                s.horasAuto ? "border-dashed border-slate-300 text-slate-500 bg-white" : "border-slate-200"
+                              )}
+                            />
+                          </CampoEtiquetado>
+                          <CampoEtiquetado label={`Avance (${actSel?.unidad ?? "und"})`}>
+                            <input
+                              type="number" value={s.avance}
+                              onChange={(e) => updateSplit(w.id, idx, "avance", Number(e.target.value))}
+                              placeholder="0"
+                              className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
+                            />
+                          </CampoEtiquetado>
+                          <button onClick={() => quitarSplit(w.id, idx)} className="text-slate-300 hover:text-red-500 mb-1.5">
                             <X className="h-3.5 w-3.5" />
                           </button>
                         </div>
