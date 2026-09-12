@@ -64,10 +64,17 @@ export function ActualizarCuadrillaBoton({ proyectoId }: { proyectoId: string })
     if (!filas) return
     setError(null)
     startTransition(async () => {
-      const res = await aplicarActualizacionCuadrilla(proyectoId, filas)
-      if (res.error) { setError(res.error); if (!res.actualizadas) return }
-      setResultado({ actualizadas: res.actualizadas ?? 0 })
-      router.refresh()
+      try {
+        const res = await aplicarActualizacionCuadrilla(proyectoId, filas)
+        if (res.error) { setError(res.error); if (!res.actualizadas) return }
+        setResultado({ actualizadas: res.actualizadas ?? 0 })
+        router.refresh()
+      } catch (e) {
+        // Si el servidor tarda demasiado (proyecto grande) o hay un corte
+        // de red, sin este catch el botón se quedaba "cargando" para
+        // siempre -- mejor mostrar un error y dejar reintentar.
+        setError(e instanceof Error ? e.message : "No se pudo aplicar. Intenta de nuevo.")
+      }
     })
   }
 

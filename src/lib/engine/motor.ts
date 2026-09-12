@@ -88,7 +88,7 @@ export async function ejecutarMotorDiario(
   const { data: actividadesRaw, error: errAct } = await supabase
     .from("actividades")
     .select(
-      "id, proyecto_id, codigo, nombre, fecha_inicio_plan, fecha_fin_plan, duracion_plan_dias, avance_porcentaje, costo_presupuesto, costo_real, es_critica, estado"
+      "id, proyecto_id, codigo, nombre, fecha_inicio_plan, fecha_fin_plan, duracion_plan_dias, avance_porcentaje, costo_presupuesto, costo_real, es_critica, estado, holgura_dias"
     )
     .eq("proyecto_id", proyectoId)
     .eq("activa", true)
@@ -145,10 +145,22 @@ export async function ejecutarMotorDiario(
       // inventar una fecha solo porque el CPM necesitó un valor de
       // partida (usa "hoy" como piso interno para esos casos).
       const teniaFechas = new Map(actividades.map((a) => [a.id, a.fecha_inicio_plan !== null && a.fecha_fin_plan !== null]))
+      const holguraAnteriorPorId = new Map(((actividadesRaw ?? []) as any[]).map((a: any) => [a.id, a.holgura_dias]))
 
       let criticas = 0
       let actualizadas = 0
       let reprogramadas = 0
+
+      // Antes esto hacía un await secuencial por actividad -- con ~100
+      // actividades por proyecto eso son ~100 idas y vueltas a Supabase,
+      // UNA POR CADA CORRIDA DEL MOTOR (que se dispara tras cada reporte
+      // diario, y también tras el backfill de Excel). Cada actividad es
+      // independiente, así que ahora se arma la lista de actualizaciones
+      // necesarias y se disparan todas juntas con Promise.all. También se
+      // deja de forzar una escritura cuando NADA cambió (antes el branch
+      // "else" actualizaba holgura_dias en cada corrida aunque fuera
+      // idéntica a la que ya tenía la actividad).
+      const actualizacionesCPM: Promise<void>[] = []
       for (const a of actividades) {
         const r = cpm.get(a.id)
         if (!r) continue
@@ -167,6 +179,7 @@ export async function ejecutarMotorDiario(
           puedeReprogramar &&
           (a.fecha_inicio_plan !== r.fecha_inicio_calculada || a.fecha_fin_plan !== r.fecha_fin_calculada)
         const cambioEstado = a.es_critica !== r.es_critica
+        const holguraCambio = holguraAnteriorPorId.get(a.id) !== r.holgura_dias
 
         // Sobrescribe en memoria para que las alertas de este mismo ciclo
         // (más abajo) usen los valores recién calculados, no los viejos.
@@ -176,28 +189,37 @@ export async function ejecutarMotorDiario(
           a.fecha_fin_plan = r.fecha_fin_calculada
         }
 
+        if (!cambioEstado && !fechaCambio && !holguraCambio) continue // nada que guardar
+
         if (cambioEstado || fechaCambio) {
-          const { error: errUpd } = await supabase
-            .from("actividades")
-            .update({
-              es_critica: r.es_critica,
-              holgura_dias: r.holgura_dias,
-              ...(fechaCambio ? { fecha_inicio_plan: r.fecha_inicio_calculada, fecha_fin_plan: r.fecha_fin_calculada } : {}),
-            })
-            .eq("id", a.id)
-          if (errUpd) errores.push(`Error guardando ruta crítica de ${a.codigo}: ${errUpd.message}`)
-          else {
-            actualizadas++
-            if (fechaCambio) reprogramadas++
-          }
+          if (fechaCambio) reprogramadas++
+          actualizadas++
+          actualizacionesCPM.push(
+            supabase
+              .from("actividades")
+              .update({
+                es_critica: r.es_critica,
+                holgura_dias: r.holgura_dias,
+                ...(fechaCambio ? { fecha_inicio_plan: r.fecha_inicio_calculada, fecha_fin_plan: r.fecha_fin_calculada } : {}),
+              })
+              .eq("id", a.id)
+              .then(({ error: errUpd }: { error: { message: string } | null }) => {
+                if (errUpd) errores.push(`Error guardando ruta crítica de ${a.codigo}: ${errUpd.message}`)
+              })
+          )
         } else {
-          const { error: errUpd } = await supabase
-            .from("actividades")
-            .update({ holgura_dias: r.holgura_dias })
-            .eq("id", a.id)
-          if (errUpd) errores.push(`Error guardando holgura de ${a.codigo}: ${errUpd.message}`)
+          actualizacionesCPM.push(
+            supabase
+              .from("actividades")
+              .update({ holgura_dias: r.holgura_dias })
+              .eq("id", a.id)
+              .then(({ error: errUpd }: { error: { message: string } | null }) => {
+                if (errUpd) errores.push(`Error guardando holgura de ${a.codigo}: ${errUpd.message}`)
+              })
+          )
         }
       }
+      await Promise.all(actualizacionesCPM)
       resultado.ruta_critica = { actividades_criticas: criticas, actividades_actualizadas: actualizadas, actividades_reprogramadas: reprogramadas }
     }
   } catch (e) {

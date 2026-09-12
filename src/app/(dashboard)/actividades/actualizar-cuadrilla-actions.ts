@@ -125,37 +125,47 @@ export async function aplicarActualizacionCuadrilla(
     return { error: "No hay actividades emparejadas para actualizar." }
   }
 
+  // Antes esto era un for-loop con un await por fila -- con ~90
+  // actividades eso son ~90 idas y vueltas SECUENCIALES a Supabase antes
+  // de siquiera llegar al motor (que hace su propia tanda de llamadas
+  // secuenciales), lo que en la práctica se sentía como que el botón
+  // "Aplicar" se quedaba colgado varios minutos. Cada fila es
+  // independiente (filas distintas = actividades distintas), así que se
+  // disparan todas en paralelo con Promise.all y se espera el conjunto.
+  const resultados = await Promise.all(
+    filasAplicables.map(async (f) => {
+      // personal_planeado/composicion_cuadrilla/productividad_plan_texto son
+      // siempre de referencia (null si el Excel no traía nada). Cantidad,
+      // duración y costos SOLO se tocan si el Excel trajo un número --
+      // así una columna vacía en una fila puntual nunca borra un dato
+      // bueno que ya existía.
+      const cambios: Record<string, unknown> = {
+        personal_planeado: f.personalPlaneado,
+        composicion_cuadrilla: f.composicionCuadrilla,
+        productividad_plan_texto: f.productividadTexto,
+      }
+      if (f.cantidadObjetivo !== null) cambios.cantidad_objetivo = f.cantidadObjetivo
+      if (f.duracionPlanDias !== null) cambios.duracion_plan_dias = f.duracionPlanDias
+      if (f.costoMaterial !== null) cambios.costo_material = f.costoMaterial
+      if (f.costoManoObra !== null) cambios.costo_mano_obra = f.costoManoObra
+      if (f.costoPresupuesto !== null) cambios.costo_presupuesto = f.costoPresupuesto
+
+      const { error } = await supabase
+        .from("actividades")
+        .update(cambios)
+        .eq("id", f.actividadId as string)
+        .eq("proyecto_id", proyectoId)
+
+      if (error) console.error(`aplicarActualizacionCuadrilla - actividad ${f.actividadId}:`, error)
+      return { codigo: f.codigo, ok: !error }
+    })
+  )
+
   let actualizadas = 0
   const errores: string[] = []
-  for (const f of filasAplicables) {
-    // personal_planeado/composicion_cuadrilla/productividad_plan_texto son
-    // siempre de referencia (null si el Excel no traía nada). Cantidad,
-    // duración y costos SOLO se tocan si el Excel trajo un número --
-    // así una columna vacía en una fila puntual nunca borra un dato
-    // bueno que ya existía.
-    const cambios: Record<string, unknown> = {
-      personal_planeado: f.personalPlaneado,
-      composicion_cuadrilla: f.composicionCuadrilla,
-      productividad_plan_texto: f.productividadTexto,
-    }
-    if (f.cantidadObjetivo !== null) cambios.cantidad_objetivo = f.cantidadObjetivo
-    if (f.duracionPlanDias !== null) cambios.duracion_plan_dias = f.duracionPlanDias
-    if (f.costoMaterial !== null) cambios.costo_material = f.costoMaterial
-    if (f.costoManoObra !== null) cambios.costo_mano_obra = f.costoManoObra
-    if (f.costoPresupuesto !== null) cambios.costo_presupuesto = f.costoPresupuesto
-
-    const { error } = await supabase
-      .from("actividades")
-      .update(cambios)
-      .eq("id", f.actividadId as string)
-      .eq("proyecto_id", proyectoId)
-
-    if (error) {
-      console.error(`aplicarActualizacionCuadrilla - actividad ${f.actividadId}:`, error)
-      errores.push(f.codigo)
-    } else {
-      actualizadas++
-    }
+  for (const r of resultados) {
+    if (r.ok) actualizadas++
+    else errores.push(r.codigo)
   }
 
   // El motor recalcula el rendimiento/IIDP tomando en cuenta el nuevo
