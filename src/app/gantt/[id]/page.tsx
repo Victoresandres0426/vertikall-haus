@@ -1,8 +1,11 @@
 import { Fragment } from "react"
 import { createClient } from "@/lib/supabase/server"
 import { redirect, notFound } from "next/navigation"
+import Link from "next/link"
+import { Move } from "lucide-react"
 import { BotonImprimir } from "./boton-imprimir"
 import { BotonRecalcular } from "./boton-recalcular"
+import { parseISO, diasEntre, colorBarra, hoyMexico, NOMBRES_MES, DIA_SEMANA } from "@/lib/gantt-utils"
 
 type Actividad = {
   id: string
@@ -21,46 +24,6 @@ type Proceso = {
   nombre: string
   orden: number
   actividades: Actividad[]
-}
-
-// ── Utilidades de fecha (todo en horario local, sin componentes de hora) ──
-
-function parseISO(iso: string): Date {
-  return new Date(iso + "T00:00:00")
-}
-
-function diasEntre(a: Date, b: Date): number {
-  return Math.round((b.getTime() - a.getTime()) / 86400000)
-}
-
-const NOMBRES_MES = [
-  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
-]
-
-const DIA_SEMANA = ["D", "L", "M", "M", "J", "V", "S"]
-
-// Color de la barra según el estado real de la actividad -- prioridad:
-// completada (verde) > atrasada (rojo) > en progreso (ámbar) >
-// programada/no iniciada (azul). La ruta crítica ya no se distingue por
-// color (chocaría con "atrasada" en rojo) sino con un borde oscuro
-// encima del color de estado, para poder ver ambas cosas a la vez.
-//
-// "Atrasada" cubre DOS casos, no solo uno:
-//   - Ya pasó la fecha de fin plan y no está completada.
-//   - Ya pasó la fecha de INICIO plan y todavía no arrancó (sigue
-//     "no_iniciada"/"bloqueada") -- una actividad que debía haber
-//     empezado ayer y sigue sin arrancar ya está atrasada, aunque su
-//     fecha de fin todavía no haya llegado.
-function colorBarra(act: Actividad, hoy: Date): string {
-  if (act.estado === "completada") return "bg-emerald-500"
-  const inicioPlan = act.fecha_inicio_plan ? parseISO(act.fecha_inicio_plan) : null
-  const finPlan = act.fecha_fin_plan ? parseISO(act.fecha_fin_plan) : null
-  const noTerminoATiempo = finPlan !== null && finPlan < hoy
-  const noArrancoATiempo = act.estado !== "en_progreso" && inicioPlan !== null && inicioPlan < hoy
-  if (noTerminoATiempo || noArrancoATiempo) return "bg-red-500"
-  if (act.estado === "en_progreso") return "bg-amber-500"
-  return "bg-[#3B72D8]"
 }
 
 export default async function GanttPage({ params }: { params: Promise<{ id: string }> }) {
@@ -112,7 +75,7 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
   // "Hoy" en la misma zona horaria que usa el resto de la app (Reporte
   // Diario, check-in, etc.) -- así la línea de hoy cae en el día correcto
   // sin importar en qué servidor/zona corre el build.
-  const hoy = parseISO(new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" }))
+  const hoy = hoyMexico()
 
   // ── Partimos el rango completo en tramos mensuales — una hoja impresa por mes ──
   type Tramo = { inicio: Date; fin: Date }
@@ -150,6 +113,14 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
           <h1 className="text-lg font-bold text-slate-900">{proyecto.nombre} — Diagrama de Gantt</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href={`/gantt/${proyecto.id}/editar`}
+            title="Arrastra y estira las barras para mover fechas -- los cambios se guardan solos y recalculan la ruta crítica"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors shrink-0"
+          >
+            <Move className="h-4 w-4" />
+            Editar cronograma
+          </Link>
           <BotonRecalcular proyectoId={proyecto.id} />
           <BotonImprimir />
         </div>
