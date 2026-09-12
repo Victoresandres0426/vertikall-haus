@@ -1,6 +1,7 @@
 // ============================================================
-// Extraer "Composición de cuadrilla" / "Productividad" desde el
-// Excel original de estimación, para actividades YA existentes.
+// Extraer datos de plan (cuadrilla, productividad, cantidad, duración
+// y costos) desde el Excel original de estimación, para actividades
+// YA existentes.
 // ============================================================
 // El importador de proyectos (proyectos/importar/actions.ts) usa IA
 // para leer el Excel completo y crear un proyecto desde cero. Esto es
@@ -10,6 +11,16 @@
 // rápido y no tiene costo de API -- y como solo ACTUALIZA actividades
 // que ya existen (emparejando por código), un error de parseo en una
 // fila como mucho la deja sin emparejar, nunca crea o corrompe datos.
+//
+// Se trae TODA la fila (no solo cuadrilla/productividad) porque
+// cantidad_objetivo y duracion_plan_dias -- puestos por el importador
+// con IA al crear el proyecto -- son justamente los que alimentan el
+// cálculo de "rendimiento real vs. plan" (ver lib/engine/rendimiento.ts:
+// ritmoPlaneado = cantidad_objetivo / (duracion_plan_dias * 8 *
+// personal_planeado)). Si esos dos números no son exactamente los del
+// Excel, el rendimiento sale inflado o deflactado aunque la cuadrilla
+// esté bien. Re-leer el Excel completo deja todo consistente con la
+// fuente original.
 //
 // Ver migración 072 (composicion_cuadrilla, productividad_plan_texto)
 // y actividades/actualizar-cuadrilla-actions.ts (server actions que
@@ -23,6 +34,23 @@ export type FilaCuadrilla = {
   composicionCuadrilla: string | null
   personalPlaneado: number | null
   productividadTexto: string | null
+  cantidadObjetivo: number | null
+  duracionPlanDias: number | null
+  costoMaterial: number | null
+  costoManoObra: number | null
+  costoPresupuesto: number | null
+}
+
+// "$12,345.00" -> 12345, 8.5 -> 8.5, "" / null -> null.
+function parseNumero(valor: unknown): number | null {
+  if (typeof valor === "number") return isFinite(valor) ? valor : null
+  if (typeof valor === "string") {
+    const limpio = valor.replace(/[^0-9.-]/g, "")
+    if (!limpio) return null
+    const n = parseFloat(limpio)
+    return isFinite(n) ? n : null
+  }
+  return null
 }
 
 function normalizarEncabezado(valor: unknown): string {
@@ -113,6 +141,11 @@ export function extraerFilasCuadrillaDeExcel(buffer: ArrayBuffer): ExtraccionCua
     let colProductividad = -1
     let colCodigo = 0
     let colNombre = 1
+    let colCantidad = -1
+    let colDiasDuracion = -1
+    let colCostoMaterial = -1
+    let colCostoManoObra = -1
+    let colCostoTotal = -1
 
     for (let i = 0; i < filas.length; i++) {
       const fila = filas[i] ?? []
@@ -129,6 +162,15 @@ export function extraerFilasCuadrillaDeExcel(buffer: ArrayBuffer): ExtraccionCua
       })
       if (idxDiv >= 0) colCodigo = idxDiv
       if (idxNombre >= 0) colNombre = idxNombre
+
+      colCantidad = fila.findIndex((c) => normalizarEncabezado(c).includes("cantidad"))
+      colDiasDuracion = fila.findIndex((c) => normalizarEncabezado(c).includes("duracion"))
+      colCostoMaterial = fila.findIndex((c) => normalizarEncabezado(c).includes("costo material"))
+      colCostoManoObra = fila.findIndex((c) => {
+        const n = normalizarEncabezado(c)
+        return n.includes("costo m.o") || n.includes("mano de obra")
+      })
+      colCostoTotal = fila.findIndex((c) => normalizarEncabezado(c).includes("costo total"))
       break
     }
 
@@ -164,6 +206,11 @@ export function extraerFilasCuadrillaDeExcel(buffer: ArrayBuffer): ExtraccionCua
         composicionCuadrilla: composicion,
         personalPlaneado: parseHeadcountFromCuadrilla(composicion),
         productividadTexto: productividad,
+        cantidadObjetivo: colCantidad >= 0 ? parseNumero(fila[colCantidad]) : null,
+        duracionPlanDias: colDiasDuracion >= 0 ? parseNumero(fila[colDiasDuracion]) : null,
+        costoMaterial: colCostoMaterial >= 0 ? parseNumero(fila[colCostoMaterial]) : null,
+        costoManoObra: colCostoManoObra >= 0 ? parseNumero(fila[colCostoManoObra]) : null,
+        costoPresupuesto: colCostoTotal >= 0 ? parseNumero(fila[colCostoTotal]) : null,
       })
     }
 

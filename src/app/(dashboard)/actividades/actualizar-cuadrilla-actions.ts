@@ -27,6 +27,11 @@ export type FilaCuadrillaRevision = FilaCuadrilla & {
   actividadId: string | null
   nombreActual: string | null
   personalPlaneadoActual: number | null
+  cantidadObjetivoActual: number | null
+  duracionPlanDiasActual: number | null
+  costoMaterialActual: number | null
+  costoManoObraActual: number | null
+  costoPresupuestoActual: number | null
 }
 
 // ── Paso 1: leer el Excel y proponer los cambios (sin tocar la BD) ──
@@ -62,7 +67,7 @@ export async function analizarCuadrillaExcel(
 
   const { data: actividadesExistentes, error: errActividades } = await supabase
     .from("actividades")
-    .select("id, codigo, nombre, personal_planeado")
+    .select("id, codigo, nombre, personal_planeado, cantidad_objetivo, duracion_plan_dias, costo_material, costo_mano_obra, costo_presupuesto")
     .eq("proyecto_id", proyectoId)
 
   if (errActividades) {
@@ -70,9 +75,20 @@ export async function analizarCuadrillaExcel(
     return { error: "No se pudieron leer las actividades del proyecto." }
   }
 
+  type ActividadExistente = {
+    id: string
+    codigo: string
+    nombre: string
+    personal_planeado: number | null
+    cantidad_objetivo: number | null
+    duracion_plan_dias: number | null
+    costo_material: number | null
+    costo_mano_obra: number | null
+    costo_presupuesto: number | null
+  }
+
   const porCodigo = new Map(
-    ((actividadesExistentes ?? []) as { id: string; codigo: string; nombre: string; personal_planeado: number | null }[])
-      .map((a) => [a.codigo, a])
+    ((actividadesExistentes ?? []) as ActividadExistente[]).map((a) => [a.codigo, a])
   )
 
   let sinEmparejar = 0
@@ -84,6 +100,11 @@ export async function analizarCuadrillaExcel(
       actividadId: existente?.id ?? null,
       nombreActual: existente?.nombre ?? null,
       personalPlaneadoActual: existente?.personal_planeado ?? null,
+      cantidadObjetivoActual: existente?.cantidad_objetivo ?? null,
+      duracionPlanDiasActual: existente?.duracion_plan_dias ?? null,
+      costoMaterialActual: existente?.costo_material ?? null,
+      costoManoObraActual: existente?.costo_mano_obra ?? null,
+      costoPresupuestoActual: existente?.costo_presupuesto ?? null,
     }
   })
 
@@ -107,13 +128,25 @@ export async function aplicarActualizacionCuadrilla(
   let actualizadas = 0
   const errores: string[] = []
   for (const f of filasAplicables) {
+    // personal_planeado/composicion_cuadrilla/productividad_plan_texto son
+    // siempre de referencia (null si el Excel no traía nada). Cantidad,
+    // duración y costos SOLO se tocan si el Excel trajo un número --
+    // así una columna vacía en una fila puntual nunca borra un dato
+    // bueno que ya existía.
+    const cambios: Record<string, unknown> = {
+      personal_planeado: f.personalPlaneado,
+      composicion_cuadrilla: f.composicionCuadrilla,
+      productividad_plan_texto: f.productividadTexto,
+    }
+    if (f.cantidadObjetivo !== null) cambios.cantidad_objetivo = f.cantidadObjetivo
+    if (f.duracionPlanDias !== null) cambios.duracion_plan_dias = f.duracionPlanDias
+    if (f.costoMaterial !== null) cambios.costo_material = f.costoMaterial
+    if (f.costoManoObra !== null) cambios.costo_mano_obra = f.costoManoObra
+    if (f.costoPresupuesto !== null) cambios.costo_presupuesto = f.costoPresupuesto
+
     const { error } = await supabase
       .from("actividades")
-      .update({
-        personal_planeado: f.personalPlaneado,
-        composicion_cuadrilla: f.composicionCuadrilla,
-        productividad_plan_texto: f.productividadTexto,
-      })
+      .update(cambios)
       .eq("id", f.actividadId as string)
       .eq("proyecto_id", proyectoId)
 
@@ -140,6 +173,7 @@ export async function aplicarActualizacionCuadrilla(
   revalidatePath("/dashboard")
   revalidatePath("/proyectos")
   revalidatePath("/gantt")
+  revalidatePath("/presupuesto")
 
   if (errores.length > 0) {
     return { error: `Se actualizaron ${actualizadas}, pero fallaron: ${errores.join(", ")}`, actualizadas }
