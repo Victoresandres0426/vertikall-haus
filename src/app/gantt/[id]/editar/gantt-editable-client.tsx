@@ -215,44 +215,56 @@ export function GanttEditableClient({
         )}
       </div>
 
-      <div className="flex border border-slate-200 rounded-lg overflow-hidden">
-        {/* Columna de etiquetas -- fija, no se mueve con el scroll horizontal */}
-        <div className="shrink-0 border-r border-slate-200" style={{ width: LABEL_WIDTH }}>
-          <div style={{ height: HEADER_HEIGHT }} className="border-b border-slate-200 bg-slate-100" />
-          {renderRows.map((row) =>
-            row.tipo === "proceso" ? (
-              <div
-                key={row.key}
-                style={{ height: ROW_HEIGHT }}
-                className="flex items-center px-2 text-[11px] font-semibold text-slate-700 bg-slate-50 border-b border-slate-200 truncate"
-              >
-                {row.codigo} — {row.nombre}
-              </div>
-            ) : (
-              <div
-                key={row.key}
-                style={{ height: ROW_HEIGHT }}
-                className="flex items-center gap-1 px-2 text-[10px] border-b border-slate-100"
-              >
-                <span className="font-mono text-slate-400 shrink-0">{row.act.codigo}</span>
-                <span className="text-slate-600 truncate flex-1">{row.act.nombre}</span>
-                <button
-                  onClick={() => setModalActId(row.act.id)}
-                  title="Ver/editar dependencias de esta actividad"
-                  className="text-slate-300 hover:text-slate-600 shrink-0"
+      <div
+        ref={scrollRef}
+        className="border border-slate-200 rounded-lg overflow-auto"
+        style={{ maxHeight: "75vh" }}
+      >
+        <div className="flex" style={{ width: LABEL_WIDTH + totalDias * DAY_WIDTH }}>
+          {/* Columna de etiquetas -- sticky a la izquierda: siempre visible aunque
+              se desplace horizontalmente. */}
+          <div
+            className="sticky left-0 shrink-0 border-r border-slate-200 bg-white"
+            style={{ width: LABEL_WIDTH, zIndex: 30 }}
+          >
+            <div style={{ height: HEADER_HEIGHT }} className="sticky top-0 border-b border-slate-200 bg-slate-100" />
+            {renderRows.map((row) =>
+              row.tipo === "proceso" ? (
+                <div
+                  key={row.key}
+                  style={{ height: ROW_HEIGHT }}
+                  className="flex items-center px-2 text-[11px] font-semibold text-slate-700 bg-slate-50 border-b border-slate-200 truncate"
                 >
-                  <Link2 className="h-3 w-3" />
-                </button>
-              </div>
-            )
-          )}
-        </div>
+                  {row.codigo} — {row.nombre}
+                </div>
+              ) : (
+                <div
+                  key={row.key}
+                  style={{ height: ROW_HEIGHT }}
+                  className="flex items-center gap-1 px-2 text-[10px] border-b border-slate-100 bg-white"
+                >
+                  <span className="font-mono text-slate-400 shrink-0">{row.act.codigo}</span>
+                  <span className="text-slate-600 truncate flex-1">{row.act.nombre}</span>
+                  <button
+                    onClick={() => setModalActId(row.act.id)}
+                    title="Ver/editar dependencias de esta actividad"
+                    className="text-slate-500 hover:text-slate-900 shrink-0"
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )
+            )}
+          </div>
 
-        {/* Línea de tiempo -- scroll horizontal independiente de la columna de etiquetas */}
-        <div ref={scrollRef} className="overflow-x-auto flex-1">
+          {/* Línea de tiempo */}
           <div style={{ width: totalDias * DAY_WIDTH }}>
-            {/* Encabezado: mes arriba, día/semana abajo */}
-            <div className="relative border-b border-slate-200 bg-slate-100" style={{ height: HEADER_HEIGHT }}>
+            {/* Encabezado: mes arriba, día/semana abajo -- sticky arriba: siempre
+                visible aunque se desplace verticalmente. */}
+            <div
+              className="sticky top-0 border-b border-slate-200 bg-slate-100"
+              style={{ height: HEADER_HEIGHT, zIndex: 20 }}
+            >
               {gruposMes.map((g) => (
                 <div
                   key={`${g.anio}-${g.mes}`}
