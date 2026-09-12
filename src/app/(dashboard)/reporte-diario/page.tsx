@@ -137,7 +137,7 @@ async function getData(): Promise<{
   // si aún no la tiene, el reporte sigue con el default editable.
   const horasQrPorTrabajador: Record<string, number> = {}
   if (proyectoActivo) {
-    const hoy = new Date().toLocaleDateString("en-CA", { timeZone: proyectoActivo.zona_horaria || "America/Mexico_City" })
+    const hoy = new Date().toLocaleDateString("en-CA", { timeZone: proyectoActivo.zona_horaria || "America/New_York" })
     try {
       const { data: qrRaw } = await supabase
         .from("registros_asistencia_qr")

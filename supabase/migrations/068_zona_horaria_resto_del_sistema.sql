@@ -55,7 +55,7 @@ BEGIN
     RAISE EXCEPTION 'qr_invalido';
   END IF;
 
-  v_hoy := (now() AT TIME ZONE v_zona_horaria)::date;
+  v_hoy := (now() AT TIME ZONE COALESCE(v_zona_horaria, 'America/New_York'))::date;
   v_lunes := v_hoy - (EXTRACT(ISODOW FROM v_hoy)::int - 1);
 
   SELECT td.trabajador_id INTO v_trabajador_id

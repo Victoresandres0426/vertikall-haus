@@ -49,7 +49,7 @@ function formatearDia(f: string): { nombre: string; corta: string } {
 }
 
 function esHoy(f: string, zonaHoraria: string): boolean {
-  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: zonaHoraria || "America/Mexico_City" })
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: zonaHoraria || "America/New_York" })
   return f === hoy
 }
 
@@ -58,7 +58,7 @@ export default function MiDesempenoPage({ params }: { params: Promise<{ token: s
   const supabase = createClient()
 
   const [proyectoNombre, setProyectoNombre] = useState("")
-  const [zonaHoraria, setZonaHoraria] = useState("America/Mexico_City")
+  const [zonaHoraria, setZonaHoraria] = useState("America/New_York")
   const [dias, setDias] = useState<DiaGanancia[]>([])
   const [notFound, setNotFound] = useState(false)
   const [sinVincular, setSinVincular] = useState(false)

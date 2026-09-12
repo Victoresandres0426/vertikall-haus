@@ -32,7 +32,11 @@ export default async function PersonalPage({
   // actividad (destajo o por hora, migraciones 050/054). Mismo nivel de
   // acceso que costos_reales -- RLS de asistencia_actividad_diaria ya
   // restringe esto a dueno/superadmin/administrador/project_manager.
-  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" })
+  // Esta pantalla mezcla trabajadores de varios proyectos a la vez, así
+  // que no hay una sola zona horaria "correcta" -- se usa la sede real
+  // de la empresa (Miami) solo como default del selector de fecha, que
+  // de todas formas se puede cambiar a mano.
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })
   const fechaGanancias = params.fecha ?? hoy
 
   const [{ data: trabajadores }, { data: proyectos }, { data: tarifasRaw }, { data: usuariosSistemaRaw }, { data: gananciasRaw }] = await Promise.all([

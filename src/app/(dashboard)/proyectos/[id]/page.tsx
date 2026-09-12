@@ -105,7 +105,7 @@ async function getData(id: string) {
   // día siguiente y esto hacía que "Registros de hoy" nunca encontrara
   // los check-ins recién hechos (y en proyectos fuera de México, la
   // zona equivocada corría el día -- o la hora mostrada -- varias horas).
-  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: proyecto.zona_horaria || "America/Mexico_City" })
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: proyecto.zona_horaria || "America/New_York" })
 
   // Queries paralelas (core — siempre disponibles)
   const [procesosRes, iidpRes, alertasRes, coRes, costosRes] = await Promise.all([

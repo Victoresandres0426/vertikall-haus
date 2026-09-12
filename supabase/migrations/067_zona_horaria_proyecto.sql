@@ -12,9 +12,11 @@
 -- hora real.
 -- ============================================================
 
--- 1. Columna de zona horaria por proyecto (default = comportamiento
---    anterior, para no afectar proyectos que sí están en México).
-ALTER TABLE proyectos ADD COLUMN IF NOT EXISTS zona_horaria TEXT NOT NULL DEFAULT 'America/Mexico_City';
+-- 1. Columna de zona horaria por proyecto. Sin default -- no se asume
+--    México (ni ninguna otra zona) para un proyecto que no la tiene
+--    configurada todavía. La migración 069 la calcula automáticamente
+--    desde las coordenadas GPS del proyecto.
+ALTER TABLE proyectos ADD COLUMN IF NOT EXISTS zona_horaria TEXT;
 
 -- Corrige el proyecto que sabemos que está mal (North Miami Beach, FL).
 UPDATE proyectos SET zona_horaria = 'America/New_York' WHERE nombre ILIKE '%Radnor%';
@@ -47,7 +49,7 @@ BEGIN
     IF v_registro.hora_entrada_esperada IS NOT NULL THEN
       -- Cierre = hora esperada + 8h, el mismo día de la entrada real,
       -- en la zona horaria del proyecto.
-      v_cierre_ts := (v_registro.fecha::timestamp AT TIME ZONE v_registro.zona_horaria)
+      v_cierre_ts := (v_registro.fecha::timestamp AT TIME ZONE COALESCE(v_registro.zona_horaria, 'America/New_York'))
                       + v_registro.hora_entrada_esperada + INTERVAL '8 hours';
     ELSE
       v_cierre_ts := v_registro.created_at + INTERVAL '8 hours';
@@ -67,8 +69,8 @@ BEGIN
       v_registro.proyecto_id,
       v_registro.trabajador_id,
       'salida',
-      (v_cierre_ts AT TIME ZONE v_registro.zona_horaria)::date,
-      (v_cierre_ts AT TIME ZONE v_registro.zona_horaria)::time(0),
+      (v_cierre_ts AT TIME ZONE COALESCE(v_registro.zona_horaria, 'America/New_York'))::date,
+      (v_cierre_ts AT TIME ZONE COALESCE(v_registro.zona_horaria, 'America/New_York'))::time(0),
       true,
       '8_horas',
       v_horas_trabajadas,
@@ -123,8 +125,8 @@ BEGIN
     RAISE EXCEPTION 'qr_invalido';
   END IF;
 
-  v_hoy := (now() AT TIME ZONE v_zona_horaria)::date;
-  v_ahora_hora := (now() AT TIME ZONE v_zona_horaria)::time(0);
+  v_hoy := (now() AT TIME ZONE COALESCE(v_zona_horaria, 'America/New_York'))::date;
+  v_ahora_hora := (now() AT TIME ZONE COALESCE(v_zona_horaria, 'America/New_York'))::time(0);
 
   IF p_tipo NOT IN ('entrada', 'salida') THEN
     RAISE EXCEPTION 'tipo_invalido';

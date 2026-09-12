@@ -64,5 +64,9 @@ export function colorBarra(act: ActividadGanttMin, hoy: Date): string {
 // correcto sin importar en qué servidor/zona corre el build, desde qué
 // navegador se abre, o dónde esté físicamente la obra.
 export function hoyMexico(zonaHoraria?: string | null): Date {
-  return parseISO(new Date().toLocaleDateString("en-CA", { timeZone: zonaHoraria || "America/Mexico_City" }))
+  // Último recurso si el proyecto todavía no tiene coordenadas
+  // configuradas (y por lo tanto zona horaria calculada) -- no se
+  // asume México ni ninguna zona al azar, se usa la sede real de la
+  // empresa (Miami) hasta que se configuren las coordenadas del proyecto.
+  return parseISO(new Date().toLocaleDateString("en-CA", { timeZone: zonaHoraria || "America/New_York" }))
 }

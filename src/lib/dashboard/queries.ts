@@ -257,9 +257,11 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
     0
   )
 
-  // Trabajadores hoy: asistencias de hoy (fecha LOCAL de la obra, no UTC
-  // -- usa la zona horaria del proyecto, no siempre México)
-  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: (proyecto as Proyecto).zona_horaria || "America/Mexico_City" })
+  // Trabajadores hoy: asistencias de hoy (fecha LOCAL de la obra, no UTC)
+  // -- usa la zona horaria calculada de las coordenadas del proyecto; si
+  // todavía no tiene coordenadas configuradas, cae en la sede real de la
+  // empresa (Miami) en vez de asumir México.
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: (proyecto as Proyecto).zona_horaria || "America/New_York" })
   const { count: trabajadoresHoy } = await supabase
     .from("reportes_diarios")
     .select("asistencia_diaria!inner(trabajador_id)", { count: "exact" })

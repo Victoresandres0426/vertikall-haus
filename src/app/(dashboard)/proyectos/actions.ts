@@ -143,15 +143,16 @@ export async function actualizarHoraEntrada(proyectoId: string, hora: string): P
 // en vez de aceptar cualquier texto para evitar un IANA inválido que
 // rompería silenciosamente los cálculos de "hoy"/"ahora" del check-in.
 const ZONAS_HORARIAS_VALIDAS = [
-  "America/Mexico_City",
-  "America/Tijuana",
-  "America/Hermosillo",
-  "America/Cancun",
   "America/New_York",
   "America/Chicago",
   "America/Denver",
   "America/Los_Angeles",
   "America/Phoenix",
+  "America/Mexico_City",
+  "America/Tijuana",
+  "America/Hermosillo",
+  "America/Mazatlan",
+  "America/Cancun",
 ]
 
 export async function actualizarZonaHoraria(proyectoId: string, zonaHoraria: string): Promise<{ error?: string }> {
