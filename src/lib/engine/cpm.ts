@@ -79,7 +79,10 @@ function diasHabilesEntre(a: Date, b: Date): number {
 // fines de semana -- es la inversa de diasHabilesEntre.
 function sumarDiasHabiles(fecha: Date, n: number): Date {
   let cur = new Date(fecha)
-  let restante = n
+  // Redondear es obligatorio: el loop de abajo resta 1 en cada vuelta
+  // hasta llegar EXACTO a 0 -- con un valor no entero jamás lo toca y
+  // se queda colgado para siempre, sin lanzar ningún error.
+  let restante = Math.round(n)
   const paso = restante >= 0 ? 1 : -1
   while (restante !== 0) {
     cur = new Date(cur.getTime() + paso * MS_DIA)
@@ -95,7 +98,19 @@ function sumarDiasHabiles(fecha: Date, n: number): Date {
  * viernes, no días de calendario.
  */
 function duracionDias(a: ActividadCPM): number {
-  if (a.duracion_plan_dias && a.duracion_plan_dias > 0) return a.duracion_plan_dias
+  // Todo este módulo trabaja en ÍNDICES DE DÍA ENTEROS (ver cabecera del
+  // archivo) -- sumarDiasHabiles() resta 1 en cada vuelta hasta llegar
+  // exactamente a 0, así que si "restante" arranca en un valor no entero
+  // (ej. 1.67, que ahora sí puede pasar: duracion_plan_dias es DECIMAL
+  // desde la migración 073, para reflejar cuadrillas reales del Excel
+  // como "9 unidades a 6 u/día = 1.5 días") NUNCA llega exacto a 0 y el
+  // while() se cuelga para siempre -- sin lanzar ningún error, solo
+  // consumiendo CPU. Por eso "Aplicar cuadrilla" se quedaba colgado
+  // aunque las actualizaciones a la base de datos ya se habían optimizado.
+  // La ruta crítica solo necesita días ENTEROS para programar el
+  // cronograma, así que se redondea acá (personal_planeado/rendimiento
+  // real siguen usando el valor exacto con decimales en rendimiento.ts).
+  if (a.duracion_plan_dias && a.duracion_plan_dias > 0) return Math.max(1, Math.round(a.duracion_plan_dias))
   const ini = parseFechaSegura(a.fecha_inicio_plan)
   const fin = parseFechaSegura(a.fecha_fin_plan)
   if (ini && fin && fin.getTime() > ini.getTime()) {
