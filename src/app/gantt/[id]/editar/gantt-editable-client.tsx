@@ -2,27 +2,11 @@
 
 import { useMemo, useRef, useState, useTransition, useEffect, type PointerEvent as ReactPointerEvent } from "react"
 import { useRouter } from "next/navigation"
+import { Link2 } from "lucide-react"
 import { parseISO, diasEntre, formatISO, colorBarra, NOMBRES_MES, DIA_SEMANA } from "@/lib/gantt-utils"
 import { actualizarFechasActividad } from "../actions"
-
-export type ActividadEditable = {
-  id: string
-  codigo: string
-  nombre: string
-  fecha_inicio_plan: string | null
-  fecha_fin_plan: string | null
-  es_critica: boolean
-  activa: boolean | null
-  estado: string | null
-}
-
-export type ProcesoEditable = {
-  id: string
-  codigo: string
-  nombre: string
-  orden: number
-  actividades: ActividadEditable[]
-}
+import type { ActividadEditable, ProcesoEditable, DependenciaEditable } from "./types"
+import { DependenciasModal } from "./dependencias-modal"
 
 const DAY_WIDTH = 26
 const ROW_HEIGHT = 28
@@ -51,12 +35,14 @@ function addDays(d: Date, n: number): Date {
 
 export function GanttEditableClient({
   procesos,
+  dependencias,
   rangeStartISO,
   rangeEndISO,
   hoyISO,
   soloLectura,
 }: {
   procesos: ProcesoEditable[]
+  dependencias: DependenciaEditable[]
   rangeStartISO: string
   rangeEndISO: string
   hoyISO: string
@@ -67,8 +53,11 @@ export function GanttEditableClient({
   const [drag, setDrag] = useState<DragState | null>(null)
   const [guardandoId, setGuardandoId] = useState<string | null>(null)
   const [errorInfo, setErrorInfo] = useState<{ id: string; msg: string } | null>(null)
+  const [modalActId, setModalActId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const yaHizoScrollInicial = useRef(false)
+
+  const todasActividades = useMemo(() => procesos.flatMap((p) => p.actividades), [procesos])
 
   const rangeStart = useMemo(() => parseISO(rangeStartISO), [rangeStartISO])
   const rangeEnd = useMemo(() => parseISO(rangeEndISO), [rangeEndISO])
@@ -90,6 +79,26 @@ export function GanttEditableClient({
     }
     return rows
   }, [procesos])
+
+  // Posición (en índice de día + fila) de cada actividad -- incorpora la
+  // vista previa de arrastre si esa actividad se está moviendo/
+  // estirando en este momento. Tanto las barras como las flechas de
+  // dependencia leen de aquí, así que las flechas siguen a la barra en
+  // vivo mientras se arrastra.
+  const posPorActividad = useMemo(() => {
+    const map = new Map<string, { inicioIdx: number; finIdx: number; rowIdx: number }>()
+    renderRows.forEach((row, rowIdx) => {
+      if (row.tipo !== "actividad") return
+      const act = row.act
+      const baseInicioIdx = diasEntre(rangeStart, parseISO(act.fecha_inicio_plan!))
+      const baseFinIdx = diasEntre(rangeStart, parseISO(act.fecha_fin_plan!))
+      const enArrastre = drag?.actId === act.id
+      const inicioIdx = enArrastre ? drag!.previewInicioIdx : baseInicioIdx
+      const finIdx = enArrastre ? drag!.previewFinIdx : baseFinIdx
+      map.set(act.id, { inicioIdx, finIdx, rowIdx })
+    })
+    return map
+  }, [renderRows, rangeStart, drag])
 
   // Al abrir la vista, centra el scroll horizontal cerca de "hoy" en vez
   // de dejar al usuario viendo el colchón de días vacíos del inicio.
@@ -226,7 +235,14 @@ export function GanttEditableClient({
                 className="flex items-center gap-1 px-2 text-[10px] border-b border-slate-100"
               >
                 <span className="font-mono text-slate-400 shrink-0">{row.act.codigo}</span>
-                <span className="text-slate-600 truncate">{row.act.nombre}</span>
+                <span className="text-slate-600 truncate flex-1">{row.act.nombre}</span>
+                <button
+                  onClick={() => setModalActId(row.act.id)}
+                  title="Ver/editar dependencias de esta actividad"
+                  className="text-slate-300 hover:text-slate-600 shrink-0"
+                >
+                  <Link2 className="h-3 w-3" />
+                </button>
               </div>
             )
           )}
@@ -288,14 +304,50 @@ export function GanttEditableClient({
                 />
               )}
 
+              {/* Flechas finas de dependencia -- de la predecesora a la sucesora */}
+              <svg
+                className="absolute top-0 left-0 pointer-events-none"
+                width={totalDias * DAY_WIDTH}
+                height={renderRows.length * ROW_HEIGHT}
+                style={{ zIndex: 8 }}
+              >
+                <defs>
+                  <marker id="flecha-dependencia" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M0,0 L8,4 L0,8 Z" fill="#94a3b8" />
+                  </marker>
+                </defs>
+                {dependencias.map((dep) => {
+                  const origen = posPorActividad.get(dep.predecesora_id)
+                  const destino = posPorActividad.get(dep.actividad_id)
+                  if (!origen || !destino) return null
+                  const ladoOrigen = dep.tipo === "inicio_a_inicio" || dep.tipo === "inicio_a_fin" ? "inicio" : "fin"
+                  const ladoDestino = dep.tipo === "fin_a_fin" || dep.tipo === "inicio_a_fin" ? "fin" : "inicio"
+                  const x1 = (ladoOrigen === "inicio" ? origen.inicioIdx : origen.finIdx + 1) * DAY_WIDTH
+                  const y1 = origen.rowIdx * ROW_HEIGHT + ROW_HEIGHT / 2
+                  const x2 = (ladoDestino === "inicio" ? destino.inicioIdx : destino.finIdx + 1) * DAY_WIDTH
+                  const y2 = destino.rowIdx * ROW_HEIGHT + ROW_HEIGHT / 2
+                  const offset = Math.min(40, Math.max(16, Math.abs(x2 - x1) / 3))
+                  const c1x = ladoOrigen === "fin" ? x1 + offset : x1 - offset
+                  const c2x = ladoDestino === "fin" ? x2 + offset : x2 - offset
+                  return (
+                    <path
+                      key={dep.id}
+                      d={`M ${x1} ${y1} C ${c1x} ${y1}, ${c2x} ${y2}, ${x2} ${y2}`}
+                      fill="none"
+                      stroke="#94a3b8"
+                      strokeWidth={1.25}
+                      markerEnd="url(#flecha-dependencia)"
+                    />
+                  )
+                })}
+              </svg>
+
               {renderRows.map((row, rowIdx) => {
                 if (row.tipo !== "actividad") return null
                 const act = row.act
-                const baseInicioIdx = diasEntre(rangeStart, parseISO(act.fecha_inicio_plan!))
-                const baseFinIdx = diasEntre(rangeStart, parseISO(act.fecha_fin_plan!))
-                const enArrastre = drag?.actId === act.id
-                const inicioIdx = enArrastre ? drag!.previewInicioIdx : baseInicioIdx
-                const finIdx = enArrastre ? drag!.previewFinIdx : baseFinIdx
+                const pos = posPorActividad.get(act.id)!
+                const inicioIdx = pos.inicioIdx
+                const finIdx = pos.finIdx
                 const left = inicioIdx * DAY_WIDTH
                 const width = (finIdx - inicioIdx + 1) * DAY_WIDTH
                 const top = rowIdx * ROW_HEIGHT
@@ -332,6 +384,20 @@ export function GanttEditableClient({
           </div>
         </div>
       </div>
+
+      {modalActId && (() => {
+        const act = todasActividades.find((a) => a.id === modalActId)
+        if (!act) return null
+        return (
+          <DependenciasModal
+            act={act}
+            todasActividades={todasActividades}
+            dependencias={dependencias}
+            soloLectura={soloLectura}
+            onClose={() => setModalActId(null)}
+          />
+        )
+      })()}
     </div>
   )
 }

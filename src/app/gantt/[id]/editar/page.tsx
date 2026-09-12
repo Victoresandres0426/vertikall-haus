@@ -3,7 +3,8 @@ import { redirect, notFound } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { parseISO, formatISO, hoyMexico } from "@/lib/gantt-utils"
-import { GanttEditableClient, type ActividadEditable, type ProcesoEditable } from "./gantt-editable-client"
+import { GanttEditableClient } from "./gantt-editable-client"
+import type { ActividadEditable, ProcesoEditable, DependenciaEditable } from "./types"
 
 // Días de "colchón" antes/después del rango real de actividades, para
 // que haya espacio de sobra donde arrastrar una barra más allá de las
@@ -76,6 +77,22 @@ export default async function GanttEditarPage({ params }: { params: Promise<{ id
 
   const hoy = hoyMexico()
 
+  // Dependencias (flechas) entre las actividades que se están mostrando
+  // -- se filtran a las que ya están en pantalla porque una dependencia
+  // hacia una actividad inactiva o sin fechas no se puede dibujar (no
+  // tiene barra de dónde salir/llegar).
+  const actividadIds = procesos.flatMap((p) => p.actividades.map((a) => a.id))
+  const { data: depsRaw } = actividadIds.length > 0
+    ? await supabase
+        .from("dependencias_actividad")
+        .select("id, actividad_id, predecesora_id, tipo, lag_dias")
+        .in("actividad_id", actividadIds)
+    : { data: [] as DependenciaEditable[] }
+  const idsVisibles = new Set(actividadIds)
+  const dependencias: DependenciaEditable[] = (depsRaw ?? []).filter(
+    (d) => idsVisibles.has(d.actividad_id) && idsVisibles.has(d.predecesora_id)
+  )
+
   return (
     <div className="min-h-screen bg-white p-6 text-slate-900">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -100,6 +117,7 @@ export default async function GanttEditarPage({ params }: { params: Promise<{ id
 
       <GanttEditableClient
         procesos={procesos}
+        dependencias={dependencias}
         rangeStartISO={formatISO(rangeStart)}
         rangeEndISO={formatISO(rangeEnd)}
         hoyISO={formatISO(hoy)}
