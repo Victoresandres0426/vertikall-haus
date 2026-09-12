@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { SelectorProyectoActivo } from "@/components/layout/selector-proyecto-activo"
 import { ActividadesClient, type ProyectoConActividades } from "./actividades-client"
+import { ActualizarCuadrillaBoton } from "./actualizar-cuadrilla-boton"
 import { getProyectoActivoId, resolverProyectoActivo } from "@/lib/proyecto-activo"
 
 const ROLES_EDITAN = ["project_manager", "administrador", "dueno", "superadmin"]
@@ -50,7 +51,8 @@ async function getProyectosConActividades(): Promise<{
           avance_porcentaje, es_critica, riesgo_nivel, disciplina,
           fecha_inicio_plan, fecha_fin_plan, duracion_plan_dias, holgura_dias,
           costo_presupuesto, costo_real, costo_material, costo_mano_obra,
-          cantidad_objetivo, cantidad_ejecutada, unidad, personal_planeado
+          cantidad_objetivo, cantidad_ejecutada, unidad, personal_planeado,
+          composicion_cuadrilla, productividad_plan_texto
         )
       )
     `)
@@ -91,10 +93,15 @@ export default async function ActividadesPage() {
         subtitulo={`${totalActs.length} actividades · ${enProgreso} en progreso · ${completadas} completadas`}
         acciones={
           todosLosProyectos.length > 0 ? (
-            <SelectorProyectoActivo
-              proyectos={todosLosProyectos}
-              proyectoActualId={proyectos[0]?.id ?? null}
-            />
+            <div className="flex items-center gap-2">
+              {puedeEditar && proyectos[0]?.id && (
+                <ActualizarCuadrillaBoton proyectoId={proyectos[0].id} />
+              )}
+              <SelectorProyectoActivo
+                proyectos={todosLosProyectos}
+                proyectoActualId={proyectos[0]?.id ?? null}
+              />
+            </div>
           ) : undefined
         }
       />

@@ -36,6 +36,8 @@ type Actividad = {
   cantidad_ejecutada: number | null
   unidad: string | null
   personal_planeado: number | null
+  composicion_cuadrilla: string | null
+  productividad_plan_texto: string | null
 }
 
 type Proceso = {
@@ -475,6 +477,16 @@ export function ActividadesClient({
                               </div>
                                 )
                               })()}
+
+                              {(act.personal_planeado != null || act.composicion_cuadrilla || act.productividad_plan_texto) && (
+                                <div className="flex items-center gap-3 mt-1 flex-wrap text-xs text-slate-400" title="De dónde sale el ritmo planeado que usa el cálculo de rendimiento real vs. plan">
+                                  {act.personal_planeado != null && (
+                                    <span className="font-medium text-slate-500">Personal planeado: {act.personal_planeado}</span>
+                                  )}
+                                  {act.composicion_cuadrilla && <span>Cuadrilla: {act.composicion_cuadrilla}</span>}
+                                  {act.productividad_plan_texto && <span>Productividad: {act.productividad_plan_texto}</span>}
+                                </div>
+                              )}
                             </div>
 
                             <div className="shrink-0 text-right hidden sm:block">
