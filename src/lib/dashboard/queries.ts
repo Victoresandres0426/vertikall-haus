@@ -40,6 +40,7 @@ export interface DashboardData {
     fechaFinPlan: string | null
     fechaFinForecast: string | null
     avancePct: number
+    planAvancePct: number
     presupuestoBase: number
     costoReal: number
     margenObjetivo: number
@@ -89,6 +90,7 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
       fechaFinPlan: null,
       fechaFinForecast: null,
       avancePct: 0,
+      planAvancePct: 0,
       presupuestoBase: 0,
       costoReal: 0,
       margenObjetivo: 0,
@@ -311,7 +313,10 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
   // que sí pondera todas las actividades juntas). Misma convención que
   // scoreCronograma/scoreFinanzas en lib/engine/iidp.ts.
   const todasActividadesGlobal = ((procesosData ?? []) as (Proceso & {
-    actividades: Array<{ avance_porcentaje: number; costo_presupuesto: number }>
+    actividades: Array<{
+      avance_porcentaje: number; costo_presupuesto: number
+      fecha_inicio_plan: string | null; fecha_fin_plan: string | null
+    }>
   })[]).flatMap((p) => p.actividades ?? [])
   const pesoTotalGlobal = todasActividadesGlobal.reduce(
     (s, a) => s + (a.costo_presupuesto > 0 ? a.costo_presupuesto : 1), 0
@@ -321,6 +326,30 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
         todasActividadesGlobal.reduce(
           (s, a) => s + (a.avance_porcentaje ?? 0) * (a.costo_presupuesto > 0 ? a.costo_presupuesto : 1), 0
         ) / pesoTotalGlobal
+      )
+    : 0
+
+  // Avance planeado global: MISMA ponderación (por costo_presupuesto,
+  // sobre todas las actividades directamente) que avancePct de arriba,
+  // para que "Plan" y "Real" del KPI "Avance físico" sean comparables.
+  // Antes "Plan" salía de promediar plan_pct YA ponderado de cada
+  // proceso, sin ponderar ENTRE procesos (mismo problema que tenía
+  // avancePct) -- por eso el KPI podía mostrar un atraso que no
+  // coincidía con score_cronograma del IIDP, que sí pondera todo junto.
+  const hoyDate = new Date()
+  const planAvancePct = pesoTotalGlobal > 0
+    ? Math.round(
+        todasActividadesGlobal.reduce((s, a) => {
+          let planPct = 0
+          if (a.fecha_inicio_plan && a.fecha_fin_plan) {
+            const inicio = new Date(a.fecha_inicio_plan).getTime()
+            const fin = new Date(a.fecha_fin_plan).getTime()
+            const ahora = hoyDate.getTime()
+            if (ahora >= fin) planPct = 100
+            else if (ahora > inicio) planPct = ((ahora - inicio) / (fin - inicio)) * 100
+          }
+          return s + planPct * (a.costo_presupuesto > 0 ? a.costo_presupuesto : 1)
+        }, 0) / pesoTotalGlobal
       )
     : 0
 
@@ -335,6 +364,7 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
       fechaFinPlan: (proyecto as Proyecto).fecha_fin_plan ?? null,
       fechaFinForecast: (proyecto as Proyecto).fecha_fin_forecast ?? null,
       avancePct,
+      planAvancePct,
       presupuestoBase: (proyecto as Proyecto).presupuesto_base ?? 0,
       costoReal,
       margenObjetivo: (proyecto as Proyecto).margen_objetivo ?? 0,

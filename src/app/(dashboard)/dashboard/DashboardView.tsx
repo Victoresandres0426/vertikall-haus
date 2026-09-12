@@ -117,11 +117,12 @@ export function DashboardView({ proyectos, proyectoActualId, data }: Props) {
   const sobrecostoPct = kpis.presupuestoBase > 0
     ? ((kpis.costoReal - kpis.presupuestoBase * (kpis.avancePct / 100)) / (kpis.presupuestoBase * (kpis.avancePct / 100))) * 100
     : 0
-  const planAvancePct = (() => {
-    // Promedio del avance planeado por proceso
-    if (avancePorProceso.length === 0) return 0
-    return Math.round(avancePorProceso.reduce((s, p) => s + p.plan_pct, 0) / avancePorProceso.length)
-  })()
+  // Viene ya calculado del servidor (lib/dashboard/queries.ts) con la
+  // MISMA ponderación por costo_presupuesto que kpis.avancePct -- antes
+  // se recalculaba aquí como promedio simple de plan_pct por proceso
+  // (sin ponderar entre procesos), lo que podía mostrar un "atraso" que
+  // no coincidía con score_cronograma del IIDP.
+  const planAvancePct = kpis.planAvancePct
 
   const totalAlertasActivas = alertasActivas.rojas + alertasActivas.amarillas
 
