@@ -14,7 +14,7 @@
 
 import { evaluarCronograma, evaluarCosto, type ActividadParaMotor } from "./reglas"
 import { calcularIIDP, calcularTendencia, type IIDPInputs } from "./iidp"
-import { agregarRendimiento, type ActividadPlanRendimiento, type EntradaRendimiento } from "./rendimiento"
+import { agregarRendimiento, type ActividadPlanRendimiento, type TrabajadorDia } from "./rendimiento"
 import { umbralesDesdeConfig, pesosDesdeConfig, type ConfiguracionEmpresa } from "./types"
 import { calcularRutaCritica, type ActividadCPM, type DependenciaCPM } from "./cpm"
 import {
@@ -512,11 +512,16 @@ async function construirInputsIIDP(
   fecha: Date,
   actividades: ActividadParaMotor[]
 ): Promise<IIDPInputs> {
-  // Rendimiento real vs. plan de hoy: cada entrada de
-  // asistencia_actividad_diaria ya trae avance_cantidad por
-  // trabajador/actividad (migración 054) -- se compara contra el ritmo
-  // planeado de su actividad (cantidad_objetivo/duracion_plan_dias/
-  // personal_planeado, migración 070). Ver lib/engine/rendimiento.ts.
+  // Rendimiento real vs. plan de hoy: las horas reales de cada
+  // trabajador salen de asistencia_diaria (horas_regulares + horas_extra
+  // -- es la misma fuente con la que se le paga, así que es confiable).
+  // NO se usa la columna horas de asistencia_actividad_diaria como total
+  // trabajado: esa columna solo reparte el COSTO entre actividades y en
+  // la práctica queda en 0 para quien cobra a destajo por cantidad (ver
+  // nota en lib/engine/rendimiento.ts). De asistencia_actividad_diaria
+  // solo se usa avance_cantidad por actividad (migración 054), comparado
+  // contra el ritmo planeado de cada una (cantidad_objetivo/
+  // duracion_plan_dias/personal_planeado, migración 070).
   const { data: reportesHoy } = await supabase
     .from("reportes_diarios")
     .select("id")
@@ -528,10 +533,16 @@ async function construirInputsIIDP(
   let horasEquivalentesPlanDia = 0
 
   if (reporteIdsHoy.length > 0) {
-    const { data: asistenciaActividad } = await supabase
-      .from("asistencia_actividad_diaria")
-      .select("trabajador_id, actividad_id, horas, avance_cantidad")
-      .in("reporte_id", reporteIdsHoy)
+    const [{ data: asistenciaHoy }, { data: asistenciaActividad }] = await Promise.all([
+      supabase
+        .from("asistencia_diaria")
+        .select("trabajador_id, horas_regulares, horas_extra")
+        .in("reporte_id", reporteIdsHoy),
+      supabase
+        .from("asistencia_actividad_diaria")
+        .select("trabajador_id, actividad_id, avance_cantidad")
+        .in("reporte_id", reporteIdsHoy),
+    ])
 
     const actividadIdsHoy = Array.from(
       new Set(((asistenciaActividad ?? []) as any[]).map((a: any) => a.actividad_id))
@@ -554,14 +565,32 @@ async function construirInputsIIDP(
       }
     }
 
-    const entradasHoy: EntradaRendimiento[] = ((asistenciaActividad ?? []) as any[]).map((a: any) => ({
-      actividadId: a.actividad_id,
-      trabajadorId: a.trabajador_id,
-      horas: Number(a.horas ?? 0),
-      avanceCantidad: a.avance_cantidad != null ? Number(a.avance_cantidad) : null,
+    const horasRealesPorTrabajador = new Map<string, number>()
+    for (const a of (asistenciaHoy ?? []) as any[]) {
+      const previas = horasRealesPorTrabajador.get(a.trabajador_id) ?? 0
+      horasRealesPorTrabajador.set(a.trabajador_id, previas + Number(a.horas_regulares ?? 0) + Number(a.horas_extra ?? 0))
+    }
+
+    const entradasPorTrabajador = new Map<string, { actividadId: string; avanceCantidad: number | null }[]>()
+    for (const a of (asistenciaActividad ?? []) as any[]) {
+      if (!entradasPorTrabajador.has(a.trabajador_id)) entradasPorTrabajador.set(a.trabajador_id, [])
+      entradasPorTrabajador.get(a.trabajador_id)!.push({
+        actividadId: a.actividad_id,
+        avanceCantidad: a.avance_cantidad != null ? Number(a.avance_cantidad) : null,
+      })
+    }
+
+    // Todos los trabajadores con asistencia hoy, tengan o no avance por
+    // actividad reportado (si no tienen entradas, sus horas reales igual
+    // cuentan en el total del día, solo que su equivalente de plan es 0).
+    const idsTrabajadores = new Set([...horasRealesPorTrabajador.keys(), ...entradasPorTrabajador.keys()])
+    const trabajadoresHoy: TrabajadorDia[] = [...idsTrabajadores].map((trabajadorId) => ({
+      trabajadorId,
+      horasReales: horasRealesPorTrabajador.get(trabajadorId) ?? 0,
+      entradas: entradasPorTrabajador.get(trabajadorId) ?? [],
     }))
 
-    const totalesHoy = agregarRendimiento(entradasHoy, actividadesPlan)
+    const totalesHoy = agregarRendimiento(trabajadoresHoy, actividadesPlan)
     horasRealesDia = totalesHoy.horasReales
     horasEquivalentesPlanDia = totalesHoy.horasEquivalentesPlan
   }

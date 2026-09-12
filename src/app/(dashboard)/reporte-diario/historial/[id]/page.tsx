@@ -5,10 +5,10 @@ import { HistorialEditClient } from "./historial-edit-client"
 import type { TrabajadorHist, ActividadHist, SplitInicial, AsistenciaInicial, AvanceInicial, RendimientoTotales, RendimientoTrabajador } from "./historial-edit-client"
 import {
   agregarRendimiento,
-  agregarRendimientoPorTrabajador,
+  calcularRendimientoPorTrabajador,
   rendimientoPct,
   type ActividadPlanRendimiento,
-  type EntradaRendimiento,
+  type TrabajadorDia,
 } from "@/lib/engine/rendimiento"
 
 const ROLES_EDITAN = ["dueno", "superadmin", "administrador", "project_manager"]
@@ -125,10 +125,13 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
   }
 
   // ── Rendimiento real vs. plan de este día (ver lib/engine/rendimiento.ts) ──
-  // Compara, por cada renglón de asistencia_actividad_diaria, cuánto se
-  // produjo realmente (avance_cantidad) contra cuánto debía producirse en
-  // esas horas según el plan de la actividad (cantidad_objetivo /
-  // duracion_plan_dias / personal_planeado). No es solo horas trabajadas.
+  // Las horas reales de cada trabajador salen de asistencia_diaria
+  // (horas_regulares + horas_extra, la misma fuente con la que se le
+  // paga) -- NO de la columna horas de asistencia_actividad_diaria, que
+  // solo reparte costo entre actividades y suele quedar en 0 para quien
+  // cobra a destajo por cantidad. De asistencia_actividad_diaria solo se
+  // usa avance_cantidad por actividad, comparado contra el ritmo
+  // planeado (cantidad_objetivo / duracion_plan_dias / personal_planeado).
   const actividadesPlan = new Map<string, ActividadPlanRendimiento>(
     (actividadesRaw ?? []).map((a: { id: string; cantidad_objetivo: number | null; duracion_plan_dias: number | null; personal_planeado: number | null }) => [
       a.id,
@@ -141,24 +144,38 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
     ])
   )
 
-  const entradasRendimiento: EntradaRendimiento[] = (splitsRaw ?? []).map(
-    (s: { trabajador_id: string; actividad_id: string; horas: number; avance_cantidad: number | null }) => ({
+  const horasRealesPorTrabajador = new Map<string, number>()
+  for (const a of (asistenciaRaw ?? []) as { trabajador_id: string; horas_regulares: number; horas_extra: number }[]) {
+    const previas = horasRealesPorTrabajador.get(a.trabajador_id) ?? 0
+    horasRealesPorTrabajador.set(a.trabajador_id, previas + Number(a.horas_regulares ?? 0) + Number(a.horas_extra ?? 0))
+  }
+
+  const entradasPorTrabajador = new Map<string, { actividadId: string; avanceCantidad: number | null }[]>()
+  for (const s of (splitsRaw ?? []) as { trabajador_id: string; actividad_id: string; avance_cantidad: number | null }[]) {
+    if (!entradasPorTrabajador.has(s.trabajador_id)) entradasPorTrabajador.set(s.trabajador_id, [])
+    entradasPorTrabajador.get(s.trabajador_id)!.push({
       actividadId: s.actividad_id,
-      trabajadorId: s.trabajador_id,
-      horas: Number(s.horas ?? 0),
       avanceCantidad: s.avance_cantidad != null ? Number(s.avance_cantidad) : null,
     })
-  )
+  }
 
-  const totalesDia = agregarRendimiento(entradasRendimiento, actividadesPlan)
+  const idsConDatos = new Set([...horasRealesPorTrabajador.keys(), ...entradasPorTrabajador.keys()])
+  const trabajadoresDia: TrabajadorDia[] = [...idsConDatos].map((trabajadorId) => ({
+    trabajadorId,
+    horasReales: horasRealesPorTrabajador.get(trabajadorId) ?? 0,
+    entradas: entradasPorTrabajador.get(trabajadorId) ?? [],
+  }))
+
+  const totalesDia = agregarRendimiento(trabajadoresDia, actividadesPlan)
   const rendimientoDia: RendimientoTotales = {
     horasReales: totalesDia.horasReales,
     horasEquivalentesPlan: totalesDia.horasEquivalentesPlan,
-    pct: rendimientoPct(totalesDia),
+    pct: rendimientoPct(totalesDia.horasEquivalentesPlan, totalesDia.horasReales),
   }
 
   const nombrePorTrabajador = new Map(trabajadores.map((t) => [t.id, t.nombre_completo]))
-  const rendimientoPorTrabajador: RendimientoTrabajador[] = agregarRendimientoPorTrabajador(entradasRendimiento, actividadesPlan)
+  const rendimientoPorTrabajador: RendimientoTrabajador[] = calcularRendimientoPorTrabajador(trabajadoresDia, actividadesPlan)
+    .filter((r) => r.horasReales > 0)
     .map((r) => ({
       trabajadorId: r.trabajadorId,
       nombre: nombrePorTrabajador.get(r.trabajadorId) ?? "—",
