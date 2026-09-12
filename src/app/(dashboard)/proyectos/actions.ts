@@ -137,6 +137,59 @@ export async function actualizarHoraEntrada(proyectoId: string, hora: string): P
   return {}
 }
 
+// Zonas horarias que puede tener un proyecto -- cubre México y las
+// zonas de EE.UU. donde ya sabemos que hay obras (ver migración 067,
+// caso Radnor Residence en Miami). Se valida contra esta lista fija
+// en vez de aceptar cualquier texto para evitar un IANA inválido que
+// rompería silenciosamente los cálculos de "hoy"/"ahora" del check-in.
+const ZONAS_HORARIAS_VALIDAS = [
+  "America/Mexico_City",
+  "America/Tijuana",
+  "America/Hermosillo",
+  "America/Cancun",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Phoenix",
+]
+
+export async function actualizarZonaHoraria(proyectoId: string, zonaHoraria: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  const { data: perfil } = await supabase
+    .from("perfiles_usuario")
+    .select("rol")
+    .eq("id", user.id)
+    .single()
+
+  if (!perfil || !ROLES_EDITAN_CLIENTE.includes(perfil.rol)) {
+    return { error: "No tienes permisos para editar la zona horaria" }
+  }
+
+  if (!ZONAS_HORARIAS_VALIDAS.includes(zonaHoraria)) {
+    return { error: "Zona horaria inválida" }
+  }
+
+  const { error } = await supabase
+    .from("proyectos")
+    .update({ zona_horaria: zonaHoraria })
+    .eq("id", proyectoId)
+
+  if (error) {
+    console.error("actualizarZonaHoraria error:", error)
+    return { error: "Error al guardar la zona horaria." }
+  }
+
+  revalidatePath(`/proyectos/${proyectoId}`)
+  revalidatePath(`/gantt/${proyectoId}`)
+  revalidatePath(`/gantt/${proyectoId}/editar`)
+  return {}
+}
+
 const ESTADOS_VALIDOS = ["activo", "pausado", "completado", "cancelado"]
 
 export async function actualizarEstadoProyecto(proyectoId: string, nuevoEstado: string): Promise<{ error?: string }> {

@@ -36,7 +36,7 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
   const { data: proyecto, error } = await supabase
     .from("proyectos")
     .select(`
-      id, codigo, nombre, fecha_inicio_plan, fecha_fin_plan,
+      id, codigo, nombre, fecha_inicio_plan, fecha_fin_plan, zona_horaria,
       procesos (
         id, codigo, nombre, orden,
         actividades (
@@ -72,10 +72,9 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
   const rangeStart = parseISO(todasFechas.reduce((min, f) => (f < min ? f : min)))
   const rangeEnd = parseISO(todasFechas.reduce((max, f) => (f > max ? f : max)))
 
-  // "Hoy" en la misma zona horaria que usa el resto de la app (Reporte
-  // Diario, check-in, etc.) -- así la línea de hoy cae en el día correcto
-  // sin importar en qué servidor/zona corre el build.
-  const hoy = hoyMexico()
+  // "Hoy" en la zona horaria del proyecto (no siempre México) -- así la
+  // línea de hoy cae en el día correcto sin importar dónde esté la obra.
+  const hoy = hoyMexico(proyecto.zona_horaria)
 
   // ── Partimos el rango completo en tramos mensuales — una hoja impresa por mes ──
   type Tramo = { inicio: Date; fin: Date }

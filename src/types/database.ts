@@ -90,6 +90,7 @@ export interface Proyecto {
   estado: string;
   responsable_id?: string;
   ubicacion?: string;
+  zona_horaria?: string;
   configuracion: Record<string, unknown>;
   activo: boolean;
   created_at: string;

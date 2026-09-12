@@ -48,8 +48,8 @@ function formatearDia(f: string): { nombre: string; corta: string } {
   }
 }
 
-function esHoy(f: string): boolean {
-  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" })
+function esHoy(f: string, zonaHoraria: string): boolean {
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: zonaHoraria || "America/Mexico_City" })
   return f === hoy
 }
 
@@ -58,6 +58,7 @@ export default function MiDesempenoPage({ params }: { params: Promise<{ token: s
   const supabase = createClient()
 
   const [proyectoNombre, setProyectoNombre] = useState("")
+  const [zonaHoraria, setZonaHoraria] = useState("America/Mexico_City")
   const [dias, setDias] = useState<DiaGanancia[]>([])
   const [notFound, setNotFound] = useState(false)
   const [sinVincular, setSinVincular] = useState(false)
@@ -72,13 +73,14 @@ export default function MiDesempenoPage({ params }: { params: Promise<{ token: s
       const { data: proyData, error: proyError } = await supabase
         .rpc("checkin_datos_proyecto", { p_qr_token: token })
 
-      const proy = proyData?.[0] as { nombre: string } | undefined
+      const proy = proyData?.[0] as { nombre: string; zona_horaria?: string } | undefined
       if (proyError || !proy) {
         setNotFound(true)
         setIsLoading(false)
         return
       }
       setProyectoNombre(proy.nombre)
+      if (proy.zona_horaria) setZonaHoraria(proy.zona_horaria)
 
       const deviceToken = obtenerDeviceToken()
       if (!deviceToken) {
@@ -192,7 +194,7 @@ export default function MiDesempenoPage({ params }: { params: Promise<{ token: s
         <div className="space-y-2">
           {dias.map((d) => {
             const { nombre, corta } = formatearDia(d.fecha)
-            const hoy = esHoy(d.fecha)
+            const hoy = esHoy(d.fecha, zonaHoraria)
             return (
               <div
                 key={d.fecha}

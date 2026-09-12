@@ -15,6 +15,7 @@ import { ClienteEmail } from "./cliente-email"
 import { TelefonoCliente } from "./telefono-cliente"
 import { CoordenadasObra } from "./coordenadas-obra"
 import { HoraEntrada } from "./hora-entrada"
+import { ZonaHoraria } from "./zona-horaria"
 import { ArchivosProyecto, type ArchivoProyecto } from "./archivos-proyecto"
 import { EstadoProyecto } from "./estado-proyecto"
 import { SeccionDesplegable } from "./seccion-desplegable"
@@ -27,7 +28,7 @@ type Proyecto = {
   cliente_telefono: string | null
   coordenadas: { lat: number; lng: number } | null
   hora_entrada_esperada: string | null
-  ubicacion: string | null; estado: string
+  ubicacion: string | null; zona_horaria: string | null; estado: string
   fecha_inicio_plan: string; fecha_fin_plan: string
   fecha_inicio_real: string | null; fecha_fin_forecast: string | null
   presupuesto_base: number; presupuesto_venta: number; margen_objetivo: number
@@ -90,7 +91,7 @@ async function getData(id: string) {
   const { data: proyecto } = await supabase
     .from("proyectos")
     .select(`
-      id, codigo, nombre, cliente, cliente_email, cliente_telefono, coordenadas, hora_entrada_esperada, ubicacion, estado,
+      id, codigo, nombre, cliente, cliente_email, cliente_telefono, coordenadas, hora_entrada_esperada, ubicacion, zona_horaria, estado,
       fecha_inicio_plan, fecha_fin_plan, fecha_inicio_real, fecha_fin_forecast,
       presupuesto_base, presupuesto_venta, margen_objetivo
     `)
@@ -99,10 +100,12 @@ async function getData(id: string) {
 
   if (!proyecto) notFound()
 
-  // "Hoy" en la fecha LOCAL de la obra (México), no en UTC del servidor
-  // -- de noche, UTC ya es el día siguiente y esto hacía que "Registros
-  // de hoy" nunca encontrara los check-ins recién hechos.
-  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" })
+  // "Hoy" en la fecha LOCAL de la obra (zona horaria del proyecto, no
+  // siempre México), no en UTC del servidor -- de noche, UTC ya es el
+  // día siguiente y esto hacía que "Registros de hoy" nunca encontrara
+  // los check-ins recién hechos (y en proyectos fuera de México, la
+  // zona equivocada corría el día -- o la hora mostrada -- varias horas).
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: proyecto.zona_horaria || "America/Mexico_City" })
 
   // Queries paralelas (core — siempre disponibles)
   const [procesosRes, iidpRes, alertasRes, coRes, costosRes] = await Promise.all([
@@ -414,6 +417,7 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
               <TelefonoCliente proyectoId={proyecto.id} telefonoInicial={proyecto.cliente_telefono} puedeEditar={puedeEditarCliente} />
               <CoordenadasObra proyectoId={proyecto.id} coordenadasIniciales={proyecto.coordenadas} puedeEditar={puedeEditarCliente} />
               <HoraEntrada proyectoId={proyecto.id} horaInicial={proyecto.hora_entrada_esperada} puedeEditar={puedeEditarCliente} />
+              <ZonaHoraria proyectoId={proyecto.id} zonaInicial={proyecto.zona_horaria} puedeEditar={puedeEditarCliente} />
             </div>
           </div>
           {ultimoIIDP && (

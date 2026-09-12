@@ -29,7 +29,7 @@ async function getData(): Promise<{
   // Obtener proyectos activos
   const { data: proyectosRaw } = await supabase
     .from("proyectos")
-    .select("id, codigo, nombre")
+    .select("id, codigo, nombre, zona_horaria")
     .eq("activo", true)
     .order("created_at", { ascending: false })
 
@@ -137,7 +137,7 @@ async function getData(): Promise<{
   // si aún no la tiene, el reporte sigue con el default editable.
   const horasQrPorTrabajador: Record<string, number> = {}
   if (proyectoActivo) {
-    const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" })
+    const hoy = new Date().toLocaleDateString("en-CA", { timeZone: proyectoActivo.zona_horaria || "America/Mexico_City" })
     try {
       const { data: qrRaw } = await supabase
         .from("registros_asistencia_qr")

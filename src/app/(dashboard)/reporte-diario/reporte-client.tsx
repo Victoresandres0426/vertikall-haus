@@ -51,6 +51,7 @@ export type ProyectoSimple = {
   id: string
   codigo: string
   nombre: string
+  zona_horaria?: string | null
 }
 
 type AsistenciaState = "presente" | "ausente" | "medio_dia"

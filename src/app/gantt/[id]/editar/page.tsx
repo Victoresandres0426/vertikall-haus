@@ -32,7 +32,7 @@ export default async function GanttEditarPage({ params }: { params: Promise<{ id
   const { data: proyecto, error } = await supabase
     .from("proyectos")
     .select(`
-      id, codigo, nombre, fecha_inicio_plan,
+      id, codigo, nombre, fecha_inicio_plan, zona_horaria,
       procesos (
         id, codigo, nombre, orden,
         actividades (
@@ -83,7 +83,7 @@ export default async function GanttEditarPage({ params }: { params: Promise<{ id
   const rangeEnd = new Date(rangeEndReal)
   rangeEnd.setDate(rangeEnd.getDate() + COLCHON_DESPUES_DIAS)
 
-  const hoy = hoyMexico()
+  const hoy = hoyMexico(proyecto.zona_horaria)
 
   // Dependencias (flechas) entre las actividades que se están mostrando
   // -- se filtran a las que ya están en pantalla porque una dependencia

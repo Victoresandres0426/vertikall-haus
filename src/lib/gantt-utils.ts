@@ -59,10 +59,10 @@ export function colorBarra(act: ActividadGanttMin, hoy: Date): string {
   return "bg-[#3B72D8]"
 }
 
-// "Hoy" en la misma zona horaria que usa el resto de la app (Reporte
-// Diario, check-in, etc.) -- así la línea/color de hoy cae en el día
-// correcto sin importar en qué servidor/zona corre el build o desde qué
-// navegador se abre.
-export function hoyMexico(): Date {
-  return parseISO(new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" }))
+// "Hoy" en la zona horaria del proyecto (no siempre México -- ver
+// proyectos.zona_horaria) -- así la línea/color de hoy cae en el día
+// correcto sin importar en qué servidor/zona corre el build, desde qué
+// navegador se abre, o dónde esté físicamente la obra.
+export function hoyMexico(zonaHoraria?: string | null): Date {
+  return parseISO(new Date().toLocaleDateString("en-CA", { timeZone: zonaHoraria || "America/Mexico_City" }))
 }
