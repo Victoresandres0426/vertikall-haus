@@ -13,9 +13,19 @@ import { avanceEsperadoPct, type ActividadParaMotor } from "./reglas"
 export type IIDPInputs = {
   fecha: Date
   actividades: ActividadParaMotor[]
-  // Asistencia del día: horas productivas vs. improductivas
-  horasProductivasHoy: number
-  horasImproductivasHoy: number
+  // Rendimiento real vs. plan del día (ver lib/engine/rendimiento.ts):
+  // horas reales trabajadas y su equivalente en horas de plan según lo
+  // que realmente se produjo (avance_cantidad contra el ritmo planeado
+  // de cada actividad). Se guardan también así, sin combinar, en el
+  // snapshot del día para poder acumularlas a lo largo del proyecto.
+  horasRealesDia: number
+  horasEquivalentesPlanDia: number
+  // Mismos dos valores pero acumulados desde el inicio del proyecto
+  // hasta hoy (incluye el día de hoy) -- de acá sale el score de
+  // Productividad, que por eso es un promedio histórico ponderado por
+  // horas y no el reflejo de un solo día.
+  horasRealesAcumulado: number
+  horasEquivalentesPlanAcumulado: number
   // Retrabajo reportado en avances recientes (últimos 7 días)
   horasRetrabajo7d: number
   horasTrabajadas7d: number
@@ -76,10 +86,15 @@ function scoreFinanzas(actividades: ActividadParaMotor[]): number {
   return clamp0a100(100 - desviacionPromedio)
 }
 
-function scoreProductividad(horasProductivas: number, horasImproductivas: number): number {
-  const total = horasProductivas + horasImproductivas
-  if (total <= 0) return 70 // sin datos del día: valor neutral, no se penaliza
-  return clamp0a100((horasProductivas / total) * 100)
+// Promedio acumulado (ponderado por horas, no promedio de promedios) del
+// rendimiento real vs. plan desde el inicio del proyecto hasta hoy. Ver
+// lib/engine/rendimiento.ts para cómo se calculan horasEquivalentesPlan
+// por trabajador/actividad/día. Un rendimiento >100% (se avanzó más
+// rápido de lo planeado) se recorta a 100 para el score -- el detalle
+// sin recortar queda disponible en `detalle` para quien quiera revisarlo.
+function scoreProductividad(horasEquivalentesPlanAcum: number, horasRealesAcum: number): number {
+  if (horasRealesAcum <= 0) return 70 // todavía no hay historial: valor neutral, no se penaliza
+  return clamp0a100((horasEquivalentesPlanAcum / horasRealesAcum) * 100)
 }
 
 function scoreCalidad(horasRetrabajo: number, horasTrabajadas: number): number {
@@ -102,7 +117,7 @@ function scoreGestion(atendidasATiempo: number, conFechaLimite: number): number 
 export function calcularIIDP(inputs: IIDPInputs, pesos: PesosIIDP = PESOS_IIDP_DEFAULT): IIDPResultado {
   const cronograma = scoreCronograma(inputs.actividades, inputs.fecha)
   const finanzas = scoreFinanzas(inputs.actividades)
-  const productividad = scoreProductividad(inputs.horasProductivasHoy, inputs.horasImproductivasHoy)
+  const productividad = scoreProductividad(inputs.horasEquivalentesPlanAcumulado, inputs.horasRealesAcumulado)
   const calidad = scoreCalidad(inputs.horasRetrabajo7d, inputs.horasTrabajadas7d)
   const logistica = scoreLogistica(inputs.materialesBajoStock, inputs.materialesTotal)
   const gestion = scoreGestion(inputs.alertasAtendidasATiempo, inputs.alertasConFechaLimite)
@@ -126,8 +141,13 @@ export function calcularIIDP(inputs: IIDPInputs, pesos: PesosIIDP = PESOS_IIDP_D
     detalle: {
       pesos,
       actividades_evaluadas: inputs.actividades.length,
-      horas_productivas_hoy: inputs.horasProductivasHoy,
-      horas_improductivas_hoy: inputs.horasImproductivasHoy,
+      horas_reales_dia: inputs.horasRealesDia,
+      horas_equivalentes_plan_dia: inputs.horasEquivalentesPlanDia,
+      rendimiento_pct_dia: inputs.horasRealesDia > 0
+        ? Math.round((inputs.horasEquivalentesPlanDia / inputs.horasRealesDia) * 10000) / 100
+        : null,
+      horas_reales_acumulado: inputs.horasRealesAcumulado,
+      horas_equivalentes_plan_acumulado: inputs.horasEquivalentesPlanAcumulado,
       materiales_bajo_stock: inputs.materialesBajoStock,
       materiales_total: inputs.materialesTotal,
     },

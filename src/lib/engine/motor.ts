@@ -14,6 +14,7 @@
 
 import { evaluarCronograma, evaluarCosto, type ActividadParaMotor } from "./reglas"
 import { calcularIIDP, calcularTendencia, type IIDPInputs } from "./iidp"
+import { agregarRendimiento, type ActividadPlanRendimiento, type EntradaRendimiento } from "./rendimiento"
 import { umbralesDesdeConfig, pesosDesdeConfig, type ConfiguracionEmpresa } from "./types"
 import { calcularRutaCritica, type ActividadCPM, type DependenciaCPM } from "./cpm"
 import {
@@ -484,6 +485,11 @@ export async function ejecutarMotorDiario(
         score_calidad: calculo.score_calidad,
         score_logistica: calculo.score_logistica,
         score_gestion: calculo.score_gestion,
+        // Se guardan los totales CRUDOS del día (no el %) para poder
+        // acumularlos con SUM() en corridas futuras sin releer toda la
+        // asistencia histórica -- ver construirInputsIIDP más abajo.
+        horas_reales_dia: iidpInputs.horasRealesDia,
+        horas_equivalentes_plan_dia: iidpInputs.horasEquivalentesPlanDia,
         detalle: calculo.detalle,
         tendencia,
       },
@@ -506,7 +512,11 @@ async function construirInputsIIDP(
   fecha: Date,
   actividades: ActividadParaMotor[]
 ): Promise<IIDPInputs> {
-  // Asistencia de hoy
+  // Rendimiento real vs. plan de hoy: cada entrada de
+  // asistencia_actividad_diaria ya trae avance_cantidad por
+  // trabajador/actividad (migración 054) -- se compara contra el ritmo
+  // planeado de su actividad (cantidad_objetivo/duracion_plan_dias/
+  // personal_planeado, migración 070). Ver lib/engine/rendimiento.ts.
   const { data: reportesHoy } = await supabase
     .from("reportes_diarios")
     .select("id")
@@ -514,20 +524,64 @@ async function construirInputsIIDP(
     .eq("fecha", hoyISO(fecha))
 
   const reporteIdsHoy = ((reportesHoy ?? []) as any[]).map((r: any) => r.id)
-  let horasProductivasHoy = 0
-  let horasImproductivasHoy = 0
+  let horasRealesDia = 0
+  let horasEquivalentesPlanDia = 0
 
   if (reporteIdsHoy.length > 0) {
-    const { data: asistencia } = await supabase
-      .from("asistencia_diaria")
-      .select("horas_productivas, horas_improductivas, horas_regulares, horas_extra")
+    const { data: asistenciaActividad } = await supabase
+      .from("asistencia_actividad_diaria")
+      .select("trabajador_id, actividad_id, horas, avance_cantidad")
       .in("reporte_id", reporteIdsHoy)
 
-    for (const a of (asistencia ?? []) as any[]) {
-      const productivas = a.horas_productivas ?? (a.horas_regulares ?? 0) + (a.horas_extra ?? 0)
-      horasProductivasHoy += Number(productivas ?? 0)
-      horasImproductivasHoy += Number(a.horas_improductivas ?? 0)
+    const actividadIdsHoy = Array.from(
+      new Set(((asistenciaActividad ?? []) as any[]).map((a: any) => a.actividad_id))
+    )
+
+    const actividadesPlan = new Map<string, ActividadPlanRendimiento>()
+    if (actividadIdsHoy.length > 0) {
+      const { data: actividadesPlanRaw } = await supabase
+        .from("actividades")
+        .select("id, cantidad_objetivo, duracion_plan_dias, personal_planeado")
+        .in("id", actividadIdsHoy)
+
+      for (const a of (actividadesPlanRaw ?? []) as any[]) {
+        actividadesPlan.set(a.id, {
+          id: a.id,
+          cantidad_objetivo: a.cantidad_objetivo != null ? Number(a.cantidad_objetivo) : null,
+          duracion_plan_dias: a.duracion_plan_dias != null ? Number(a.duracion_plan_dias) : null,
+          personal_planeado: a.personal_planeado != null ? Number(a.personal_planeado) : null,
+        })
+      }
     }
+
+    const entradasHoy: EntradaRendimiento[] = ((asistenciaActividad ?? []) as any[]).map((a: any) => ({
+      actividadId: a.actividad_id,
+      trabajadorId: a.trabajador_id,
+      horas: Number(a.horas ?? 0),
+      avanceCantidad: a.avance_cantidad != null ? Number(a.avance_cantidad) : null,
+    }))
+
+    const totalesHoy = agregarRendimiento(entradasHoy, actividadesPlan)
+    horasRealesDia = totalesHoy.horasReales
+    horasEquivalentesPlanDia = totalesHoy.horasEquivalentesPlan
+  }
+
+  // Acumulado histórico (desde el inicio del proyecto hasta AYER, no
+  // incluye hoy todavía) -- se suma sobre las columnas horas_reales_dia
+  // / horas_equivalentes_plan_dia ya guardadas día a día en
+  // iidp_snapshots, para no tener que releer toda la asistencia
+  // histórica en cada corrida del motor.
+  const { data: acumPrevioRaw } = await supabase
+    .from("iidp_snapshots")
+    .select("horas_reales_dia, horas_equivalentes_plan_dia")
+    .eq("proyecto_id", proyectoId)
+    .lt("fecha", hoyISO(fecha))
+
+  let horasRealesAcumulado = horasRealesDia
+  let horasEquivalentesPlanAcumulado = horasEquivalentesPlanDia
+  for (const s of (acumPrevioRaw ?? []) as any[]) {
+    horasRealesAcumulado += Number(s.horas_reales_dia ?? 0)
+    horasEquivalentesPlanAcumulado += Number(s.horas_equivalentes_plan_dia ?? 0)
   }
 
   // Retrabajo de los últimos 7 días
@@ -582,8 +636,10 @@ async function construirInputsIIDP(
   return {
     fecha,
     actividades,
-    horasProductivasHoy,
-    horasImproductivasHoy,
+    horasRealesDia,
+    horasEquivalentesPlanDia,
+    horasRealesAcumulado,
+    horasEquivalentesPlanAcumulado,
     horasRetrabajo7d,
     horasTrabajadas7d,
     materialesBajoStock,

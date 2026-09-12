@@ -2,7 +2,14 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect, notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { HistorialEditClient } from "./historial-edit-client"
-import type { TrabajadorHist, ActividadHist, SplitInicial, AsistenciaInicial, AvanceInicial } from "./historial-edit-client"
+import type { TrabajadorHist, ActividadHist, SplitInicial, AsistenciaInicial, AvanceInicial, RendimientoTotales, RendimientoTrabajador } from "./historial-edit-client"
+import {
+  agregarRendimiento,
+  agregarRendimientoPorTrabajador,
+  rendimientoPct,
+  type ActividadPlanRendimiento,
+  type EntradaRendimiento,
+} from "@/lib/engine/rendimiento"
 
 const ROLES_EDITAN = ["dueno", "superadmin", "administrador", "project_manager"]
 
@@ -47,7 +54,7 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
   ] = await Promise.all([
     supabase
       .from("actividades")
-      .select("id, codigo, nombre, unidad, cantidad_objetivo, cantidad_ejecutada, avance_porcentaje")
+      .select("id, codigo, nombre, unidad, cantidad_objetivo, cantidad_ejecutada, avance_porcentaje, duracion_plan_dias, personal_planeado")
       .eq("proyecto_id", proyectoId)
       .order("codigo"),
     supabase
@@ -117,6 +124,50 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
     })
   }
 
+  // ── Rendimiento real vs. plan de este día (ver lib/engine/rendimiento.ts) ──
+  // Compara, por cada renglón de asistencia_actividad_diaria, cuánto se
+  // produjo realmente (avance_cantidad) contra cuánto debía producirse en
+  // esas horas según el plan de la actividad (cantidad_objetivo /
+  // duracion_plan_dias / personal_planeado). No es solo horas trabajadas.
+  const actividadesPlan = new Map<string, ActividadPlanRendimiento>(
+    (actividadesRaw ?? []).map((a: { id: string; cantidad_objetivo: number | null; duracion_plan_dias: number | null; personal_planeado: number | null }) => [
+      a.id,
+      {
+        id: a.id,
+        cantidad_objetivo: a.cantidad_objetivo != null ? Number(a.cantidad_objetivo) : null,
+        duracion_plan_dias: a.duracion_plan_dias != null ? Number(a.duracion_plan_dias) : null,
+        personal_planeado: a.personal_planeado != null ? Number(a.personal_planeado) : null,
+      },
+    ])
+  )
+
+  const entradasRendimiento: EntradaRendimiento[] = (splitsRaw ?? []).map(
+    (s: { trabajador_id: string; actividad_id: string; horas: number; avance_cantidad: number | null }) => ({
+      actividadId: s.actividad_id,
+      trabajadorId: s.trabajador_id,
+      horas: Number(s.horas ?? 0),
+      avanceCantidad: s.avance_cantidad != null ? Number(s.avance_cantidad) : null,
+    })
+  )
+
+  const totalesDia = agregarRendimiento(entradasRendimiento, actividadesPlan)
+  const rendimientoDia: RendimientoTotales = {
+    horasReales: totalesDia.horasReales,
+    horasEquivalentesPlan: totalesDia.horasEquivalentesPlan,
+    pct: rendimientoPct(totalesDia),
+  }
+
+  const nombrePorTrabajador = new Map(trabajadores.map((t) => [t.id, t.nombre_completo]))
+  const rendimientoPorTrabajador: RendimientoTrabajador[] = agregarRendimientoPorTrabajador(entradasRendimiento, actividadesPlan)
+    .map((r) => ({
+      trabajadorId: r.trabajadorId,
+      nombre: nombrePorTrabajador.get(r.trabajadorId) ?? "—",
+      horasReales: r.horasReales,
+      horasEquivalentesPlan: r.horasEquivalentesPlan,
+      pct: r.rendimientoPct,
+    }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre))
+
   return (
     <div>
       <Header
@@ -134,6 +185,8 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
         asistenciaInicial={asistenciaInicial}
         avanceInicial={avanceInicial}
         splitsPorTrabajador={splitsPorTrabajador}
+        rendimientoDia={rendimientoDia}
+        rendimientoPorTrabajador={rendimientoPorTrabajador}
       />
     </div>
   )

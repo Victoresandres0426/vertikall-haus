@@ -35,6 +35,7 @@ type Actividad = {
   cantidad_objetivo: number | null
   cantidad_ejecutada: number | null
   unidad: string | null
+  personal_planeado: number | null
 }
 
 type Proceso = {
@@ -70,6 +71,7 @@ const actividadVacia: ActividadInput = {
   cantidad_objetivo: null,
   unidad: null,
   duracion_plan_dias: 1,
+  personal_planeado: null,
   fecha_inicio_plan: null,
   fecha_fin_plan: null,
   es_critica: false,
@@ -212,6 +214,7 @@ export function ActividadesClient({
       cantidad_objetivo: act.cantidad_objetivo,
       unidad: act.unidad,
       duracion_plan_dias: act.duracion_plan_dias ?? 1,
+      personal_planeado: act.personal_planeado,
       fecha_inicio_plan: act.fecha_inicio_plan,
       fecha_fin_plan: act.fecha_fin_plan,
       es_critica: act.es_critica,
@@ -401,6 +404,9 @@ export function ActividadesClient({
                               <CampoEtiquetado label="Duración (días)">
                                 <input type="number" value={draftActividad.duracion_plan_dias} onChange={(e) => setDraftActividad({ ...draftActividad, duracion_plan_dias: parseFloat(e.target.value) || 1 })} className={cn(inputCls, "w-16")} title="Días de duración" placeholder="Días" />
                               </CampoEtiquetado>
+                              <CampoEtiquetado label="Personal planeado">
+                                <input type="number" value={draftActividad.personal_planeado ?? ""} onChange={(e) => setDraftActividad({ ...draftActividad, personal_planeado: e.target.value === "" ? null : parseInt(e.target.value) || 1 })} className={cn(inputCls, "w-16")} title="Cantidad de trabajadores que asume el plan para lograr la cantidad propuesta en la duración indicada. Si se deja vacío se asume 1." placeholder="Personas" />
+                              </CampoEtiquetado>
                               <CampoEtiquetado label="Fecha inicio (plan)">
                                 <input type="date" value={draftActividad.fecha_inicio_plan ?? ""} onChange={(e) => setDraftActividad({ ...draftActividad, fecha_inicio_plan: e.target.value || null })} className={cn(inputCls, "w-36")} title="Fecha inicio plan" />
                               </CampoEtiquetado>
@@ -520,6 +526,9 @@ export function ActividadesClient({
                             </CampoEtiquetado>
                             <CampoEtiquetado label="Duración (días)">
                               <input type="number" value={draftNuevaActividad.duracion_plan_dias} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, duracion_plan_dias: parseFloat(e.target.value) || 1 })} className={cn(inputCls, "w-16")} placeholder="Días" />
+                            </CampoEtiquetado>
+                            <CampoEtiquetado label="Personal planeado">
+                              <input type="number" value={draftNuevaActividad.personal_planeado ?? ""} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, personal_planeado: e.target.value === "" ? null : parseInt(e.target.value) || 1 })} className={cn(inputCls, "w-16")} title="Cantidad de trabajadores que asume el plan. Si se deja vacío se asume 1." placeholder="Personas" />
                             </CampoEtiquetado>
                             <CampoEtiquetado label="Fecha inicio (plan)">
                               <input type="date" value={draftNuevaActividad.fecha_inicio_plan ?? ""} onChange={(e) => setDraftNuevaActividad({ ...draftNuevaActividad, fecha_inicio_plan: e.target.value || null })} className={cn(inputCls, "w-36")} />

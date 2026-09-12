@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, X, Save, ArrowLeft, AlertTriangle } from "lucide-react"
+import { Plus, X, Save, ArrowLeft, AlertTriangle, Gauge } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input, Textarea } from "@/components/ui/input"
@@ -17,6 +17,11 @@ export type ActividadHist = {
 export type SplitInicial = { actividadId: string; rol: string; horas: number; avance: number }
 export type AsistenciaInicial = { presente: boolean; horas_regulares: number; horas_extra: number }
 export type AvanceInicial = { cantidad_ejecutada_dia: number; porcentaje_avance_total: number | null; incidencias: string }
+// Rendimiento real vs. plan de este día -- ver lib/engine/rendimiento.ts.
+// pct puede ser null (nadie tiene horas registradas todavía) o superar
+// 100 (se produjo más rápido de lo que el plan asumía).
+export type RendimientoTotales = { horasReales: number; horasEquivalentesPlan: number; pct: number | null }
+export type RendimientoTrabajador = RendimientoTotales & { trabajadorId: string; nombre: string }
 
 type AsistenciaState = "presente" | "medio_dia" | "ausente"
 
@@ -65,6 +70,21 @@ function CampoEtiquetado({ label, className, children }: { label: string; classN
   )
 }
 
+// Color según qué tan cerca (o lejos) del plan quedó el rendimiento --
+// no es una nota "buena/mala" absoluta, solo resalta lo que más se aleja
+// de 100% (tanto por debajo -- se produjo menos de lo esperado -- como
+// muy por encima, que suele indicar que avance_cantidad se cargó mal).
+function colorRendimiento(pct: number | null): string {
+  if (pct === null) return "text-slate-400"
+  if (pct < 70) return "text-red-600"
+  if (pct < 90) return "text-amber-600"
+  return "text-emerald-600"
+}
+
+function formatoPct(pct: number | null): string {
+  return pct === null ? "—" : `${Math.round(pct)}%`
+}
+
 function estadoInicial(a: AsistenciaInicial | undefined): AsistenciaState {
   if (!a) return "ausente"
   if (!a.presente) return "ausente"
@@ -82,6 +102,8 @@ export function HistorialEditClient({
   asistenciaInicial,
   avanceInicial,
   splitsPorTrabajador,
+  rendimientoDia,
+  rendimientoPorTrabajador,
 }: {
   reporteId: string
   proyectoId: string
@@ -93,6 +115,8 @@ export function HistorialEditClient({
   asistenciaInicial: Record<string, AsistenciaInicial>
   avanceInicial: Record<string, AvanceInicial>
   splitsPorTrabajador: Record<string, SplitInicial[]>
+  rendimientoDia: RendimientoTotales
+  rendimientoPorTrabajador: RendimientoTrabajador[]
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -334,6 +358,38 @@ export function HistorialEditClient({
           <div className="col-span-2">
             <Textarea label="Observaciones generales" rows={2} value={observaciones} onChange={(e) => setObservaciones(e.target.value)} />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5">
+            <Gauge className="h-4 w-4 text-slate-400" /> Rendimiento real vs. plan
+          </CardTitle>
+          <CardDescription>
+            Compara cuánto se produjo realmente contra lo que el plan de cada actividad asumía para esas horas
+            (no es solo el reflejo de las horas trabajadas).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className={cn("text-2xl font-bold", colorRendimiento(rendimientoDia.pct))}>
+              {formatoPct(rendimientoDia.pct)}
+            </span>
+            <span className="text-xs text-slate-400">rendimiento del día completo</span>
+          </div>
+          {rendimientoPorTrabajador.length === 0 ? (
+            <p className="text-sm text-slate-400">Sin avance por actividad registrado este día.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {rendimientoPorTrabajador.map((r) => (
+                <div key={r.trabajadorId} className="flex items-center justify-between gap-2 text-sm border-b border-slate-50 pb-1.5 last:border-0">
+                  <span className="text-slate-700">{r.nombre}</span>
+                  <span className={cn("font-semibold", colorRendimiento(r.pct))}>{formatoPct(r.pct)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 

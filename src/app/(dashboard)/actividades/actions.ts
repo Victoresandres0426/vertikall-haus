@@ -195,6 +195,7 @@ export type ActividadInput = {
   cantidad_objetivo: number | null
   unidad: string | null
   duracion_plan_dias: number
+  personal_planeado: number | null
   fecha_inicio_plan: string | null
   fecha_fin_plan: string | null
   es_critica: boolean
@@ -228,6 +229,7 @@ export async function crearActividad(
       cantidad_objetivo: input.cantidad_objetivo ?? null,
       unidad: input.unidad || null,
       duracion_plan_dias: Math.max(1, Math.round(input.duracion_plan_dias || 1)),
+      personal_planeado: input.personal_planeado != null ? Math.max(1, Math.round(input.personal_planeado)) : null,
       fecha_inicio_plan: input.fecha_inicio_plan || null,
       fecha_fin_plan: input.fecha_fin_plan || null,
       es_critica: !!input.es_critica,
@@ -274,6 +276,7 @@ export async function actualizarActividad(
       cantidad_objetivo: input.cantidad_objetivo ?? null,
       unidad: input.unidad || null,
       duracion_plan_dias: Math.max(1, Math.round(input.duracion_plan_dias || 1)),
+      personal_planeado: input.personal_planeado != null ? Math.max(1, Math.round(input.personal_planeado)) : null,
       fecha_inicio_plan: input.fecha_inicio_plan || null,
       fecha_fin_plan: input.fecha_fin_plan || null,
       es_critica: !!input.es_critica,
