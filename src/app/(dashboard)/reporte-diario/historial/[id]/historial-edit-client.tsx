@@ -14,7 +14,7 @@ export type ActividadHist = {
   id: string; codigo: string; nombre: string; unidad: string | null
   cantidad_objetivo: number | null; cantidad_ejecutada: number | null; avance_porcentaje: number
 }
-export type SplitInicial = { actividadId: string; rol: string; horas: number; avance: number }
+export type SplitInicial = { actividadId: string; rol: string; horas: number; avance: number; costo: number | null; modoPago: string | null }
 export type AsistenciaInicial = { presente: boolean; horas_regulares: number; horas_extra: number }
 export type AvanceInicial = { cantidad_ejecutada_dia: number; porcentaje_avance_total: number | null; incidencias: string }
 // Rendimiento real vs. plan de este día -- ver lib/engine/rendimiento.ts.
@@ -30,7 +30,12 @@ type AsistenciaState = "presente" | "medio_dia" | "ausente"
 // sus actividades del día (en vez de un número puesto a mano) -- se
 // apaga (false) en cuanto el capataz edita el campo "Horas" de ese
 // renglón directamente, para no pisarle esa corrección.
-type SplitState = { actividadId: string; rol: string; horas: number; avance: number; horasAuto: boolean }
+// costoGuardado/modoPagoGuardado son de SOLO LECTURA: reflejan lo último
+// guardado en asistencia_actividad_diaria.costo (calculado por el motor
+// de nómina -- destajo con reserva del 10%, o por hora). No se recalculan
+// en vivo mientras editas horas/avance -- eso pasa recién al "Guardar
+// cambios", que vuelve a correr registrar_asistencia_actividad().
+type SplitState = { actividadId: string; rol: string; horas: number; avance: number; horasAuto: boolean; costoGuardado: number | null; modoPagoGuardado: string | null }
 
 type WorkerState = {
   id: string
@@ -155,7 +160,7 @@ export function HistorialEditClient({
         // llenó a mano (se pagó todo a destajo por cantidad) -- se marca
         // como "auto" para que en vez de mostrar 0 se vea un reparto real
         // de las horas del día. Si ya tenía horas puestas, se respeta tal cual.
-        splits: (splitsPorTrabajador[t.id] ?? []).map((s) => ({ actividadId: s.actividadId, rol: s.rol, horas: s.horas, avance: s.avance, horasAuto: s.horas === 0 })),
+        splits: (splitsPorTrabajador[t.id] ?? []).map((s) => ({ actividadId: s.actividadId, rol: s.rol, horas: s.horas, avance: s.avance, horasAuto: s.horas === 0, costoGuardado: s.costo, modoPagoGuardado: s.modoPago })),
       }
     })
   )
@@ -191,7 +196,7 @@ export function HistorialEditClient({
     setWorkers((prev) => prev.map((w) => {
       if (w.id !== workerId) return w
       const primeraActividad = actividades[0]?.id ?? ""
-      return { ...w, splits: [...w.splits, { actividadId: primeraActividad, rol: w.rol_obra ?? "", horas: 0, avance: 0, horasAuto: true }] }
+      return { ...w, splits: [...w.splits, { actividadId: primeraActividad, rol: w.rol_obra ?? "", horas: 0, avance: 0, horasAuto: true, costoGuardado: null, modoPagoGuardado: null }] }
     }))
   }
 
@@ -349,7 +354,13 @@ export function HistorialEditClient({
       if (res.error) setError(res.error)
       else {
         setGuardado(true)
-        router.refresh()
+        // Recarga completa (no solo router.refresh()) -- el estado local
+        // de este formulario (workers, splits) ya se inicializó una vez
+        // desde las props y no se vuelve a sincronizar solo; sin esto, la
+        // columna "Dinero generado" (y cualquier otro dato recalculado
+        // por registrar_asistencia_actividad al guardar) se quedaría
+        // mostrando el valor viejo hasta salir y volver a entrar.
+        window.location.reload()
       }
     })
   }
@@ -463,6 +474,14 @@ export function HistorialEditClient({
                       value={w.horasExtra}
                       onChange={(e) => updateWorkerField(w.id, "horasExtra", Number(e.target.value))}
                     />
+                    {w.splits.some((s) => s.costoGuardado !== null) && (
+                      <div className="flex flex-col gap-0.5 ml-auto justify-end">
+                        <span className="text-[10px] text-slate-400 leading-none text-right">Total generado hoy</span>
+                        <span className="text-sm font-semibold text-emerald-700 text-right">
+                          ${w.splits.reduce((sum, s) => sum + (s.costoGuardado ?? 0), 0).toLocaleString("es-MX", { maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="pt-2 border-t border-slate-100 space-y-2">
@@ -509,6 +528,23 @@ export function HistorialEditClient({
                               placeholder="0"
                               className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
                             />
+                          </CampoEtiquetado>
+                          <CampoEtiquetado label="Dinero generado">
+                            <div
+                              title={
+                                s.costoGuardado === null
+                                  ? "Todavía no se ha guardado -- se calcula al hacer clic en \"Guardar cambios\""
+                                  : "Último valor guardado -- si cambias horas/avance, se recalcula al guardar"
+                              }
+                              className={cn(
+                                "w-24 rounded-lg px-2 py-1.5 text-xs font-medium",
+                                s.costoGuardado === null ? "text-slate-400 bg-white border border-dashed border-slate-300" : "text-emerald-700 bg-emerald-50 border border-emerald-100"
+                              )}
+                            >
+                              {s.costoGuardado === null
+                                ? "— (sin guardar)"
+                                : `$${s.costoGuardado.toLocaleString("es-MX", { maximumFractionDigits: 0 })}${s.modoPagoGuardado === "destajo" ? " (destajo)" : s.modoPagoGuardado === "hora" ? " (por hora)" : ""}`}
+                            </div>
                           </CampoEtiquetado>
                           <button onClick={() => quitarSplit(w.id, idx)} className="text-slate-300 hover:text-red-500 mb-1.5">
                             <X className="h-3.5 w-3.5" />
