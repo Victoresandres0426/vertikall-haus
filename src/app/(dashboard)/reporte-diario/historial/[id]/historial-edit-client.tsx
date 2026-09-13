@@ -188,6 +188,19 @@ export function HistorialEditClient({
 
   const actividadPorId = new Map(actividades.map((a) => [a.id, a]))
 
+  // act.cantidad_ejecutada (de la tabla actividades) ya viene ACUMULADA
+  // incluyendo lo que este mismo reporte había guardado antes de abrir
+  // esta edición (migración 064). Para recalcular en vivo el % al
+  // cambiar el avance de HOY hay que restar esa contribución vieja
+  // primero -- si no, se cuenta dos veces (una desde el acumulado
+  // guardado, otra desde el nuevo valor que se está escribiendo) y el %
+  // sale inflado mientras se edita un reporte pasado.
+  const baseSinEsteReporte = (actividadId: string): number => {
+    const total = actividadPorId.get(actividadId)?.cantidad_ejecutada ?? 0
+    const contribucionVieja = avanceInicial[actividadId]?.cantidad_ejecutada_dia ?? 0
+    return total - contribucionVieja
+  }
+
   // Dinero que genera un renglón. Si la actividad tiene una tarifa
   // unitaria de mano de obra conocida (osea, SÍ se puede pagar a
   // destajo), el número es siempre EN VIVO -- avance × tarifa × 0.90, o
@@ -284,7 +297,7 @@ export function HistorialEditClient({
         cambio = true
         const act = actividadPorId.get(r.actividadId)
         const objetivo = act?.cantidad_objetivo ?? 0
-        const base = act?.cantidad_ejecutada ?? 0
+        const base = baseSinEsteReporte(r.actividadId)
         const pct = objetivo > 0 ? Math.round(((base + suma) / objetivo) * 100) : r.porcentajeTotal
         return { ...r, cantidadHoy: suma, porcentajeTotal: pct }
       })
@@ -293,7 +306,7 @@ export function HistorialEditClient({
         cambio = true
         const act = actividadPorId.get(actividadId)
         const objetivo = act?.cantidad_objetivo ?? 0
-        const base = act?.cantidad_ejecutada ?? 0
+        const base = baseSinEsteReporte(actividadId)
         const pct = objetivo > 0 ? Math.round(((base + suma) / objetivo) * 100) : (act?.avance_porcentaje ?? 0)
         next.push({ actividadId, cantidadHoy: suma, porcentajeTotal: pct, incidencias: "", auto: true })
       }
@@ -649,7 +662,15 @@ export function HistorialEditClient({
         <CardContent className="space-y-3">
           {avanceRows.map((r) => {
             const act = actividadPorId.get(r.actividadId)
-            const excedePresupuesto = !!act && (act.cantidad_objetivo ?? 0) > 0 && (act.cantidad_ejecutada ?? 0) > (act.cantidad_objetivo as number)
+            // Recalculado EN VIVO con lo que hay ahora mismo en "Cantidad
+            // hoy" de este mismo reporte -- act.cantidad_ejecutada por sí
+            // solo es el acumulado guardado la ÚLTIMA vez (incluye la
+            // contribución vieja de este reporte, no la que se está
+            // editando ahora), así que sin esto el aviso de sobregiro podía
+            // quedarse callado mientras se sube la cantidad, o encenderse
+            // aunque ya se haya corregido.
+            const acumuladoEnVivo = baseSinEsteReporte(r.actividadId) + r.cantidadHoy
+            const excedePresupuesto = !!act && (act.cantidad_objetivo ?? 0) > 0 && acumuladoEnVivo > (act.cantidad_objetivo as number)
             return (
               <div key={r.actividadId} className="border border-slate-100 rounded-xl p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
@@ -659,7 +680,7 @@ export function HistorialEditClient({
                       <p className="text-[11px] text-slate-400">
                         Propuesto: {act.cantidad_objetivo ?? "—"} {act.unidad ?? ""} · Ejecutado a la fecha:{" "}
                         <span className={cn(excedePresupuesto ? "text-red-600 font-semibold" : undefined)}>
-                          {act.cantidad_ejecutada ?? 0} {act.unidad ?? ""}
+                          {acumuladoEnVivo} {act.unidad ?? ""}
                         </span>
                         {" "}· <span className={cn(excedePresupuesto ? "text-red-600 font-semibold" : undefined)}>{act.avance_porcentaje ?? 0}%</span> avance
                       </p>
