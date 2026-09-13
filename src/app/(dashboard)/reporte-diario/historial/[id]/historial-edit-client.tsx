@@ -188,13 +188,17 @@ export function HistorialEditClient({
 
   const actividadPorId = new Map(actividades.map((a) => [a.id, a]))
 
-  // Dinero que genera un renglón: mientras hay avance y se conoce la
-  // tarifa unitaria de mano de obra, se estima EN VIVO (misma fórmula que
-  // registrar_asistencia_actividad usa al guardar); si no, se usa el
-  // último valor sí guardado (o 0 si nunca se ha guardado).
+  // Dinero que genera un renglón. Si la actividad tiene una tarifa
+  // unitaria de mano de obra conocida (osea, SÍ se puede pagar a
+  // destajo), el número es siempre EN VIVO -- avance × tarifa × 0.90, o
+  // $0 si todavía no hay avance -- nunca el valor viejo guardado, porque
+  // ese quedaría pegado del avance anterior en cuanto lo bajes o lo
+  // subas. Solo cuando esa actividad NO tiene tarifa (se paga por hora,
+  // sin fórmula de destajo disponible) se usa el último valor guardado,
+  // porque ahí no hay manera de estimarlo sin guardar primero.
   const montoSplit = (s: SplitState): number => {
     const tarifaUnitaria = tarifaManoObraPorActividad[s.actividadId]
-    if (tarifaUnitaria && s.avance > 0) return s.avance * tarifaUnitaria * FACTOR_RESERVA_DESTAJO
+    if (tarifaUnitaria !== undefined) return s.avance > 0 ? s.avance * tarifaUnitaria * FACTOR_RESERVA_DESTAJO : 0
     return s.costoGuardado ?? 0
   }
   const actividadesDisponiblesParaAvance = actividades.filter((a) => !avanceRows.some((r) => r.actividadId === a.id))
@@ -508,14 +512,21 @@ export function HistorialEditClient({
                     {w.splits.map((s, idx) => {
                       const actSel = actividadPorId.get(s.actividadId)
                       // Estimado EN VIVO -- se recalcula en cada tecla, sin
-                      // esperar a "Guardar cambios" -- con la misma fórmula
+                      // esperar a "Guardar cambios", con la misma fórmula
                       // que registrar_asistencia_actividad usa al guardar
                       // (avance × tarifa unitaria de mano de obra × 0.90).
-                      // Cuando no hay tarifa conocida o no hay avance
-                      // (pago por hora), se muestra el último valor SÍ
-                      // guardado en su lugar.
+                      // Si esta actividad SÍ tiene tarifa (se puede pagar a
+                      // destajo), el número siempre es en vivo -- incluido
+                      // $0 cuando el avance está en 0 -- nunca el valor
+                      // viejo guardado, que se quedaría pegado del avance
+                      // anterior y engañaría (ej. bajas el avance a 0 pero
+                      // sigue mostrando lo que generaba antes). Solo cuando
+                      // la actividad NO tiene tarifa (se paga por hora) se
+                      // muestra el último valor sí guardado, porque ahí no
+                      // hay fórmula para estimarlo sin guardar primero.
                       const tarifaUnitaria = tarifaManoObraPorActividad[s.actividadId]
-                      const montoEnVivo = tarifaUnitaria && s.avance > 0 ? tarifaUnitaria * s.avance * FACTOR_RESERVA_DESTAJO : null
+                      const hayDestajoDisponible = tarifaUnitaria !== undefined
+                      const montoEnVivo = hayDestajoDisponible ? (s.avance > 0 ? tarifaUnitaria * s.avance * FACTOR_RESERVA_DESTAJO : 0) : null
                       return (
                       <div key={idx} className="bg-slate-50 rounded-lg p-2 space-y-1.5">
                         <div className="flex items-end gap-2 flex-wrap">
@@ -567,8 +578,15 @@ export function HistorialEditClient({
                           <CampoEtiquetado label="Dinero generado">
                             {montoEnVivo !== null ? (
                               <div
-                                title="Estimado en vivo -- se recalcula mientras cambias el avance. Se confirma (con centavos exactos) al Guardar cambios."
-                                className="w-24 rounded-lg px-2 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-100"
+                                title={
+                                  montoEnVivo > 0
+                                    ? "Estimado en vivo -- se recalcula mientras cambias el avance. Se confirma (con centavos exactos) al Guardar cambios."
+                                    : "Esta actividad se paga a destajo -- sin avance todavía no genera nada. Sube el avance para ver cuánto generaría."
+                                }
+                                className={cn(
+                                  "w-24 rounded-lg px-2 py-1.5 text-xs font-medium border",
+                                  montoEnVivo > 0 ? "text-emerald-700 bg-emerald-50 border-emerald-100" : "text-slate-400 bg-white border-dashed border-slate-300"
+                                )}
                               >
                                 ≈ ${montoEnVivo.toLocaleString("es-MX", { maximumFractionDigits: 0 })}
                               </div>
