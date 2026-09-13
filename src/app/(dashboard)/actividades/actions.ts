@@ -264,6 +264,41 @@ export async function actualizarActividad(
   const costoMaterial = input.costo_material || 0
   const costoManoObra = input.costo_mano_obra || 0
 
+  // avance_porcentaje/estado normalmente se recalculan solos con un
+  // trigger sobre avance_diario (migración 064) cada vez que se guarda
+  // un Reporte Diario -- pero ese trigger solo se dispara con cambios en
+  // avance_diario, nunca con un cambio directo a cantidad_objetivo desde
+  // este editor. Sin esto, cambiar la "Cantidad propuesta" aquí dejaba
+  // el % de avance mostrado con el valor viejo (calculado contra la
+  // cantidad anterior) hasta el próximo Reporte Diario de esa actividad
+  // -- justo el síntoma reportado en 00.02. Se recalcula aquí con la
+  // MISMA fórmula que usa el trigger (_recalcular_avance_actividad,
+  // migración 064: cantidad_ejecutada / cantidad_objetivo × 100) para
+  // que ambos caminos den siempre el mismo resultado.
+  const { data: actual } = await supabase
+    .from("actividades")
+    .select("cantidad_ejecutada, estado")
+    .eq("id", actividadId)
+    .single()
+
+  const cantidadEjecutada = Number(actual?.cantidad_ejecutada ?? 0)
+  const nuevoObjetivo = input.cantidad_objetivo ?? null
+  // Sin cantidad_objetivo no hay forma de calcular % -- se deja como esté
+  // (igual que el trigger).
+  const nuevoPct = nuevoObjetivo && nuevoObjetivo > 0
+    ? Math.round((cantidadEjecutada / nuevoObjetivo) * 100)
+    : null
+
+  const cambiosAvance: Record<string, unknown> = {}
+  if (nuevoPct !== null) {
+    cambiosAvance.avance_porcentaje = nuevoPct
+    cambiosAvance.estado = nuevoPct >= 100
+      ? "completada"
+      : cantidadEjecutada > 0
+        ? "en_progreso"
+        : (actual?.estado ?? "no_iniciada")
+  }
+
   const { data, error } = await supabase
     .from("actividades")
     .update({
@@ -273,13 +308,14 @@ export async function actualizarActividad(
       costo_material: costoMaterial,
       costo_mano_obra: costoManoObra,
       costo_presupuesto: costoMaterial + costoManoObra,
-      cantidad_objetivo: input.cantidad_objetivo ?? null,
+      cantidad_objetivo: nuevoObjetivo,
       unidad: input.unidad || null,
       duracion_plan_dias: Math.max(1, Math.round(input.duracion_plan_dias || 1)),
       personal_planeado: input.personal_planeado != null ? Math.max(1, Math.round(input.personal_planeado)) : null,
       fecha_inicio_plan: input.fecha_inicio_plan || null,
       fecha_fin_plan: input.fecha_fin_plan || null,
       es_critica: !!input.es_critica,
+      ...cambiosAvance,
     })
     .eq("id", actividadId)
     .select("proyecto_id")

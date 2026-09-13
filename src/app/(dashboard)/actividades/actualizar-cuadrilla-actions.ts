@@ -126,6 +126,28 @@ export async function aplicarActualizacionCuadrilla(
     return { error: "No hay actividades emparejadas para actualizar." }
   }
 
+  // avance_porcentaje/estado normalmente se recalculan solos con un
+  // trigger sobre avance_diario (migración 064) cada vez que se guarda
+  // un Reporte Diario -- pero ese trigger NUNCA se dispara con este
+  // UPDATE directo a cantidad_objetivo desde el Excel. Sin esto, traer
+  // una nueva cantidad propuesta desde el Excel deja el % de avance
+  // mostrado calculado contra la cantidad VIEJA hasta el próximo reporte
+  // de esa actividad (mismo síntoma reportado en la actividad 00.02).
+  // Se trae cantidad_ejecutada/estado de una sola vez para recalcular
+  // con la misma fórmula que usa el trigger (_recalcular_avance_actividad,
+  // migración 064).
+  const idsConCantidadNueva = filasAplicables.filter((f) => f.actividadId && f.cantidadObjetivo !== null).map((f) => f.actividadId as string)
+  const ejecutadaPorActividad = new Map<string, { cantidad_ejecutada: number; estado: string }>()
+  if (idsConCantidadNueva.length > 0) {
+    const { data: actualesRaw } = await supabase
+      .from("actividades")
+      .select("id, cantidad_ejecutada, estado")
+      .in("id", idsConCantidadNueva)
+    for (const a of (actualesRaw ?? []) as { id: string; cantidad_ejecutada: number | null; estado: string }[]) {
+      ejecutadaPorActividad.set(a.id, { cantidad_ejecutada: Number(a.cantidad_ejecutada ?? 0), estado: a.estado })
+    }
+  }
+
   // Antes esto era un for-loop con un await por fila -- con ~90
   // actividades eso son ~90 idas y vueltas SECUENCIALES a Supabase antes
   // de siquiera llegar al motor (que hace su propia tanda de llamadas
@@ -151,6 +173,19 @@ export async function aplicarActualizacionCuadrilla(
       if (f.costoMaterial !== null) cambios.costo_material = f.costoMaterial
       if (f.costoManoObra !== null) cambios.costo_mano_obra = f.costoManoObra
       if (f.costoPresupuesto !== null) cambios.costo_presupuesto = f.costoPresupuesto
+
+      if (f.cantidadObjetivo !== null && f.actividadId) {
+        const actual = ejecutadaPorActividad.get(f.actividadId)
+        if (actual && f.cantidadObjetivo > 0) {
+          const nuevoPct = Math.round((actual.cantidad_ejecutada / f.cantidadObjetivo) * 100)
+          cambios.avance_porcentaje = nuevoPct
+          cambios.estado = nuevoPct >= 100
+            ? "completada"
+            : actual.cantidad_ejecutada > 0
+              ? "en_progreso"
+              : actual.estado
+        }
+      }
 
       const { error } = await supabase
         .from("actividades")
