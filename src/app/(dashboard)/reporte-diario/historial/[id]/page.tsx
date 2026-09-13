@@ -54,7 +54,7 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
   ] = await Promise.all([
     supabase
       .from("actividades")
-      .select("id, codigo, nombre, unidad, cantidad_objetivo, cantidad_ejecutada, avance_porcentaje, duracion_plan_dias, personal_planeado")
+      .select("id, codigo, nombre, unidad, cantidad_objetivo, cantidad_ejecutada, avance_porcentaje, duracion_plan_dias, personal_planeado, costo_mano_obra")
       .eq("proyecto_id", proyectoId)
       .order("codigo"),
     supabase
@@ -76,6 +76,39 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
       .select("trabajador_id, actividad_id, rol_aplicado, horas, avance_cantidad, costo, modo_pago")
       .eq("reporte_id", id),
   ])
+
+  // Tarifa de mano de obra presupuestada por actividad, para poder
+  // mostrar en vivo (mientras se edita, sin esperar a "Guardar cambios")
+  // cuánto genera un avance a destajo -- mismo cálculo que usa
+  // registrar_asistencia_actividad al guardar (migraciones 054/060):
+  // precio_unitario de la partida de presupuesto vigente con
+  // tipo_recurso='mano_obra', o -- si no hay una partida así --
+  // costo_mano_obra / cantidad_objetivo como promedio de respaldo.
+  const actividadIds = (actividadesRaw ?? []).map((a: { id: string }) => a.id)
+  const tarifaManoObraPorActividad: Record<string, number> = {}
+  if (actividadIds.length > 0) {
+    try {
+      const { data: partidasRaw } = await supabase
+        .from("partidas_presupuesto")
+        .select("actividad_id, precio_unitario, presupuestos!inner(es_baseline_actual)")
+        .in("actividad_id", actividadIds)
+        .eq("tipo_recurso", "mano_obra")
+        .eq("presupuestos.es_baseline_actual", true)
+
+      for (const p of (partidasRaw ?? []) as unknown as { actividad_id: string | null; precio_unitario: number | null }[]) {
+        if (p.actividad_id && p.precio_unitario != null) {
+          tarifaManoObraPorActividad[p.actividad_id] = Number(p.precio_unitario)
+        }
+      }
+    } catch { /* migración 054 no aplicada aún */ }
+
+    for (const act of (actividadesRaw ?? []) as { id: string; costo_mano_obra: number | null; cantidad_objetivo: number | null }[]) {
+      if (tarifaManoObraPorActividad[act.id] !== undefined) continue
+      if (act.costo_mano_obra != null && act.cantidad_objetivo != null && act.cantidad_objetivo > 0) {
+        tarifaManoObraPorActividad[act.id] = Number(act.costo_mano_obra) / Number(act.cantidad_objetivo)
+      }
+    }
+  }
 
   const directorio = new Map(
     ((directorioRaw ?? []) as { id: string; nombre_completo: string; rol_obra: string | null; activo: boolean }[]).map((t) => [t.id, t])
@@ -204,6 +237,7 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
         asistenciaInicial={asistenciaInicial}
         avanceInicial={avanceInicial}
         splitsPorTrabajador={splitsPorTrabajador}
+        tarifaManoObraPorActividad={tarifaManoObraPorActividad}
         rendimientoDia={rendimientoDia}
         rendimientoPorTrabajador={rendimientoPorTrabajador}
       />

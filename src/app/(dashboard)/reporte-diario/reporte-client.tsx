@@ -30,6 +30,7 @@ export type ActividadDB = {
   estado: string
   fecha_inicio_plan: string | null
   fecha_fin_plan: string | null
+  costo_mano_obra?: number | null
 }
 
 export type TrabajadorDB = {

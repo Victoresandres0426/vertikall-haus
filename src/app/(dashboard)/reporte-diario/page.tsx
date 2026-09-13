@@ -52,7 +52,7 @@ async function getData(): Promise<{
       .select(`
         id, codigo, nombre, unidad,
         avance_porcentaje, cantidad_objetivo, cantidad_ejecutada, estado,
-        fecha_inicio_plan, fecha_fin_plan,
+        fecha_inicio_plan, fecha_fin_plan, costo_mano_obra,
         proyecto_id
       `)
       .in("proyecto_id", proyectoIds)
@@ -128,6 +128,22 @@ async function getData(): Promise<{
         }
       }
     } catch { /* migración 054 no aplicada aún */ }
+
+    // Respaldo: si la actividad no tiene una partida de presupuesto
+    // específica para mano de obra, usa el mismo promedio que
+    // registrar_asistencia_actividad usa como último recurso
+    // (costo_mano_obra / cantidad_objetivo) -- así el estimado en vivo
+    // que ve el capataz coincide con lo que de verdad se calculará al
+    // guardar, en vez de mostrar "sin destajo" solo porque falta esa
+    // partida puntual.
+    for (const act of Object.values(actividadesPorProyecto).flat()) {
+      if (tarifaManoObraPorActividad[act.id] !== undefined) continue
+      const cmo = act.costo_mano_obra
+      const obj = act.cantidad_objetivo
+      if (cmo != null && obj != null && obj > 0) {
+        tarifaManoObraPorActividad[act.id] = Number(cmo) / Number(obj)
+      }
+    }
   }
 
   // Horas reales del día según el check-in QR (entrada/salida) -- cuando

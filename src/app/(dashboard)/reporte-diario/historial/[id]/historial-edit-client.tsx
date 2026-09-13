@@ -105,6 +105,13 @@ function avisoRendimiento(pct: number | null): string | null {
   return null
 }
 
+// Solo se paga el 90% del valor de mano de obra presupuestado por
+// actividad -- el 10% restante queda de reserva del proyecto (migración
+// 060). Mismo factor que usa registrar_asistencia_actividad al guardar;
+// se repite acá para poder mostrar un estimado en vivo mientras se edita
+// el avance, sin tener que esperar a "Guardar cambios".
+const FACTOR_RESERVA_DESTAJO = 0.9
+
 function estadoInicial(a: AsistenciaInicial | undefined): AsistenciaState {
   if (!a) return "ausente"
   if (!a.presente) return "ausente"
@@ -124,6 +131,7 @@ export function HistorialEditClient({
   splitsPorTrabajador,
   rendimientoDia,
   rendimientoPorTrabajador,
+  tarifaManoObraPorActividad,
 }: {
   reporteId: string
   proyectoId: string
@@ -137,6 +145,7 @@ export function HistorialEditClient({
   splitsPorTrabajador: Record<string, SplitInicial[]>
   rendimientoDia: RendimientoTotales
   rendimientoPorTrabajador: RendimientoTrabajador[]
+  tarifaManoObraPorActividad: Record<string, number>
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -178,6 +187,16 @@ export function HistorialEditClient({
   )
 
   const actividadPorId = new Map(actividades.map((a) => [a.id, a]))
+
+  // Dinero que genera un renglón: mientras hay avance y se conoce la
+  // tarifa unitaria de mano de obra, se estima EN VIVO (misma fórmula que
+  // registrar_asistencia_actividad usa al guardar); si no, se usa el
+  // último valor sí guardado (o 0 si nunca se ha guardado).
+  const montoSplit = (s: SplitState): number => {
+    const tarifaUnitaria = tarifaManoObraPorActividad[s.actividadId]
+    if (tarifaUnitaria && s.avance > 0) return s.avance * tarifaUnitaria * FACTOR_RESERVA_DESTAJO
+    return s.costoGuardado ?? 0
+  }
   const actividadesDisponiblesParaAvance = actividades.filter((a) => !avanceRows.some((r) => r.actividadId === a.id))
 
   const toggleAsistencia = (id: string, tipo: AsistenciaState) => {
@@ -474,11 +493,11 @@ export function HistorialEditClient({
                       value={w.horasExtra}
                       onChange={(e) => updateWorkerField(w.id, "horasExtra", Number(e.target.value))}
                     />
-                    {w.splits.some((s) => s.costoGuardado !== null) && (
+                    {w.splits.some((s) => s.costoGuardado !== null || (tarifaManoObraPorActividad[s.actividadId] && s.avance > 0)) && (
                       <div className="flex flex-col gap-0.5 ml-auto justify-end">
                         <span className="text-[10px] text-slate-400 leading-none text-right">Total generado hoy</span>
                         <span className="text-sm font-semibold text-emerald-700 text-right">
-                          ${w.splits.reduce((sum, s) => sum + (s.costoGuardado ?? 0), 0).toLocaleString("es-MX", { maximumFractionDigits: 0 })}
+                          ${w.splits.reduce((sum, s) => sum + montoSplit(s), 0).toLocaleString("es-MX", { maximumFractionDigits: 0 })}
                         </span>
                       </div>
                     )}
@@ -488,6 +507,15 @@ export function HistorialEditClient({
                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Actividad(es) de ese día</p>
                     {w.splits.map((s, idx) => {
                       const actSel = actividadPorId.get(s.actividadId)
+                      // Estimado EN VIVO -- se recalcula en cada tecla, sin
+                      // esperar a "Guardar cambios" -- con la misma fórmula
+                      // que registrar_asistencia_actividad usa al guardar
+                      // (avance × tarifa unitaria de mano de obra × 0.90).
+                      // Cuando no hay tarifa conocida o no hay avance
+                      // (pago por hora), se muestra el último valor SÍ
+                      // guardado en su lugar.
+                      const tarifaUnitaria = tarifaManoObraPorActividad[s.actividadId]
+                      const montoEnVivo = tarifaUnitaria && s.avance > 0 ? tarifaUnitaria * s.avance * FACTOR_RESERVA_DESTAJO : null
                       return (
                       <div key={idx} className="bg-slate-50 rounded-lg p-2 space-y-1.5">
                         <div className="flex items-end gap-2 flex-wrap">
@@ -537,21 +565,30 @@ export function HistorialEditClient({
                             />
                           </CampoEtiquetado>
                           <CampoEtiquetado label="Dinero generado">
-                            <div
-                              title={
-                                s.costoGuardado === null
-                                  ? "Todavía no se ha guardado -- se calcula al hacer clic en \"Guardar cambios\""
-                                  : "Último valor guardado -- si cambias horas/avance, se recalcula al guardar"
-                              }
-                              className={cn(
-                                "w-24 rounded-lg px-2 py-1.5 text-xs font-medium",
-                                s.costoGuardado === null ? "text-slate-400 bg-white border border-dashed border-slate-300" : "text-emerald-700 bg-emerald-50 border border-emerald-100"
-                              )}
-                            >
-                              {s.costoGuardado === null
-                                ? "— (sin guardar)"
-                                : `$${s.costoGuardado.toLocaleString("es-MX", { maximumFractionDigits: 0 })}${s.modoPagoGuardado === "destajo" ? " (destajo)" : s.modoPagoGuardado === "hora" ? " (por hora)" : ""}`}
-                            </div>
+                            {montoEnVivo !== null ? (
+                              <div
+                                title="Estimado en vivo -- se recalcula mientras cambias el avance. Se confirma (con centavos exactos) al Guardar cambios."
+                                className="w-24 rounded-lg px-2 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-100"
+                              >
+                                ≈ ${montoEnVivo.toLocaleString("es-MX", { maximumFractionDigits: 0 })}
+                              </div>
+                            ) : (
+                              <div
+                                title={
+                                  s.costoGuardado === null
+                                    ? "Todavía no se ha guardado -- se calcula al hacer clic en \"Guardar cambios\""
+                                    : "Último valor guardado -- si cambias horas/avance, se recalcula al guardar"
+                                }
+                                className={cn(
+                                  "w-24 rounded-lg px-2 py-1.5 text-xs font-medium",
+                                  s.costoGuardado === null ? "text-slate-400 bg-white border border-dashed border-slate-300" : "text-emerald-700 bg-emerald-50 border border-emerald-100"
+                                )}
+                              >
+                                {s.costoGuardado === null
+                                  ? "— (sin guardar)"
+                                  : `$${s.costoGuardado.toLocaleString("es-MX", { maximumFractionDigits: 0 })}${s.modoPagoGuardado === "destajo" ? " (destajo)" : s.modoPagoGuardado === "hora" ? " (por hora)" : ""}`}
+                              </div>
+                            )}
                           </CampoEtiquetado>
                           <button onClick={() => quitarSplit(w.id, idx)} className="text-slate-300 hover:text-red-500 mb-1.5">
                             <X className="h-3.5 w-3.5" />
