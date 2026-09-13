@@ -510,17 +510,24 @@ export function HistorialEditClient({
                               className="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
                             />
                           </CampoEtiquetado>
-                          <CampoEtiquetado label={s.horasAuto ? "Horas (auto)" : "Horas"}>
-                            <input
-                              type="number" value={s.horas}
-                              onChange={(e) => updateSplit(w.id, idx, "horas", Number(e.target.value))}
-                              title={s.horasAuto ? "Repartido solo entre las horas regulares del día -- edítalo para fijarlo a mano" : undefined}
-                              className={cn(
-                                "w-20 border rounded-lg px-2 py-1.5 text-xs",
-                                s.horasAuto ? "border-dashed border-slate-300 text-slate-500 bg-white" : "border-slate-200"
-                              )}
-                            />
-                          </CampoEtiquetado>
+                          {/* Horas solo importa para el pago de quien cobra POR HORA -- en
+                              cuanto el renglón ya tiene avance (destajo), las horas no
+                              cambian lo que cobra, así que se oculta el campo para no
+                              meter ruido. El reparto automático (horasAuto) sigue
+                              funcionando por dentro aunque no se muestre. */}
+                          {s.avance <= 0 && (
+                            <CampoEtiquetado label={s.horasAuto ? "Horas (auto)" : "Horas"}>
+                              <input
+                                type="number" value={s.horas}
+                                onChange={(e) => updateSplit(w.id, idx, "horas", Number(e.target.value))}
+                                title={s.horasAuto ? "Repartido solo entre las horas regulares del día -- edítalo para fijarlo a mano" : undefined}
+                                className={cn(
+                                  "w-20 border rounded-lg px-2 py-1.5 text-xs",
+                                  s.horasAuto ? "border-dashed border-slate-300 text-slate-500 bg-white" : "border-slate-200"
+                                )}
+                              />
+                            </CampoEtiquetado>
+                          )}
                           <CampoEtiquetado label={`Avance (${actSel?.unidad ?? "und"})`}>
                             <input
                               type="number" value={s.avance}

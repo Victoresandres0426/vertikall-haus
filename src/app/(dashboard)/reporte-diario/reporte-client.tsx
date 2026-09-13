@@ -810,20 +810,27 @@ export function ReporteClient({
                                       placeholder="Rol"
                                       className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
                                     />
-                                    <div className="flex items-center gap-0.5">
-                                      <input
-                                        type="number"
-                                        title={i === 0 && t.splits.length > 1 && t.requiere_qr ? "Resto del día -- se calcula solo" : "Horas"}
-                                        value={s.horas}
-                                        disabled={i === 0 && t.splits.length > 1 && t.requiere_qr}
-                                        onChange={(e) => updateSplit(t.id, i, "horas", Number(e.target.value))}
-                                        className={cn(
-                                          "w-12 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900",
-                                          i === 0 && t.splits.length > 1 && t.requiere_qr && "bg-slate-100 text-slate-400"
-                                        )}
-                                      />
-                                      <span className="text-[10px] text-slate-400">h</span>
-                                    </div>
+                                    {/* Horas por actividad solo importa para pago POR HORA -- en
+                                        cuanto hay avance (destajo), las horas no afectan lo que
+                                        cobra ese renglón, así que se oculta para no meter ruido.
+                                        Se sigue repartiendo sola por dentro (ver reconciliarPrimario/
+                                        splitInicial) -- solo se deja de mostrar el campo. */}
+                                    {(!s.avance || s.avance <= 0) && (
+                                      <div className="flex items-center gap-0.5">
+                                        <input
+                                          type="number"
+                                          title={i === 0 && t.splits.length > 1 && t.requiere_qr ? "Resto del día -- se calcula solo" : "Horas"}
+                                          value={s.horas}
+                                          disabled={i === 0 && t.splits.length > 1 && t.requiere_qr}
+                                          onChange={(e) => updateSplit(t.id, i, "horas", Number(e.target.value))}
+                                          className={cn(
+                                            "w-12 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900",
+                                            i === 0 && t.splits.length > 1 && t.requiere_qr && "bg-slate-100 text-slate-400"
+                                          )}
+                                        />
+                                        <span className="text-[10px] text-slate-400">h</span>
+                                      </div>
+                                    )}
                                     <div className="flex items-center gap-0.5 flex-1">
                                       <input
                                         type="number"
