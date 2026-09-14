@@ -1,10 +1,17 @@
 "use client"
 
-import { useState, useTransition } from "react"
-import { Receipt, Plus, X, Trash2, ImageIcon } from "lucide-react"
+import { useEffect, useState, useTransition } from "react"
+import { Receipt, Plus, X, Trash2, Camera, RefreshCw, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { crearFacturaGasto, eliminarFacturaGasto, analizarReciboFoto, type LineaGastoInput } from "./gastos-actions"
+import {
+  crearFacturaGasto,
+  eliminarFacturaGasto,
+  crearFacturaBorradorConFoto,
+  reintentarAnalisisFactura,
+  asignarActividadLinea,
+  type LineaGastoInput,
+} from "./gastos-actions"
 
 export type ActividadOpcion = { id: string; codigo: string; nombre: string }
 
@@ -32,6 +39,7 @@ export type FacturaGasto = {
   subtotal: number
   tax_total: number
   total: number
+  estado_analisis: string
   lineas: LineaCostoReal[]
 }
 
@@ -61,16 +69,15 @@ type LineaDraft = {
 }
 
 // Las fotos tomadas directo con la cámara del celular suelen pesar varios MB
-// (4000x3000px o más) -- eso hace que subirlas y analizarlas por datos
-// móviles se sienta muy lento. Las reducimos en el propio navegador antes de
-// mandarlas: el recibo se sigue leyendo perfecto a 1800px de ancho, y el
-// archivo queda mucho más chico (típicamente <500KB en vez de varios MB).
+// (4000x3000px o más) -- eso hace que subirlas se sienta muy lento por datos
+// móviles. Las reducimos en el propio navegador antes de mandarlas: el
+// recibo se sigue leyendo perfecto a 1800px de ancho, y el archivo queda
+// mucho más chico (típicamente <500KB en vez de varios MB).
 async function comprimirFoto(file: File, maxDim = 1800, calidad = 0.85): Promise<File> {
   if (!file.type.startsWith("image/") || file.type === "image/gif") return file
   try {
     const bitmap = await createImageBitmap(file)
     const escala = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height))
-    // Si ya es chica no vale la pena recomprimir (evita perder calidad de más).
     if (escala >= 1 && file.size < 1.5 * 1024 * 1024) return file
 
     const w = Math.max(1, Math.round(bitmap.width * escala))
@@ -86,8 +93,6 @@ async function comprimirFoto(file: File, maxDim = 1800, calidad = 0.85): Promise
     if (!blob) return file
     return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" })
   } catch {
-    // Si algo falla (formato no soportado por createImageBitmap, etc.)
-    // seguimos con el archivo original -- el servidor lo valida de todas formas.
     return file
   }
 }
@@ -113,9 +118,14 @@ export function GastosClient({
   puedeCrear: boolean
   proyectoActivoId: string | null
 }) {
-  const [showModal, setShowModal] = useState(false)
+  const [facturas, setFacturas] = useState(facturasIniciales)
+  const [showModalManual, setShowModalManual] = useState(false)
+  const [showModalFoto, setShowModalFoto] = useState(false)
   const [expandida, setExpandida] = useState<string | null>(null)
+  const [reintentando, setReintentando] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  useEffect(() => setFacturas(facturasIniciales), [facturasIniciales])
 
   const handleEliminar = (facturaId: string) => {
     if (!confirm("¿Borrar esta factura y todas sus líneas? Esto también quita el gasto del costo real de las actividades.")) return
@@ -123,6 +133,38 @@ export function GastosClient({
       const res = await eliminarFacturaGasto(facturaId)
       if (res.error) alert(res.error)
       else window.location.reload()
+    })
+  }
+
+  const handleReintentar = (facturaId: string) => {
+    setReintentando(facturaId)
+    startTransition(async () => {
+      const res = await reintentarAnalisisFactura(facturaId)
+      setReintentando(null)
+      if (res.error) {
+        alert(res.error)
+        return
+      }
+      setFacturas((prev) => prev.map((f) => (f.id === facturaId ? { ...f, estado_analisis: "pendiente" } : f)))
+    })
+  }
+
+  const handleAsignarActividad = (lineaId: string, actividadId: string) => {
+    const valor = actividadId || null
+    const actividad = actividadesOpciones.find((a) => a.id === valor)
+    setFacturas((prev) =>
+      prev.map((f) => ({
+        ...f,
+        lineas: f.lineas.map((l) =>
+          l.id === lineaId
+            ? { ...l, actividad_id: valor, actividades: actividad ? { codigo: actividad.codigo, nombre: actividad.nombre } : null }
+            : l
+        ),
+      }))
+    )
+    startTransition(async () => {
+      const res = await asignarActividadLinea(lineaId, valor)
+      if (res.error) alert(res.error)
     })
   }
 
@@ -138,23 +180,28 @@ export function GastosClient({
   return (
     <div className="space-y-4">
       {puedeCrear && (
-        <div className="flex justify-end">
-          <Button onClick={() => setShowModal(true)}>
-            <Plus className="h-4 w-4 mr-1" /> Registrar gasto
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setShowModalFoto(true)}>
+            <Camera className="h-4 w-4 mr-1" /> Subir foto
+          </Button>
+          <Button onClick={() => setShowModalManual(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Registrar a mano
           </Button>
         </div>
       )}
 
-      {facturasIniciales.length === 0 ? (
+      {facturas.length === 0 ? (
         <div className="text-center py-16 border border-dashed border-slate-200 rounded-xl text-slate-400">
           <Receipt className="h-10 w-10 mx-auto mb-2 opacity-30" />
           <p className="text-lg font-medium">Sin gastos registrados todavía</p>
-          <p className="text-sm mt-1">Registra tu primera factura de material o servicio.</p>
+          <p className="text-sm mt-1">Sube la foto de un recibo o registra una factura a mano.</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {facturasIniciales.map((f) => {
+          {facturas.map((f) => {
             const abierta = expandida === f.id
+            const sinAsignar = f.lineas.filter((l) => !l.actividad_id).length
+
             return (
               <div key={f.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                 <button
@@ -165,10 +212,21 @@ export function GastosClient({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-800">
                       {f.lugar} <span className="text-slate-400 font-normal">· {formatoFecha(f.fecha)}</span>
+                      {f.estado_analisis === "pendiente" && (
+                        <span className="ml-2 text-xs text-amber-600 animate-pulse">● analizando con IA…</span>
+                      )}
+                      {f.estado_analisis === "error" && (
+                        <span className="ml-2 text-xs text-red-500 inline-flex items-center gap-0.5">
+                          <AlertTriangle className="h-3 w-3" /> error al analizar
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-slate-400">
                       {f.lineas.length} línea{f.lineas.length !== 1 ? "s" : ""}
                       {f.referencia ? ` · Ref: ${f.referencia}` : ""}
+                      {sinAsignar > 0 && (
+                        <span className="text-amber-600"> · {sinAsignar} sin actividad</span>
+                      )}
                       {f.foto_url ? (
                         <>
                           {" · "}
@@ -194,46 +252,84 @@ export function GastosClient({
 
                 {abierta && (
                   <div className="border-t border-slate-100 px-4 py-3 space-y-3">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-left text-slate-400 uppercase tracking-wide">
-                            <th className="pb-1.5 pr-3 font-medium">Descripción</th>
-                            <th className="pb-1.5 pr-3 font-medium">Tipo</th>
-                            <th className="pb-1.5 pr-3 font-medium text-right">Cant.</th>
-                            <th className="pb-1.5 pr-3 font-medium">UM</th>
-                            <th className="pb-1.5 pr-3 font-medium text-right">P. unit.</th>
-                            <th className="pb-1.5 pr-3 font-medium text-right">Tax</th>
-                            <th className="pb-1.5 pr-3 font-medium text-right">Monto</th>
-                            <th className="pb-1.5 font-medium">Actividad</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {f.lineas.map((l) => (
-                            <tr key={l.id}>
-                              <td className="py-1.5 pr-3 text-slate-700">{l.descripcion}</td>
-                              <td className="py-1.5 pr-3 text-slate-500">{tipoLabel[l.tipo_recurso] ?? l.tipo_recurso}</td>
-                              <td className="py-1.5 pr-3 text-right text-slate-600">{l.cantidad ?? "—"}</td>
-                              <td className="py-1.5 pr-3 text-slate-500">{l.unidad ?? "—"}</td>
-                              <td className="py-1.5 pr-3 text-right text-slate-600">{l.precio_unitario != null ? formatoMoneda(l.precio_unitario) : "—"}</td>
-                              <td className="py-1.5 pr-3 text-right text-slate-600">{l.tax ? formatoMoneda(l.tax) : "—"}</td>
-                              <td className="py-1.5 pr-3 text-right font-medium text-slate-900">{formatoMoneda(l.monto)}</td>
-                              <td className="py-1.5 text-slate-600">
-                                {l.actividades ? `${l.actividades.codigo} — ${l.actividades.nombre}` : "—"}
-                              </td>
+                    {f.estado_analisis === "error" && puedeCrear && (
+                      <div className="rounded-lg bg-red-50 border border-red-200 p-3 flex items-center justify-between gap-3">
+                        <p className="text-xs text-red-600">La IA no pudo terminar de analizar esta foto.</p>
+                        <button
+                          onClick={() => handleReintentar(f.id)}
+                          disabled={reintentando === f.id}
+                          className="text-xs font-medium text-red-700 hover:text-red-900 flex items-center gap-1 shrink-0 disabled:opacity-50"
+                        >
+                          <RefreshCw className={cn("h-3.5 w-3.5", reintentando === f.id && "animate-spin")} /> Reintentar
+                        </button>
+                      </div>
+                    )}
+
+                    {f.lineas.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">
+                        {f.estado_analisis === "pendiente" ? "La IA todavía está leyendo esta foto…" : "Sin artículos todavía."}
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-left text-slate-400 uppercase tracking-wide">
+                              <th className="pb-1.5 pr-3 font-medium">Descripción</th>
+                              <th className="pb-1.5 pr-3 font-medium">Tipo</th>
+                              <th className="pb-1.5 pr-3 font-medium text-right">Cant.</th>
+                              <th className="pb-1.5 pr-3 font-medium">UM</th>
+                              <th className="pb-1.5 pr-3 font-medium text-right">P. unit.</th>
+                              <th className="pb-1.5 pr-3 font-medium text-right">Tax</th>
+                              <th className="pb-1.5 pr-3 font-medium text-right">Monto</th>
+                              <th className="pb-1.5 font-medium">Actividad</th>
                             </tr>
-                          ))}
-                        </tbody>
-                        <tfoot>
-                          <tr className="border-t border-slate-100 font-medium text-slate-700">
-                            <td colSpan={5}></td>
-                            <td className="pt-1.5 pr-3 text-right text-slate-400">Subtotal / Tax</td>
-                            <td className="pt-1.5 text-right">{formatoMoneda(f.subtotal)} / {formatoMoneda(f.tax_total)}</td>
-                            <td></td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                            {f.lineas.map((l) => (
+                              <tr key={l.id} className={!l.actividad_id ? "bg-amber-50/60" : undefined}>
+                                <td className="py-1.5 pr-3 text-slate-700">{l.descripcion}</td>
+                                <td className="py-1.5 pr-3 text-slate-500">{tipoLabel[l.tipo_recurso] ?? l.tipo_recurso}</td>
+                                <td className="py-1.5 pr-3 text-right text-slate-600">{l.cantidad ?? "—"}</td>
+                                <td className="py-1.5 pr-3 text-slate-500">{l.unidad ?? "—"}</td>
+                                <td className="py-1.5 pr-3 text-right text-slate-600">{l.precio_unitario != null ? formatoMoneda(l.precio_unitario) : "—"}</td>
+                                <td className="py-1.5 pr-3 text-right text-slate-600">{l.tax ? formatoMoneda(l.tax) : "—"}</td>
+                                <td className="py-1.5 pr-3 text-right font-medium text-slate-900">{formatoMoneda(l.monto)}</td>
+                                <td className="py-1.5 pr-1">
+                                  {puedeCrear ? (
+                                    <select
+                                      value={l.actividad_id ?? ""}
+                                      onChange={(e) => handleAsignarActividad(l.id, e.target.value)}
+                                      className={cn(
+                                        "text-xs border rounded-md px-1.5 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900",
+                                        l.actividad_id ? "border-slate-200 text-slate-700" : "border-amber-300 text-amber-700"
+                                      )}
+                                    >
+                                      <option value="">Sin asignar</option>
+                                      {actividadesOpciones.map((a) => (
+                                        <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span className="text-slate-600">
+                                      {l.actividades ? `${l.actividades.codigo} — ${l.actividades.nombre}` : "—"}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t border-slate-100 font-medium text-slate-700">
+                              <td colSpan={5}></td>
+                              <td className="pt-1.5 pr-3 text-right text-slate-400">Subtotal / Tax</td>
+                              <td className="pt-1.5 text-right">{formatoMoneda(f.subtotal)} / {formatoMoneda(f.tax_total)}</td>
+                              <td></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+
                     {puedeCrear && (
                       <div className="flex justify-end">
                         <button
@@ -253,13 +349,85 @@ export function GastosClient({
         </div>
       )}
 
-      {showModal && (
+      {showModalManual && (
         <ModalRegistrarGasto
           proyectoId={proyectoActivoId}
           actividadesOpciones={actividadesOpciones}
-          onClose={() => setShowModal(false)}
+          onClose={() => setShowModalManual(false)}
         />
       )}
+
+      {showModalFoto && (
+        <ModalSubirFoto proyectoId={proyectoActivoId} onClose={() => setShowModalFoto(false)} />
+      )}
+    </div>
+  )
+}
+
+// Captura rápida: subir/tomar la foto y listo -- no espera a que la IA
+// termine de analizarla. La factura queda guardada de inmediato (con la
+// foto archivada) y aparece en la lista como "analizando con IA…"; cuando
+// el análisis termine en segundo plano, ya va a tener sus líneas listas
+// para que el usuario les asigne la actividad cuando tenga tiempo.
+function ModalSubirFoto({ proyectoId, onClose }: { proyectoId: string; onClose: () => void }) {
+  const [subiendo, setSubiendo] = useState(false)
+  const [error, setError] = useState("")
+
+  const handleSeleccionarFoto = (file: File | null) => {
+    if (!file) return
+    setError("")
+    setSubiendo(true)
+    ;(async () => {
+      const fileParaSubir = await comprimirFoto(file)
+      const fd = new FormData()
+      fd.append("foto", fileParaSubir)
+      const res = await crearFacturaBorradorConFoto(proyectoId, fd)
+      if (res.error) {
+        setSubiendo(false)
+        setError(res.error)
+        return
+      }
+      window.location.reload()
+    })()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      onClick={(e) => { if (e.target === e.currentTarget && !subiendo) onClose() }}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 relative text-center">
+        {!subiendo && (
+          <button className="absolute right-4 top-4 text-slate-400 hover:text-slate-600" onClick={onClose}>
+            <X className="h-5 w-5" />
+          </button>
+        )}
+
+        <Camera className="h-10 w-10 mx-auto mb-3 text-slate-300" />
+        <h3 className="text-lg font-semibold text-slate-900 mb-1">Subir foto del recibo</h3>
+        <p className="text-xs text-slate-400 mb-5">
+          Se guarda al instante y una IA la analiza en segundo plano -- no hace falta esperar, puedes cerrar esto y seguir con tu día. Luego revisa la factura en la lista y asigna la actividad de cada artículo.
+        </p>
+
+        {error && (
+          <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-600 mb-4 text-left">{error}</div>
+        )}
+
+        {subiendo ? (
+          <p className="text-sm text-slate-500 animate-pulse">Subiendo foto...</p>
+        ) : (
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg px-4 py-2.5 cursor-pointer transition-colors">
+            <Camera className="h-4 w-4" /> Tomar o elegir foto
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => handleSeleccionarFoto(e.target.files?.[0] ?? null)}
+            />
+          </label>
+        )}
+      </div>
     </div>
   )
 }
@@ -278,57 +446,7 @@ function ModalRegistrarGasto({
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
   const [lugar, setLugar] = useState("")
   const [referencia, setReferencia] = useState("")
-  const [fotoReferencia, setFotoReferencia] = useState("")
   const [lineas, setLineas] = useState<LineaDraft[]>([{ ...lineaVacia }])
-
-  const [analizando, setAnalizando] = useState(false)
-  const [nombreFoto, setNombreFoto] = useState("")
-  const [avisoIA, setAvisoIA] = useState("")
-
-  const handleSeleccionarFoto = (file: File | null) => {
-    if (!file) return
-    setNombreFoto(file.name)
-    setAvisoIA("")
-    setAnalizando(true)
-    ;(async () => {
-      const fileParaSubir = await comprimirFoto(file)
-      const fd = new FormData()
-      fd.append("foto", fileParaSubir)
-      const res = await analizarReciboFoto(fd, proyectoId)
-      setAnalizando(false)
-
-      if (res.rutaFoto) setFotoReferencia(res.rutaFoto)
-
-      if (res.error) {
-        setAvisoIA(res.error)
-        return
-      }
-
-      const datos = res.data
-      if (!datos) return
-
-      if (datos.lugar) setLugar(datos.lugar)
-      if (datos.fecha) setFecha(datos.fecha)
-      if (datos.referencia) setReferencia(datos.referencia)
-
-      if (datos.lineas.length > 0) {
-        setLineas(
-          datos.lineas.map((l) => ({
-            actividadId: "",
-            tipoRecurso: "material",
-            descripcion: l.descripcion,
-            unidad: l.unidad || "",
-            cantidad: String(l.cantidad ?? 1),
-            precioUnitario: String(l.precioUnitario ?? 0),
-            tax: String(l.tax ?? 0),
-          }))
-        )
-        setAvisoIA(`Se encontraron ${datos.lineas.length} línea${datos.lineas.length !== 1 ? "s" : ""}. Verifica los datos y asigna una actividad a cada una.`)
-      } else {
-        setAvisoIA("La foto se archivó, pero no se pudo reconocer ningún artículo. Agrégalos a mano.")
-      }
-    })()
-  }
 
   const actualizarLinea = (idx: number, campo: keyof LineaDraft, valor: string) => {
     setLineas((prev) => prev.map((l, i) => (i === idx ? { ...l, [campo]: valor } : l)))
@@ -342,7 +460,6 @@ function ModalRegistrarGasto({
     setError("")
     if (!lugar.trim()) return setError("El lugar de compra es obligatorio")
     if (lineas.some((l) => !l.descripcion.trim())) return setError("Todas las líneas necesitan descripción")
-    if (lineas.some((l) => !l.actividadId)) return setError("Todas las líneas necesitan una actividad asignada")
 
     startTransition(async () => {
       const res = await crearFacturaGasto({
@@ -350,9 +467,9 @@ function ModalRegistrarGasto({
         fecha,
         lugar,
         referencia: referencia || null,
-        fotoReferencia: fotoReferencia || null,
+        fotoReferencia: null,
         lineas: lineas.map((l) => ({
-          actividadId: l.actividadId,
+          actividadId: l.actividadId || null,
           tipoRecurso: l.tipoRecurso,
           descripcion: l.descripcion,
           unidad: l.unidad || null,
@@ -382,8 +499,10 @@ function ModalRegistrarGasto({
           <X className="h-5 w-5" />
         </button>
 
-        <h3 className="text-lg font-semibold text-slate-900 mb-1">Registrar gasto</h3>
-        <p className="text-xs text-slate-400 mb-5">Una factura o recibo, con sus artículos/servicios asignados a actividades.</p>
+        <h3 className="text-lg font-semibold text-slate-900 mb-1">Registrar gasto a mano</h3>
+        <p className="text-xs text-slate-400 mb-5">
+          Una factura o recibo, con sus artículos/servicios. Puedes asignar la actividad de cada línea ahora o dejarla pendiente y hacerlo después desde la lista.
+        </p>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
           <div>
@@ -398,40 +517,6 @@ function ModalRegistrarGasto({
             <label className="block text-xs font-medium text-slate-700 mb-1">Referencia / folio</label>
             <input value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder="Ej. ticket 0251-..." className={inputCls} />
           </div>
-        </div>
-
-        <div className="mb-4">
-          <label className="flex items-center gap-1.5 text-xs font-medium text-slate-700 mb-1">
-            <ImageIcon className="h-3.5 w-3.5" /> Foto del recibo (opcional)
-          </label>
-          <div className="flex items-center gap-2">
-            <label
-              className={cn(
-                "text-xs px-3 py-1.5 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors shrink-0",
-                analizando && "opacity-50 pointer-events-none"
-              )}
-            >
-              {nombreFoto ? "Cambiar foto" : "Elegir foto..."}
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                disabled={analizando}
-                onChange={(e) => handleSeleccionarFoto(e.target.files?.[0] ?? null)}
-              />
-            </label>
-            {nombreFoto && <span className="text-xs text-slate-500 truncate">{nombreFoto}</span>}
-            {analizando && <span className="text-xs text-slate-400 animate-pulse shrink-0">Analizando recibo...</span>}
-          </div>
-          {avisoIA && (
-            <p className={cn("text-[11px] mt-1.5", fotoReferencia ? "text-emerald-600" : "text-amber-600")}>{avisoIA}</p>
-          )}
-          {!nombreFoto && (
-            <p className="text-[11px] text-slate-400 mt-1">
-              Sube la foto y una IA intentará leer el lugar, la fecha y los artículos por ti -- igual tendrás que asignar la actividad de cada línea.
-            </p>
-          )}
         </div>
 
         <div className="space-y-2 mb-3">
@@ -468,9 +553,9 @@ function ModalRegistrarGasto({
                 <input type="number" step="0.01" value={l.tax} onChange={(e) => actualizarLinea(idx, "tax", e.target.value)} className={inputCls} />
               </div>
               <div className="col-span-4 sm:col-span-2">
-                <label className="block text-[10px] text-slate-400 mb-0.5">Actividad</label>
+                <label className="block text-[10px] text-slate-400 mb-0.5">Actividad (opcional)</label>
                 <select value={l.actividadId} onChange={(e) => actualizarLinea(idx, "actividadId", e.target.value)} className={cn(inputCls, "bg-white")}>
-                  <option value="">Elegir...</option>
+                  <option value="">Sin asignar</option>
                   {actividadesOpciones.map((a) => (
                     <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
                   ))}
@@ -500,7 +585,7 @@ function ModalRegistrarGasto({
           <Button type="button" variant="outline" className="flex-1" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button type="button" className="flex-1" isLoading={isPending} disabled={analizando} onClick={handleSubmit}>
+          <Button type="button" className="flex-1" isLoading={isPending} onClick={handleSubmit}>
             Guardar factura
           </Button>
         </div>
