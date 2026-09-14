@@ -24,6 +24,14 @@ export type DesglosePeriodo = {
   monto_bruto: number
 }
 
+export type DesgloseActividad = {
+  actividad_id: string
+  actividad_codigo: string | null
+  actividad_nombre: string
+  avance_pct: number
+  monto_bruto: number
+}
+
 export type FacturaCliente = {
   id: string
   numero: string | null
@@ -35,6 +43,7 @@ export type FacturaCliente = {
   periodo_inicio: string | null
   periodo_fin: string | null
   desglose_periodos: DesglosePeriodo[] | null
+  desglose_actividades: DesgloseActividad[] | null
   fecha_emision: string | null
   fecha_vencimiento: string | null
   fecha_cobro: string | null
@@ -64,6 +73,12 @@ function formatMXN(n: number) {
   if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`
   if (Math.abs(n) >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
   return `$${n.toLocaleString()}`
+}
+
+// Para revisar/aprobar un borrador el monto exacto importa (no sirve ver
+// "$6K" cuando en realidad son $5,774.24) -- este formato nunca abrevia.
+function formatExacto(n: number) {
+  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 const estadoColor: Record<string, string> = {
@@ -272,11 +287,11 @@ function ModalGenerarAutomatico({ onClose }: { onClose: () => void }) {
                       <p className="font-medium text-amber-800">{f.numero_generado}</p>
                       <p className="text-xs text-amber-600">{f.proyecto_codigo}</p>
                     </div>
-                    <p className="font-semibold text-amber-700">{formatMXN(f.monto_generado)}</p>
+                    <p className="font-semibold text-amber-700">{formatExacto(f.monto_generado)}</p>
                   </div>
                   {f.amortizacion_generada > 0 && (
                     <p className="text-[11px] text-amber-600 mt-1">
-                      Incluye {formatMXN(f.amortizacion_generada)} descontado por amortización de anticipo
+                      Incluye {formatExacto(f.amortizacion_generada)} descontado por amortización de anticipo
                     </p>
                   )}
                 </div>
@@ -330,7 +345,7 @@ function TarjetaBorrador({ f }: { f: FacturaCliente }) {
   const bruto = f.monto + f.amortizacion_anticipo
 
   const handleAprobar = () => {
-    if (!window.confirm(`¿Aprobar y enviar esta estimación de ${formatMXN(f.monto)} al cliente?`)) return
+    if (!window.confirm(`¿Aprobar y enviar esta estimación de ${formatExacto(f.monto)} al cliente?`)) return
     setError("")
     startTransition(async () => {
       const result = await aprobarFacturaCliente(f.id)
@@ -373,7 +388,7 @@ function TarjetaBorrador({ f }: { f: FacturaCliente }) {
           )}
           {!editando && <p className="text-xs text-slate-600 mt-1">{f.descripcion}</p>}
         </div>
-        <p className="text-sm font-semibold text-slate-800 shrink-0">{formatMXN(f.monto)}</p>
+        <p className="text-sm font-semibold text-slate-800 shrink-0">{formatExacto(f.monto)}</p>
       </div>
 
       {f.desglose_periodos && f.desglose_periodos.length > 1 && (
@@ -382,21 +397,36 @@ function TarjetaBorrador({ f }: { f: FacturaCliente }) {
           {f.desglose_periodos.map((d, i) => (
             <div key={i} className="flex items-center justify-between text-[11px] text-slate-600">
               <span>{d.periodo_inicio} al {d.periodo_fin} · {d.avance_pct}% avance</span>
-              <span className="font-medium">{formatMXN(d.monto_bruto)}</span>
+              <span className="font-medium">{formatExacto(d.monto_bruto)}</span>
             </div>
           ))}
         </div>
       )}
 
+      {f.desglose_actividades && f.desglose_actividades.length > 0 && (
+        <div className="mt-2 bg-slate-50 border border-slate-200 rounded-md p-2 space-y-1">
+          <p className="text-[10px] font-medium text-slate-500">Desglose por actividad:</p>
+          {f.desglose_actividades.map((d) => (
+            <div key={d.actividad_id} className="flex items-center justify-between text-[11px] text-slate-600">
+              <span>{d.actividad_codigo ? `${d.actividad_codigo} — ` : ""}{d.actividad_nombre} · {d.avance_pct}% avance</span>
+              <span className="font-medium">{formatExacto(d.monto_bruto)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {(!f.desglose_actividades || f.desglose_actividades.length === 0) && (
+        <p className="mt-2 text-[10px] text-slate-400 italic">Sin desglose por actividad (esta estimación se generó antes de que existiera ese detalle).</p>
+      )}
+
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 border-t border-slate-100 pt-2">
-        <div>Bruto: <span className="text-slate-700 font-medium">{formatMXN(bruto)}</span></div>
+        <div>Bruto: <span className="text-slate-700 font-medium">{formatExacto(bruto)}</span></div>
         {f.amortizacion_anticipo > 0 && (
-          <div>Amortización de anticipo: <span className="text-amber-700 font-medium">−{formatMXN(f.amortizacion_anticipo)}</span></div>
+          <div>Amortización de anticipo: <span className="text-amber-700 font-medium">−{formatExacto(f.amortizacion_anticipo)}</span></div>
         )}
         {f.retencion > 0 && (
-          <div>Retención: <span className="text-amber-700 font-medium">−{formatMXN(f.retencion)}</span></div>
+          <div>Retención: <span className="text-amber-700 font-medium">−{formatExacto(f.retencion)}</span></div>
         )}
-        <div>Neto a facturar: <span className="text-slate-800 font-semibold">{formatMXN(f.monto)}</span></div>
+        <div>Neto a facturar: <span className="text-slate-800 font-semibold">{formatExacto(f.monto)}</span></div>
       </div>
 
       {editando ? (

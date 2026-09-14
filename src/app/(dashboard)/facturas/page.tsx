@@ -39,7 +39,7 @@ async function getData() {
         .from("facturas_cliente")
         .select(`
           id, numero, descripcion, hito_asociado, monto, retencion, amortizacion_anticipo,
-          periodo_inicio, periodo_fin, desglose_periodos,
+          periodo_inicio, periodo_fin, desglose_periodos, desglose_actividades,
           fecha_emision, fecha_vencimiento, fecha_cobro, estado, monto_cobrado,
           proyectos ( nombre, codigo )
         `)

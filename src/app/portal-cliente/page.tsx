@@ -50,6 +50,14 @@ type DesglosePeriodo = {
   monto_bruto: number
 }
 
+type DesgloseActividad = {
+  actividad_id: string
+  actividad_codigo: string | null
+  actividad_nombre: string
+  avance_pct: number
+  monto_bruto: number
+}
+
 type Factura = {
   id: string
   numero: string | null
@@ -61,6 +69,7 @@ type Factura = {
   periodo_inicio: string | null
   periodo_fin: string | null
   desglose_periodos: DesglosePeriodo[] | null
+  desglose_actividades: DesgloseActividad[] | null
   fecha_emision: string | null
   fecha_vencimiento: string | null
   estado: string
@@ -325,6 +334,7 @@ export default async function PortalClientePage() {
                 {facturas.map((f) => {
                   const bruto = f.monto + (f.amortizacion_anticipo ?? 0) + (f.retencion ?? 0)
                   const tieneDesglose = (f.desglose_periodos?.length ?? 0) > 1
+                  const tieneDesgloseActividades = (f.desglose_actividades?.length ?? 0) > 0
                   return (
                     <div key={f.id} className="px-5 py-3">
                       <div className="flex items-center gap-3">
@@ -341,7 +351,7 @@ export default async function PortalClientePage() {
                         </span>
                       </div>
 
-                      {(f.amortizacion_anticipo > 0 || f.retencion > 0 || tieneDesglose) && (
+                      {(f.amortizacion_anticipo > 0 || f.retencion > 0 || tieneDesglose || tieneDesgloseActividades) && (
                         <div className="mt-2 ml-0 bg-slate-50 border border-slate-100 rounded-lg p-3 space-y-1.5">
                           {tieneDesglose && (
                             <div className="space-y-1 mb-2">
@@ -349,6 +359,17 @@ export default async function PortalClientePage() {
                               {f.desglose_periodos!.map((d, i) => (
                                 <div key={i} className="flex items-center justify-between text-xs text-slate-500">
                                   <span>{formatoFecha(d.periodo_inicio)} al {formatoFecha(d.periodo_fin)} · {d.avance_pct}% avance</span>
+                                  <span>{formatoMoneda(d.monto_bruto)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {tieneDesgloseActividades && (
+                            <div className="space-y-1 mb-2">
+                              <p className="text-[11px] font-medium text-slate-500">Detalle por actividad:</p>
+                              {f.desglose_actividades!.map((d) => (
+                                <div key={d.actividad_id} className="flex items-center justify-between text-xs text-slate-500">
+                                  <span>{d.actividad_codigo ? `${d.actividad_codigo} — ` : ""}{d.actividad_nombre} · {d.avance_pct}% avance</span>
                                   <span>{formatoMoneda(d.monto_bruto)}</span>
                                 </div>
                               ))}
