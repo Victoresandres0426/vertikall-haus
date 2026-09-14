@@ -1,0 +1,277 @@
+-- ============================================================
+-- 081 — Fix real: "column reference proyecto_id is ambiguous"
+-- ============================================================
+-- La migración 080 calificó con alias de tabla todas las columnas
+-- de los SELECT/WHERE, pero el error seguía ocurriendo en el
+-- INSERT INTO avance_snapshots_semanales ... ON CONFLICT (proyecto_id, fecha).
+-- Esa cláusula ON CONFLICT no admite alias de tabla, y como la función
+-- tiene RETURNS TABLE(proyecto_id UUID, ...), "proyecto_id" existe
+-- también como variable de salida en TODO el cuerpo de la función —
+-- de ahí la ambigüedad real entre variable y columna.
+--
+-- La solución estándar de PL/pgSQL para esto es el pragma
+-- #variable_conflict use_column, que le indica a la función que,
+-- ante cualquier ambigüedad entre una variable PL/pgSQL y una columna
+-- de tabla dentro de una sentencia SQL, debe ganar la columna. No
+-- afecta las asignaciones directas (proyecto_id := ...), que siguen
+-- funcionando igual. No cambia ninguna lógica de negocio.
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION generar_facturas_semanales(p_empresa_id UUID DEFAULT NULL)
+RETURNS TABLE(
+  proyecto_id UUID,
+  proyecto_codigo TEXT,
+  numero_generado TEXT,
+  monto_generado DECIMAL,
+  amortizacion_generada DECIMAL
+) AS $$
+#variable_conflict use_column
+DECLARE
+  v_empresa_id UUID;
+  v_rol rol_usuario;
+  v_proyecto RECORD;
+  v_presupuesto_total DECIMAL(15,2);
+  v_avance_ponderado DECIMAL(7,4);
+  v_monto_facturado DECIMAL(15,2);
+  v_pct_facturado DECIMAL(7,4);
+  v_delta_pct DECIMAL(7,4);
+  v_monto_bruto DECIMAL(15,2);
+  v_anticipo_total DECIMAL(15,2);
+  v_pct_anticipo DECIMAL(7,4);
+  v_anticipo_amortizado DECIMAL(15,2);
+  v_anticipo_pendiente DECIMAL(15,2);
+  v_amortizacion DECIMAL(15,2);
+  v_monto_neto DECIMAL(15,2);
+  v_siguiente_seq INTEGER;
+  v_numero TEXT;
+  v_periodo_inicio DATE;
+  v_desglose JSONB;
+  v_avance_previo DECIMAL(7,4);
+  v_fecha_desde DATE;
+  v_snap RECORD;
+  v_act RECORD;
+  v_baseline_act DECIMAL(5,2);
+  v_delta_act DECIMAL(7,2);
+  v_desglose_act JSONB;
+BEGIN
+  v_empresa_id := COALESCE(p_empresa_id, get_empresa_id());
+  IF v_empresa_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  IF p_empresa_id IS NULL THEN
+    v_rol := get_rol_usuario();
+    IF v_rol IS NULL OR v_rol NOT IN ('project_manager', 'administrador', 'dueno', 'superadmin') THEN
+      RAISE EXCEPTION 'No tienes permisos para generar facturación automática';
+    END IF;
+  END IF;
+
+  FOR v_proyecto IN
+    SELECT pr.id, pr.codigo
+    FROM proyectos pr
+    WHERE pr.empresa_id = v_empresa_id AND pr.activo = true
+  LOOP
+    SELECT bl.total INTO v_presupuesto_total
+    FROM presupuestos bl
+    WHERE bl.proyecto_id = v_proyecto.id AND bl.es_baseline_actual = true
+    LIMIT 1;
+
+    IF v_presupuesto_total IS NULL OR v_presupuesto_total <= 0 THEN
+      SELECT COALESCE(SUM(act.costo_presupuesto), 0) INTO v_presupuesto_total
+      FROM actividades act
+      WHERE act.proyecto_id = v_proyecto.id AND act.activa = true;
+    END IF;
+
+    IF v_presupuesto_total IS NULL OR v_presupuesto_total <= 0 THEN
+      CONTINUE;
+    END IF;
+
+    SELECT
+      CASE
+        WHEN SUM(act.costo_presupuesto) > 0
+          THEN SUM(act.avance_porcentaje * act.costo_presupuesto) / SUM(act.costo_presupuesto)
+        WHEN COUNT(*) > 0
+          THEN AVG(act.avance_porcentaje)
+        ELSE 0
+      END
+    INTO v_avance_ponderado
+    FROM actividades act
+    WHERE act.proyecto_id = v_proyecto.id AND act.activa = true;
+
+    v_avance_ponderado := COALESCE(v_avance_ponderado, 0);
+
+    INSERT INTO avance_snapshots_semanales (proyecto_id, fecha, avance_ponderado_pct, presupuesto_total)
+    VALUES (v_proyecto.id, CURRENT_DATE, v_avance_ponderado, v_presupuesto_total)
+    ON CONFLICT (proyecto_id, fecha) DO UPDATE
+      SET avance_ponderado_pct = EXCLUDED.avance_ponderado_pct,
+          presupuesto_total = EXCLUDED.presupuesto_total;
+
+    FOR v_act IN
+      SELECT act.id, act.avance_porcentaje, act.costo_presupuesto
+      FROM actividades act
+      WHERE act.proyecto_id = v_proyecto.id AND act.activa = true
+    LOOP
+      INSERT INTO avance_snapshots_actividad_semanales (proyecto_id, actividad_id, fecha, avance_porcentaje, costo_presupuesto)
+      VALUES (v_proyecto.id, v_act.id, CURRENT_DATE, COALESCE(v_act.avance_porcentaje, 0), v_act.costo_presupuesto)
+      ON CONFLICT (actividad_id, fecha) DO UPDATE
+        SET avance_porcentaje = EXCLUDED.avance_porcentaje,
+            costo_presupuesto = EXCLUDED.costo_presupuesto;
+    END LOOP;
+
+    SELECT COALESCE(SUM(fc.monto + fc.amortizacion_anticipo), 0) INTO v_monto_facturado
+    FROM facturas_cliente fc
+    WHERE fc.proyecto_id = v_proyecto.id
+      AND fc.numero LIKE 'EST-%'
+      AND fc.change_order_id IS NULL;
+
+    v_pct_facturado := (v_monto_facturado / v_presupuesto_total) * 100;
+    v_delta_pct := v_avance_ponderado - v_pct_facturado;
+
+    IF v_delta_pct < 1 THEN
+      CONTINUE;
+    END IF;
+
+    IF EXISTS (
+      SELECT 1 FROM facturas_cliente fc
+      WHERE fc.proyecto_id = v_proyecto.id AND fc.numero LIKE 'EST-%' AND fc.estado = 'borrador'
+    ) THEN
+      CONTINUE;
+    END IF;
+
+    IF EXISTS (
+      SELECT 1 FROM facturas_cliente fc
+      WHERE fc.proyecto_id = v_proyecto.id
+        AND fc.numero LIKE 'EST-%'
+        AND fc.estado <> 'borrador'
+        AND fc.fecha_emision >= CURRENT_DATE - INTERVAL '6 days'
+    ) THEN
+      CONTINUE;
+    END IF;
+
+    v_monto_bruto := ROUND(v_presupuesto_total * v_delta_pct / 100, 2);
+    IF v_monto_bruto <= 0 THEN
+      CONTINUE;
+    END IF;
+
+    SELECT COALESCE(SUM(fc.monto), 0) INTO v_anticipo_total
+    FROM facturas_cliente fc
+    WHERE fc.proyecto_id = v_proyecto.id AND fc.numero LIKE 'ANT-%';
+
+    v_pct_anticipo := CASE WHEN v_presupuesto_total > 0
+      THEN LEAST(v_anticipo_total / v_presupuesto_total, 1)
+      ELSE 0
+    END;
+
+    SELECT COALESCE(SUM(fc.amortizacion_anticipo), 0) INTO v_anticipo_amortizado
+    FROM facturas_cliente fc
+    WHERE fc.proyecto_id = v_proyecto.id AND fc.numero LIKE 'EST-%';
+
+    v_anticipo_pendiente := GREATEST(v_anticipo_total - v_anticipo_amortizado, 0);
+
+    v_amortizacion := LEAST(ROUND(v_monto_bruto * v_pct_anticipo, 2), v_anticipo_pendiente);
+    v_monto_neto := v_monto_bruto - v_amortizacion;
+
+    SELECT fc.periodo_fin + 1 INTO v_periodo_inicio
+    FROM facturas_cliente fc
+    WHERE fc.proyecto_id = v_proyecto.id AND fc.numero LIKE 'EST-%' AND fc.periodo_fin IS NOT NULL
+    ORDER BY fc.periodo_fin DESC
+    LIMIT 1;
+
+    IF v_periodo_inicio IS NULL THEN
+      SELECT COALESCE(pr2.fecha_inicio_real, pr2.fecha_inicio_plan) INTO v_periodo_inicio
+      FROM proyectos pr2 WHERE pr2.id = v_proyecto.id;
+    END IF;
+
+    v_desglose := '[]'::jsonb;
+    v_avance_previo := v_pct_facturado;
+    v_fecha_desde := v_periodo_inicio;
+
+    FOR v_snap IN
+      SELECT ass.fecha, ass.avance_ponderado_pct
+      FROM avance_snapshots_semanales ass
+      WHERE ass.proyecto_id = v_proyecto.id AND ass.fecha >= v_periodo_inicio
+      ORDER BY ass.fecha
+    LOOP
+      v_desglose := v_desglose || jsonb_build_object(
+        'periodo_inicio', v_fecha_desde,
+        'periodo_fin', v_snap.fecha,
+        'avance_pct', ROUND(v_snap.avance_ponderado_pct - v_avance_previo, 2),
+        'monto_bruto', ROUND(v_presupuesto_total * (v_snap.avance_ponderado_pct - v_avance_previo) / 100, 2)
+      );
+      v_avance_previo := v_snap.avance_ponderado_pct;
+      v_fecha_desde := v_snap.fecha + 1;
+    END LOOP;
+
+    v_desglose_act := '[]'::jsonb;
+
+    FOR v_act IN
+      SELECT act.id, act.codigo, act.nombre, COALESCE(act.avance_porcentaje, 0) AS avance_porcentaje, COALESCE(act.costo_presupuesto, 0) AS costo_presupuesto
+      FROM actividades act
+      WHERE act.proyecto_id = v_proyecto.id AND act.activa = true
+      ORDER BY act.codigo
+    LOOP
+      SELECT asa.avance_porcentaje INTO v_baseline_act
+      FROM avance_snapshots_actividad_semanales asa
+      WHERE asa.actividad_id = v_act.id AND asa.fecha < v_periodo_inicio
+      ORDER BY asa.fecha DESC
+      LIMIT 1;
+
+      v_baseline_act := COALESCE(v_baseline_act, 0);
+      v_delta_act := ROUND(v_act.avance_porcentaje - v_baseline_act, 2);
+
+      IF v_delta_act <> 0 THEN
+        v_desglose_act := v_desglose_act || jsonb_build_object(
+          'actividad_id', v_act.id,
+          'actividad_codigo', v_act.codigo,
+          'actividad_nombre', v_act.nombre,
+          'avance_pct', v_delta_act,
+          'monto_bruto', ROUND(v_act.costo_presupuesto * v_delta_act / 100, 2)
+        );
+      END IF;
+    END LOOP;
+
+    SELECT COUNT(*) + 1 INTO v_siguiente_seq
+    FROM facturas_cliente fc
+    WHERE fc.proyecto_id = v_proyecto.id AND fc.numero LIKE 'EST-%';
+
+    v_numero := 'EST-' || v_proyecto.codigo || '-' || LPAD(v_siguiente_seq::TEXT, 3, '0');
+
+    INSERT INTO facturas_cliente (
+      proyecto_id, numero, descripcion, monto, retencion, amortizacion_anticipo,
+      periodo_inicio, periodo_fin, desglose_periodos, desglose_actividades,
+      fecha_emision, fecha_vencimiento, estado, monto_cobrado
+    ) VALUES (
+      v_proyecto.id,
+      v_numero,
+      'Estimación de avance automática — ' || ROUND(v_delta_pct, 1) || '% de avance adicional (acumulado ' || ROUND(v_avance_ponderado, 1) || '%)'
+        || CASE WHEN v_amortizacion > 0
+             THEN ' · incluye $' || v_amortizacion || ' de amortización de anticipo'
+             ELSE ''
+           END,
+      v_monto_neto,
+      0,
+      v_amortizacion,
+      v_periodo_inicio,
+      CURRENT_DATE,
+      v_desglose,
+      v_desglose_act,
+      CURRENT_DATE,
+      CURRENT_DATE + INTERVAL '15 days',
+      'borrador',
+      0
+    );
+
+    proyecto_id := v_proyecto.id;
+    proyecto_codigo := v_proyecto.codigo;
+    numero_generado := v_numero;
+    monto_generado := v_monto_neto;
+    amortizacion_generada := v_amortizacion;
+    RETURN NEXT;
+  END LOOP;
+
+  RETURN;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+REVOKE ALL ON FUNCTION generar_facturas_semanales(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION generar_facturas_semanales(UUID) TO authenticated;
