@@ -63,6 +63,28 @@ async function getProyectosConActividades(): Promise<{
     return { proyectos: [], todosLosProyectos, puedeEditar }
   }
 
+  // costo_real (columna en actividades) es un solo total -- no distingue si
+  // ese gasto fue mano de obra, material u otro. Para poder mostrar el
+  // desglose real (no solo el presupuestado) se suma costos_reales por
+  // actividad y tipo_recurso aparte, agrupando equipo/subcontrato/indirecto
+  // en "otros" porque son mucho menos frecuentes que material/mano de obra.
+  const { data: costosRaw } = await supabase
+    .from("costos_reales")
+    .select("actividad_id, tipo_recurso, monto")
+    .eq("proyecto_id", proyectoActivo.id)
+    .not("actividad_id", "is", null)
+
+  const desgloseCostoReal: Record<string, { material: number; mano_obra: number; otros: number }> = {}
+  for (const c of (costosRaw ?? []) as { actividad_id: string; tipo_recurso: string; monto: number }[]) {
+    if (!desgloseCostoReal[c.actividad_id]) {
+      desgloseCostoReal[c.actividad_id] = { material: 0, mano_obra: 0, otros: 0 }
+    }
+    const monto = Number(c.monto ?? 0)
+    if (c.tipo_recurso === "material") desgloseCostoReal[c.actividad_id].material += monto
+    else if (c.tipo_recurso === "mano_obra") desgloseCostoReal[c.actividad_id].mano_obra += monto
+    else desgloseCostoReal[c.actividad_id].otros += monto
+  }
+
   const proyectos = ((data ?? []) as unknown as ProyectoConActividades[]).map((proy) => ({
     ...proy,
     procesos: (proy.procesos ?? [])
@@ -71,7 +93,13 @@ async function getProyectosConActividades(): Promise<{
         ...proc,
         actividades: (proc.actividades ?? [])
           .filter((a) => a.activa !== false)
-          .sort((a, b) => a.codigo.localeCompare(b.codigo)),
+          .sort((a, b) => a.codigo.localeCompare(b.codigo))
+          .map((a) => ({
+            ...a,
+            costo_real_material: desgloseCostoReal[a.id]?.material ?? 0,
+            costo_real_mano_obra: desgloseCostoReal[a.id]?.mano_obra ?? 0,
+            costo_real_otros: desgloseCostoReal[a.id]?.otros ?? 0,
+          })),
       })),
   }))
 
