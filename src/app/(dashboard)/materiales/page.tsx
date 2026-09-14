@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { SelectorProyectoActivo } from "@/components/layout/selector-proyecto-activo"
 import { MaterialesClient, type MaterialCatalogo, type MaterialActividad } from "./materiales-client"
+import type { FacturaGasto, ActividadOpcion } from "./gastos-client"
 import { getProyectoActivoId, resolverProyectoActivo } from "@/lib/proyecto-activo"
 
 const ROLES_GESTION = ["project_manager", "dueno", "superadmin", "administrador"]
@@ -31,25 +32,59 @@ async function getData() {
     .order("nombre")
 
   let asignados: MaterialActividad[] = []
+  let facturas: FacturaGasto[] = []
+  let actividadesOpciones: ActividadOpcion[] = []
   if (proyectoActivo) {
-    const { data } = await supabase
-      .from("materiales_actividad")
-      .select(`
-        id, cantidad_plan, cantidad_recibida, cantidad_en_transito,
-        costo_unitario:precio_unitario,
-        material_id,
-        actividades!inner ( nombre, codigo, proyecto_id ),
-        materiales_catalogo ( nombre, unidad )
-      `)
-      .eq("actividades.proyecto_id", proyectoActivo.id)
-      .order("created_at", { ascending: false })
-      .limit(20)
+    const [{ data }, { data: facturasRaw }, { data: lineasRaw }, { data: actividadesRaw }] = await Promise.all([
+      supabase
+        .from("materiales_actividad")
+        .select(`
+          id, cantidad_plan, cantidad_recibida, cantidad_en_transito,
+          costo_unitario:precio_unitario,
+          material_id,
+          actividades!inner ( nombre, codigo, proyecto_id ),
+          materiales_catalogo ( nombre, unidad )
+        `)
+        .eq("actividades.proyecto_id", proyectoActivo.id)
+        .order("created_at", { ascending: false })
+        .limit(20),
+      supabase
+        .from("facturas_gasto")
+        .select("id, fecha, lugar, referencia, foto_referencia, subtotal, tax_total, total")
+        .eq("proyecto_id", proyectoActivo.id)
+        .order("fecha", { ascending: false }),
+      supabase
+        .from("costos_reales")
+        .select("id, factura_id, actividad_id, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, actividades ( codigo, nombre )")
+        .eq("proyecto_id", proyectoActivo.id)
+        .not("factura_id", "is", null),
+      supabase
+        .from("actividades")
+        .select("id, codigo, nombre")
+        .eq("proyecto_id", proyectoActivo.id)
+        .eq("activa", true)
+        .order("codigo"),
+    ])
     asignados = (data ?? []) as unknown as MaterialActividad[]
+
+    const lineasPorFactura = new Map<string, unknown[]>()
+    for (const l of (lineasRaw ?? []) as { factura_id: string }[]) {
+      const arr = lineasPorFactura.get(l.factura_id) ?? []
+      arr.push(l)
+      lineasPorFactura.set(l.factura_id, arr)
+    }
+    facturas = ((facturasRaw ?? []) as unknown as Omit<FacturaGasto, "lineas">[]).map((f) => ({
+      ...f,
+      lineas: (lineasPorFactura.get(f.id) ?? []) as FacturaGasto["lineas"],
+    }))
+    actividadesOpciones = (actividadesRaw ?? []) as ActividadOpcion[]
   }
 
   return {
     catalogo: (catalogo ?? []) as MaterialCatalogo[],
     asignados,
+    facturas,
+    actividadesOpciones,
     puedeCrear: !!perfil && ROLES_GESTION.includes(perfil.rol),
     todosLosProyectos,
     proyectoActivoId: proyectoActivo?.id ?? null,
@@ -57,7 +92,7 @@ async function getData() {
 }
 
 export default async function MaterialesPage() {
-  const { catalogo, asignados, puedeCrear, todosLosProyectos, proyectoActivoId } = await getData()
+  const { catalogo, asignados, facturas, actividadesOpciones, puedeCrear, todosLosProyectos, proyectoActivoId } = await getData()
 
   const categorias = Array.from(new Set(catalogo.map((m) => m.categoria ?? "Sin categoría")))
   const bajoStock = catalogo.filter(
@@ -79,7 +114,14 @@ export default async function MaterialesPage() {
           ) : undefined
         }
       />
-      <MaterialesClient catalogoInicial={catalogo} asignados={asignados} puedeCrear={puedeCrear} />
+      <MaterialesClient
+        catalogoInicial={catalogo}
+        asignados={asignados}
+        puedeCrear={puedeCrear}
+        facturasIniciales={facturas}
+        actividadesOpciones={actividadesOpciones}
+        proyectoActivoId={proyectoActivoId}
+      />
     </div>
   )
 }

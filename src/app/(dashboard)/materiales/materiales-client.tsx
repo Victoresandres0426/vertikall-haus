@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Package, Ruler, FolderOpen, AlertCircle, Plus, X } from "lucide-react"
+import { Package, Ruler, FolderOpen, AlertCircle, Plus, X, Receipt } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { crearMaterial } from "./actions"
+import { GastosClient, type FacturaGasto, type ActividadOpcion } from "./gastos-client"
 
 export type MaterialCatalogo = {
   id: string
@@ -42,13 +43,20 @@ export function MaterialesClient({
   catalogoInicial,
   asignados,
   puedeCrear,
+  facturasIniciales,
+  actividadesOpciones,
+  proyectoActivoId,
 }: {
   catalogoInicial: MaterialCatalogo[]
   asignados: MaterialActividad[]
   puedeCrear: boolean
+  facturasIniciales: FacturaGasto[]
+  actividadesOpciones: ActividadOpcion[]
+  proyectoActivoId: string | null
 }) {
   const [catalogo] = useState<MaterialCatalogo[]>(catalogoInicial)
   const [showModal, setShowModal] = useState(false)
+  const [tab, setTab] = useState<"catalogo" | "gastos">("catalogo")
 
   const categorias = Array.from(new Set(catalogo.map((m) => m.categoria ?? "Sin categoría")))
   const bajoStock = catalogo.filter(
@@ -57,15 +65,42 @@ export function MaterialesClient({
 
   return (
     <div className="p-6 space-y-6">
-      {puedeCrear && (
-        <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <div className="inline-flex bg-slate-100 rounded-lg p-1 gap-1">
+          <button
+            onClick={() => setTab("catalogo")}
+            className={cn(
+              "flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md transition-colors",
+              tab === "catalogo" ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-700"
+            )}
+          >
+            <Package className="h-3.5 w-3.5" /> Catálogo
+          </button>
+          <button
+            onClick={() => setTab("gastos")}
+            className={cn(
+              "flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md transition-colors",
+              tab === "gastos" ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-700"
+            )}
+          >
+            <Receipt className="h-3.5 w-3.5" /> Gastos
+          </button>
+        </div>
+        {tab === "catalogo" && puedeCrear && (
           <Button onClick={() => setShowModal(true)}>
             <Plus className="h-4 w-4 mr-1" /> Agregar material
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
-      {catalogo.length === 0 ? (
+      {tab === "gastos" ? (
+        <GastosClient
+          facturasIniciales={facturasIniciales}
+          actividadesOpciones={actividadesOpciones}
+          puedeCrear={puedeCrear}
+          proyectoActivoId={proyectoActivoId}
+        />
+      ) : catalogo.length === 0 ? (
         <div className="space-y-6">
           <div className="text-center py-16 border border-dashed border-slate-200 rounded-xl text-slate-400">
             <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
