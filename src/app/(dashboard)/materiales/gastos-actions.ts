@@ -128,6 +128,12 @@ export async function eliminarFacturaGasto(facturaId: string): Promise<{ error?:
   const acceso = await verificarAcceso(supabase)
   if (!acceso.ok) return { error: acceso.error }
 
+  const { data: facturaRow } = await supabase
+    .from("facturas_gasto")
+    .select("foto_referencia")
+    .eq("id", facturaId)
+    .single()
+
   // ON DELETE SET NULL en costos_reales.factura_id -- borrar la factura no
   // borra los costos reales ya contados en cada actividad, solo desvincula
   // la referencia a la factura. Para quitar también el costo hay que borrar
@@ -142,6 +148,134 @@ export async function eliminarFacturaGasto(facturaId: string): Promise<{ error?:
   if (error) {
     console.error("eliminarFacturaGasto:", error)
     return { error: "No se pudo borrar la factura." }
+  }
+
+  // No es crítico si esto falla (el archivo queda huérfano en el bucket,
+  // sin ningún registro que lo referencie) -- no bloqueamos el borrado por eso.
+  if (facturaRow?.foto_referencia) {
+    const { error: errStorage } = await supabase.storage.from("recibos").remove([facturaRow.foto_referencia])
+    if (errStorage) console.error("eliminarFacturaGasto - storage:", errStorage)
+  }
+
+  revalidarTodo()
+  return {}
+}
+
+// Recalcula subtotal/tax_total/total de una factura a partir de sus líneas
+// actuales -- se usa después de editar o borrar una línea individual.
+async function recalcularTotalesFactura(supabase: Awaited<ReturnType<typeof createClient>>, facturaId: string) {
+  const { data: lineas } = await supabase
+    .from("costos_reales")
+    .select("cantidad, precio_unitario, tax")
+    .eq("factura_id", facturaId)
+
+  const subtotal = (lineas ?? []).reduce((s, l) => s + (l.cantidad ?? 0) * (l.precio_unitario ?? 0), 0)
+  const taxTotal = (lineas ?? []).reduce((s, l) => s + (l.tax ?? 0), 0)
+
+  await supabase
+    .from("facturas_gasto")
+    .update({ subtotal, tax_total: taxTotal, total: subtotal + taxTotal })
+    .eq("id", facturaId)
+}
+
+export type CamposLineaGasto = {
+  descripcion?: string
+  unidad?: string | null
+  cantidad?: number
+  precioUnitario?: number
+  tax?: number
+  tipoRecurso?: "material" | "equipo" | "subcontrato" | "indirecto"
+}
+
+// Edita el contenido de una línea ya guardada -- para cuando en la misma
+// compra se coló algo que no tiene que ver con el proyecto, o la IA leyó
+// mal una cantidad/precio. Recalcula el monto de la línea y los totales de
+// la factura completa.
+export async function actualizarLineaGasto(lineaId: string, campos: CamposLineaGasto): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  const { data: actual, error: errActual } = await supabase
+    .from("costos_reales")
+    .select("factura_id, cantidad, precio_unitario, tax")
+    .eq("id", lineaId)
+    .single()
+
+  if (errActual || !actual) return { error: "No se encontró el artículo." }
+
+  const cantidad = campos.cantidad ?? actual.cantidad ?? 0
+  const precioUnitario = campos.precioUnitario ?? actual.precio_unitario ?? 0
+  const tax = campos.tax ?? actual.tax ?? 0
+
+  const update: Record<string, unknown> = { monto: cantidad * precioUnitario + tax }
+  if (campos.descripcion !== undefined) {
+    if (!campos.descripcion.trim()) return { error: "La descripción no puede quedar vacía." }
+    update.descripcion = campos.descripcion.trim()
+  }
+  if (campos.unidad !== undefined) update.unidad = campos.unidad?.trim() || null
+  if (campos.cantidad !== undefined) update.cantidad = campos.cantidad
+  if (campos.precioUnitario !== undefined) update.precio_unitario = campos.precioUnitario
+  if (campos.tax !== undefined) update.tax = campos.tax
+  if (campos.tipoRecurso !== undefined) update.tipo_recurso = campos.tipoRecurso
+
+  const { error } = await supabase.from("costos_reales").update(update).eq("id", lineaId)
+  if (error) {
+    console.error("actualizarLineaGasto:", error)
+    return { error: "No se pudo actualizar el artículo." }
+  }
+
+  if (actual.factura_id) await recalcularTotalesFactura(supabase, actual.factura_id)
+
+  revalidarTodo()
+  return {}
+}
+
+// Borra un solo artículo/servicio de una factura (no la factura completa) --
+// para cuando algo que no tiene nada que ver con el proyecto se coló en la
+// misma compra. Recalcula los totales de la factura después de quitarlo.
+export async function eliminarLineaGasto(lineaId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  const { data: actual } = await supabase.from("costos_reales").select("factura_id").eq("id", lineaId).single()
+
+  const { error } = await supabase.from("costos_reales").delete().eq("id", lineaId)
+  if (error) {
+    console.error("eliminarLineaGasto:", error)
+    return { error: "No se pudo borrar el artículo." }
+  }
+
+  if (actual?.factura_id) await recalcularTotalesFactura(supabase, actual.factura_id)
+
+  revalidarTodo()
+  return {}
+}
+
+// Edita los datos generales de una factura (lugar, fecha, referencia) --
+// para corregir lo que la IA leyó mal, o completar una factura manual.
+export async function actualizarFacturaGasto(
+  facturaId: string,
+  campos: { lugar?: string; fecha?: string; referencia?: string | null }
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  if (campos.lugar !== undefined && !campos.lugar.trim()) {
+    return { error: "El lugar de compra es obligatorio" }
+  }
+
+  const update: Record<string, unknown> = {}
+  if (campos.lugar !== undefined) update.lugar = campos.lugar.trim()
+  if (campos.fecha !== undefined) update.fecha = campos.fecha
+  if (campos.referencia !== undefined) update.referencia = campos.referencia?.trim() || null
+
+  const { error } = await supabase.from("facturas_gasto").update(update).eq("id", facturaId)
+  if (error) {
+    console.error("actualizarFacturaGasto:", error)
+    return { error: "No se pudo actualizar la factura." }
   }
 
   revalidarTodo()
@@ -170,18 +304,15 @@ export async function asignarActividadLinea(lineaId: string, actividadId: string
   return {}
 }
 
-// ── Análisis de la foto del recibo con IA, en segundo plano ─────
+// ── Análisis de la foto del recibo con IA ────────────────────────
 // Mismo patrón que src/app/(dashboard)/proyectos/importar/actions.ts
 // (fetch directo a la API de Anthropic con la misma ANTHROPIC_API_KEY ya
 // configurada) pero mandando la imagen como bloque "image" en vez de texto.
 //
-// A diferencia de la primera versión, esto ya NO bloquea al usuario
-// mientras la IA trabaja: crearFacturaBorradorConFoto sube la foto y crea
-// la factura al instante (unos segundos), y programa el análisis con
-// after() de Next.js para que siga corriendo en el servidor después de
-// responder -- el usuario puede cerrar la app y seguir con su día, y
-// cuando vuelva a abrir Gastos la factura ya va a tener sus líneas
-// (o un aviso de error con opción de reintentar).
+// crearFacturaBorradorConFoto sube la foto y crea la factura al instante;
+// el análisis (reintentarAnalisisFactura) se dispara aparte y el que llama
+// decide si lo espera o no -- el modal de "Subir foto" no lo espera, así
+// el usuario no tiene que quedarse mirando mientras la IA trabaja.
 
 export type LineaExtraida = {
   descripcion: string
@@ -339,15 +470,31 @@ async function aplicarAnalisisAFactura(
   }
 }
 
+async function calcularHashFoto(arrayBuffer: ArrayBuffer): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer)
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+}
+
+export type FacturaDuplicada = { id: string; lugar: string; fecha: string; total: number }
+
 // Sube la foto y crea la factura de inmediato (rápido -- solo la subida).
 // El análisis de IA se dispara aparte (ver reintentarAnalisisFactura) --
 // separarlo en dos llamadas es lo que le permite al que llama (el modal de
 // "Subir foto") no esperar a que la IA termine: dispara esa segunda
 // llamada sin esperarla y sigue de largo.
+//
+// Si "forzar" es false (el caso normal) y la MISMA foto (mismo hash) ya se
+// subió antes en este proyecto -- por ejemplo, se volvió a tomar/elegir la
+// misma foto por error -- no se crea nada y se devuelve el dato de la
+// factura existente para que el usuario decida si de verdad quiere
+// duplicarla.
 export async function crearFacturaBorradorConFoto(
   proyectoId: string,
-  formData: FormData
-): Promise<{ error?: string; id?: string }> {
+  formData: FormData,
+  forzar = false
+): Promise<{ error?: string; id?: string; duplicado?: FacturaDuplicada }> {
   const supabase = await createClient()
   const acceso = await verificarAcceso(supabase)
   if (!acceso.ok) return { error: acceso.error }
@@ -371,6 +518,21 @@ export async function crearFacturaBorradorConFoto(
     return { error: "No se pudo leer la imagen." }
   }
 
+  const hashFoto = await calcularHashFoto(arrayBuffer)
+
+  if (!forzar) {
+    const { data: existentes } = await supabase
+      .from("facturas_gasto")
+      .select("id, lugar, fecha, total")
+      .eq("proyecto_id", proyectoId)
+      .eq("hash_foto", hashFoto)
+      .limit(1)
+
+    if (existentes && existentes.length > 0) {
+      return { duplicado: existentes[0] }
+    }
+  }
+
   const ext = file.name.split(".").pop()?.toLowerCase() || "jpg"
   const ruta = `${proyectoId}/${crypto.randomUUID()}.${ext}`
 
@@ -392,6 +554,7 @@ export async function crearFacturaBorradorConFoto(
       fecha: fechaHoy,
       lugar: "Analizando recibo…",
       foto_referencia: ruta,
+      hash_foto: hashFoto,
       subtotal: 0,
       tax_total: 0,
       total: 0,

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useTransition } from "react"
-import { Receipt, Plus, X, Trash2, Camera, RefreshCw, AlertTriangle } from "lucide-react"
+import { Receipt, Plus, X, Trash2, Camera, RefreshCw, AlertTriangle, Pencil, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
@@ -10,6 +10,9 @@ import {
   crearFacturaBorradorConFoto,
   reintentarAnalisisFactura,
   asignarActividadLinea,
+  actualizarLineaGasto,
+  eliminarLineaGasto,
+  actualizarFacturaGasto,
   type LineaGastoInput,
   type FacturaActualizada,
 } from "./gastos-actions"
@@ -69,6 +72,21 @@ type LineaDraft = {
   tax: string
 }
 
+type LineaEditDraft = {
+  descripcion: string
+  unidad: string
+  cantidad: string
+  precioUnitario: string
+  tax: string
+  tipoRecurso: LineaGastoInput["tipoRecurso"]
+}
+
+function recalcularTotalesLocal(lineas: LineaCostoReal[]) {
+  const subtotal = lineas.reduce((s, l) => s + (l.cantidad ?? 0) * (l.precio_unitario ?? 0), 0)
+  const taxTotal = lineas.reduce((s, l) => s + (l.tax ?? 0), 0)
+  return { subtotal, tax_total: taxTotal, total: subtotal + taxTotal }
+}
+
 // Las fotos tomadas directo con la cámara del celular suelen pesar varios MB
 // (4000x3000px o más) -- eso hace que subirlas se sienta muy lento por datos
 // móviles. Las reducimos en el propio navegador antes de mandarlas: el
@@ -124,6 +142,8 @@ export function GastosClient({
   const [showModalFoto, setShowModalFoto] = useState(false)
   const [expandida, setExpandida] = useState<string | null>(null)
   const [reintentando, setReintentando] = useState<string | null>(null)
+  const [editandoLinea, setEditandoLinea] = useState<{ lineaId: string; draft: LineaEditDraft } | null>(null)
+  const [editandoHeader, setEditandoHeader] = useState<{ facturaId: string; lugar: string; fecha: string; referencia: string } | null>(null)
   const [isPending, startTransition] = useTransition()
 
   useEffect(() => setFacturas(facturasIniciales), [facturasIniciales])
@@ -199,6 +219,107 @@ export function GastosClient({
     )
     startTransition(async () => {
       const res = await asignarActividadLinea(lineaId, valor)
+      if (res.error) alert(res.error)
+    })
+  }
+
+  const iniciarEdicionLinea = (l: LineaCostoReal) => {
+    setEditandoLinea({
+      lineaId: l.id,
+      draft: {
+        descripcion: l.descripcion,
+        unidad: l.unidad ?? "",
+        cantidad: String(l.cantidad ?? 0),
+        precioUnitario: String(l.precio_unitario ?? 0),
+        tax: String(l.tax ?? 0),
+        tipoRecurso: (l.tipo_recurso as LineaGastoInput["tipoRecurso"]) || "material",
+      },
+    })
+  }
+
+  const guardarEdicionLinea = (facturaId: string) => {
+    if (!editandoLinea) return
+    const { lineaId, draft } = editandoLinea
+    if (!draft.descripcion.trim()) {
+      alert("La descripción no puede quedar vacía")
+      return
+    }
+    const cantidad = Number(draft.cantidad) || 0
+    const precioUnitario = Number(draft.precioUnitario) || 0
+    const tax = Number(draft.tax) || 0
+    const monto = cantidad * precioUnitario + tax
+
+    setFacturas((prev) =>
+      prev.map((f) => {
+        if (f.id !== facturaId) return f
+        const lineas = f.lineas.map((l) =>
+          l.id === lineaId
+            ? {
+                ...l,
+                descripcion: draft.descripcion.trim(),
+                unidad: draft.unidad.trim() || null,
+                cantidad,
+                precio_unitario: precioUnitario,
+                tax,
+                tipo_recurso: draft.tipoRecurso,
+                monto,
+              }
+            : l
+        )
+        return { ...f, lineas, ...recalcularTotalesLocal(lineas) }
+      })
+    )
+    setEditandoLinea(null)
+
+    startTransition(async () => {
+      const res = await actualizarLineaGasto(lineaId, {
+        descripcion: draft.descripcion,
+        unidad: draft.unidad || null,
+        cantidad,
+        precioUnitario,
+        tax,
+        tipoRecurso: draft.tipoRecurso,
+      })
+      if (res.error) alert(res.error)
+    })
+  }
+
+  const handleEliminarLinea = (facturaId: string, lineaId: string) => {
+    if (!confirm("¿Quitar este artículo de la factura? (por ejemplo, algo que se coló en la misma compra y no es del proyecto)")) return
+
+    setFacturas((prev) =>
+      prev.map((f) => {
+        if (f.id !== facturaId) return f
+        const lineas = f.lineas.filter((l) => l.id !== lineaId)
+        return { ...f, lineas, ...recalcularTotalesLocal(lineas) }
+      })
+    )
+
+    startTransition(async () => {
+      const res = await eliminarLineaGasto(lineaId)
+      if (res.error) alert(res.error)
+    })
+  }
+
+  const iniciarEdicionHeader = (f: FacturaGasto) => {
+    setEditandoHeader({ facturaId: f.id, lugar: f.lugar, fecha: f.fecha, referencia: f.referencia ?? "" })
+  }
+
+  const guardarEdicionHeader = () => {
+    if (!editandoHeader) return
+    const { facturaId, lugar, fecha, referencia } = editandoHeader
+    if (!lugar.trim()) {
+      alert("El lugar de compra es obligatorio")
+      return
+    }
+
+    setFacturas((prev) =>
+      prev.map((f) => (f.id === facturaId ? { ...f, lugar: lugar.trim(), fecha, referencia: referencia.trim() || null } : f))
+    )
+    setEditandoHeader(null)
+
+    startTransition(async () => {
+      const res = await actualizarFacturaGasto(facturaId, { lugar, fecha, referencia: referencia || null })
       if (res.error) alert(res.error)
     })
   }
@@ -287,6 +408,61 @@ export function GastosClient({
 
                 {abierta && (
                   <div className="border-t border-slate-100 px-4 py-3 space-y-3">
+                    {puedeCrear && (
+                      <div>
+                        {editandoHeader?.facturaId === f.id ? (
+                          <div className="border border-slate-200 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
+                            <div>
+                              <label className="block text-[10px] text-slate-400 mb-0.5">Fecha</label>
+                              <input
+                                type="date"
+                                value={editandoHeader.fecha}
+                                onChange={(e) => setEditandoHeader({ ...editandoHeader, fecha: e.target.value })}
+                                className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="block text-[10px] text-slate-400 mb-0.5">Lugar de compra</label>
+                              <input
+                                value={editandoHeader.lugar}
+                                onChange={(e) => setEditandoHeader({ ...editandoHeader, lugar: e.target.value })}
+                                className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-slate-400 mb-0.5">Referencia / folio</label>
+                              <input
+                                value={editandoHeader.referencia}
+                                onChange={(e) => setEditandoHeader({ ...editandoHeader, referencia: e.target.value })}
+                                className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs"
+                              />
+                            </div>
+                            <div className="col-span-2 sm:col-span-4 flex gap-2 justify-end">
+                              <button
+                                onClick={() => setEditandoHeader(null)}
+                                className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                onClick={guardarEdicionHeader}
+                                className="text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-md px-3 py-1 flex items-center gap-1"
+                              >
+                                <Check className="h-3.5 w-3.5" /> Guardar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => iniciarEdicionHeader(f)}
+                            className="text-xs text-slate-400 hover:text-slate-700 flex items-center gap-1"
+                          >
+                            <Pencil className="h-3 w-3" /> Editar lugar / fecha / referencia
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {(f.estado_analisis === "error" || f.estado_analisis === "pendiente") && puedeCrear && (
                       <div
                         className={cn(
@@ -328,49 +504,143 @@ export function GastosClient({
                               <th className="pb-1.5 pr-3 font-medium text-right">P. unit.</th>
                               <th className="pb-1.5 pr-3 font-medium text-right">Tax</th>
                               <th className="pb-1.5 pr-3 font-medium text-right">Monto</th>
-                              <th className="pb-1.5 font-medium">Actividad</th>
+                              <th className="pb-1.5 pr-3 font-medium">Actividad</th>
+                              {puedeCrear && <th className="pb-1.5 font-medium">Acciones</th>}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-50">
-                            {f.lineas.map((l) => (
-                              <tr key={l.id} className={!l.actividad_id ? "bg-amber-50/60" : undefined}>
-                                <td className="py-1.5 pr-3 text-slate-700">{l.descripcion}</td>
-                                <td className="py-1.5 pr-3 text-slate-500">{tipoLabel[l.tipo_recurso] ?? l.tipo_recurso}</td>
-                                <td className="py-1.5 pr-3 text-right text-slate-600">{l.cantidad ?? "—"}</td>
-                                <td className="py-1.5 pr-3 text-slate-500">{l.unidad ?? "—"}</td>
-                                <td className="py-1.5 pr-3 text-right text-slate-600">{l.precio_unitario != null ? formatoMoneda(l.precio_unitario) : "—"}</td>
-                                <td className="py-1.5 pr-3 text-right text-slate-600">{l.tax ? formatoMoneda(l.tax) : "—"}</td>
-                                <td className="py-1.5 pr-3 text-right font-medium text-slate-900">{formatoMoneda(l.monto)}</td>
-                                <td className="py-1.5 pr-1">
-                                  {puedeCrear ? (
-                                    <select
-                                      value={l.actividad_id ?? ""}
-                                      onChange={(e) => handleAsignarActividad(l.id, e.target.value)}
-                                      className={cn(
-                                        "text-xs border rounded-md px-1.5 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900",
-                                        l.actividad_id ? "border-slate-200 text-slate-700" : "border-amber-300 text-amber-700"
-                                      )}
-                                    >
-                                      <option value="">Sin asignar</option>
-                                      {actividadesOpciones.map((a) => (
-                                        <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
-                                      ))}
-                                    </select>
+                            {f.lineas.map((l) => {
+                              const editando = editandoLinea?.lineaId === l.id
+                              const draft = editando ? editandoLinea.draft : null
+                              const smallInputCls = "w-full border border-slate-200 rounded-md px-1.5 py-1 text-xs"
+
+                              return (
+                                <tr key={l.id} className={!l.actividad_id && !editando ? "bg-amber-50/60" : undefined}>
+                                  {editando && draft ? (
+                                    <>
+                                      <td className="py-1.5 pr-3">
+                                        <input
+                                          value={draft.descripcion}
+                                          onChange={(e) => setEditandoLinea({ lineaId: l.id, draft: { ...draft, descripcion: e.target.value } })}
+                                          className={smallInputCls}
+                                        />
+                                      </td>
+                                      <td className="py-1.5 pr-3">
+                                        <select
+                                          value={draft.tipoRecurso}
+                                          onChange={(e) => setEditandoLinea({ lineaId: l.id, draft: { ...draft, tipoRecurso: e.target.value as LineaGastoInput["tipoRecurso"] } })}
+                                          className={cn(smallInputCls, "bg-white")}
+                                        >
+                                          <option value="material">Material</option>
+                                          <option value="equipo">Equipo</option>
+                                          <option value="subcontrato">Servicio/Subcontrato</option>
+                                          <option value="indirecto">Indirecto</option>
+                                        </select>
+                                      </td>
+                                      <td className="py-1.5 pr-3">
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={draft.cantidad}
+                                          onChange={(e) => setEditandoLinea({ lineaId: l.id, draft: { ...draft, cantidad: e.target.value } })}
+                                          className={cn(smallInputCls, "text-right")}
+                                        />
+                                      </td>
+                                      <td className="py-1.5 pr-3">
+                                        <input
+                                          value={draft.unidad}
+                                          onChange={(e) => setEditandoLinea({ lineaId: l.id, draft: { ...draft, unidad: e.target.value } })}
+                                          className={smallInputCls}
+                                        />
+                                      </td>
+                                      <td className="py-1.5 pr-3">
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={draft.precioUnitario}
+                                          onChange={(e) => setEditandoLinea({ lineaId: l.id, draft: { ...draft, precioUnitario: e.target.value } })}
+                                          className={cn(smallInputCls, "text-right")}
+                                        />
+                                      </td>
+                                      <td className="py-1.5 pr-3">
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={draft.tax}
+                                          onChange={(e) => setEditandoLinea({ lineaId: l.id, draft: { ...draft, tax: e.target.value } })}
+                                          className={cn(smallInputCls, "text-right")}
+                                        />
+                                      </td>
+                                      <td className="py-1.5 pr-3 text-right font-medium text-slate-900">
+                                        {formatoMoneda((Number(draft.cantidad) || 0) * (Number(draft.precioUnitario) || 0) + (Number(draft.tax) || 0))}
+                                      </td>
+                                      <td className="py-1.5 pr-3 text-slate-400">—</td>
+                                      <td className="py-1.5">
+                                        <div className="flex items-center gap-2">
+                                          <button onClick={() => setEditandoLinea(null)} className="text-slate-400 hover:text-slate-600">
+                                            <X className="h-3.5 w-3.5" />
+                                          </button>
+                                          <button onClick={() => guardarEdicionLinea(f.id)} className="text-emerald-600 hover:text-emerald-800">
+                                            <Check className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </>
                                   ) : (
-                                    <span className="text-slate-600">
-                                      {l.actividades ? `${l.actividades.codigo} — ${l.actividades.nombre}` : "—"}
-                                    </span>
+                                    <>
+                                      <td className="py-1.5 pr-3 text-slate-700">{l.descripcion}</td>
+                                      <td className="py-1.5 pr-3 text-slate-500">{tipoLabel[l.tipo_recurso] ?? l.tipo_recurso}</td>
+                                      <td className="py-1.5 pr-3 text-right text-slate-600">{l.cantidad ?? "—"}</td>
+                                      <td className="py-1.5 pr-3 text-slate-500">{l.unidad ?? "—"}</td>
+                                      <td className="py-1.5 pr-3 text-right text-slate-600">{l.precio_unitario != null ? formatoMoneda(l.precio_unitario) : "—"}</td>
+                                      <td className="py-1.5 pr-3 text-right text-slate-600">{l.tax ? formatoMoneda(l.tax) : "—"}</td>
+                                      <td className="py-1.5 pr-3 text-right font-medium text-slate-900">{formatoMoneda(l.monto)}</td>
+                                      <td className="py-1.5 pr-3">
+                                        {puedeCrear ? (
+                                          <select
+                                            value={l.actividad_id ?? ""}
+                                            onChange={(e) => handleAsignarActividad(l.id, e.target.value)}
+                                            className={cn(
+                                              "text-xs border rounded-md px-1.5 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900",
+                                              l.actividad_id ? "border-slate-200 text-slate-700" : "border-amber-300 text-amber-700"
+                                            )}
+                                          >
+                                            <option value="">Sin asignar</option>
+                                            {actividadesOpciones.map((a) => (
+                                              <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                                            ))}
+                                          </select>
+                                        ) : (
+                                          <span className="text-slate-600">
+                                            {l.actividades ? `${l.actividades.codigo} — ${l.actividades.nombre}` : "—"}
+                                          </span>
+                                        )}
+                                      </td>
+                                      {puedeCrear && (
+                                        <td className="py-1.5">
+                                          <div className="flex items-center gap-2">
+                                            <button onClick={() => iniciarEdicionLinea(l)} className="text-slate-300 hover:text-slate-700">
+                                              <Pencil className="h-3.5 w-3.5" />
+                                            </button>
+                                            <button onClick={() => handleEliminarLinea(f.id, l.id)} className="text-slate-300 hover:text-red-500">
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                            </button>
+                                          </div>
+                                        </td>
+                                      )}
+                                    </>
                                   )}
-                                </td>
-                              </tr>
-                            ))}
+                                </tr>
+                              )
+                            })}
                           </tbody>
                           <tfoot>
                             <tr className="border-t border-slate-100 font-medium text-slate-700">
                               <td colSpan={5}></td>
                               <td className="pt-1.5 pr-3 text-right text-slate-400">Subtotal / Tax</td>
-                              <td className="pt-1.5 text-right">{formatoMoneda(f.subtotal)} / {formatoMoneda(f.tax_total)}</td>
+                              <td className="pt-1.5 pr-3 text-right">{formatoMoneda(f.subtotal)} / {formatoMoneda(f.tax_total)}</td>
                               <td></td>
+                              {puedeCrear && <td></td>}
                             </tr>
                           </tfoot>
                         </table>
@@ -443,7 +713,20 @@ function ModalSubirFoto({
       const fileParaSubir = await comprimirFoto(file)
       const fd = new FormData()
       fd.append("foto", fileParaSubir)
-      const res = await crearFacturaBorradorConFoto(proyectoId, fd)
+      let res = await crearFacturaBorradorConFoto(proyectoId, fd)
+
+      if (res.duplicado) {
+        const d = res.duplicado
+        const seguir = window.confirm(
+          `Esta misma foto ya se subió el ${formatoFecha(d.fecha)} como "${d.lugar}" (${formatoMoneda(d.total)}). ¿Subirla de todas formas?`
+        )
+        if (!seguir) {
+          setSubiendo(false)
+          return
+        }
+        res = await crearFacturaBorradorConFoto(proyectoId, fd, true)
+      }
+
       if (res.error || !res.id) {
         setSubiendo(false)
         setError(res.error || "No se pudo guardar la factura.")
