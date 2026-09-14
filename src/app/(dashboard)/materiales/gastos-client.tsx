@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { Receipt, Plus, X, Trash2, ImageIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { crearFacturaGasto, eliminarFacturaGasto, type LineaGastoInput } from "./gastos-actions"
+import { crearFacturaGasto, eliminarFacturaGasto, analizarReciboFoto, type LineaGastoInput } from "./gastos-actions"
 
 export type ActividadOpcion = { id: string; codigo: string; nombre: string }
 
@@ -28,6 +28,7 @@ export type FacturaGasto = {
   lugar: string
   referencia: string | null
   foto_referencia: string | null
+  foto_url?: string | null
   subtotal: number
   tax_total: number
   total: number
@@ -136,7 +137,24 @@ export function GastosClient({
                     <p className="text-xs text-slate-400">
                       {f.lineas.length} línea{f.lineas.length !== 1 ? "s" : ""}
                       {f.referencia ? ` · Ref: ${f.referencia}` : ""}
-                      {f.foto_referencia ? " · 📎 con recibo archivado" : ""}
+                      {f.foto_url ? (
+                        <>
+                          {" · "}
+                          <a
+                            href={f.foto_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-slate-500 hover:text-slate-800 underline"
+                          >
+                            📎 ver foto del recibo
+                          </a>
+                        </>
+                      ) : f.foto_referencia ? (
+                        ` · 📎 ${f.foto_referencia}`
+                      ) : (
+                        ""
+                      )}
                     </p>
                   </div>
                   <p className="text-sm font-semibold text-slate-900 shrink-0">{formatoMoneda(f.total)}</p>
@@ -231,6 +249,54 @@ function ModalRegistrarGasto({
   const [fotoReferencia, setFotoReferencia] = useState("")
   const [lineas, setLineas] = useState<LineaDraft[]>([{ ...lineaVacia }])
 
+  const [analizando, setAnalizando] = useState(false)
+  const [nombreFoto, setNombreFoto] = useState("")
+  const [avisoIA, setAvisoIA] = useState("")
+
+  const handleSeleccionarFoto = (file: File | null) => {
+    if (!file) return
+    setNombreFoto(file.name)
+    setAvisoIA("")
+    setAnalizando(true)
+    ;(async () => {
+      const fd = new FormData()
+      fd.append("foto", file)
+      const res = await analizarReciboFoto(fd, proyectoId)
+      setAnalizando(false)
+
+      if (res.rutaFoto) setFotoReferencia(res.rutaFoto)
+
+      if (res.error) {
+        setAvisoIA(res.error)
+        return
+      }
+
+      const datos = res.data
+      if (!datos) return
+
+      if (datos.lugar) setLugar(datos.lugar)
+      if (datos.fecha) setFecha(datos.fecha)
+      if (datos.referencia) setReferencia(datos.referencia)
+
+      if (datos.lineas.length > 0) {
+        setLineas(
+          datos.lineas.map((l) => ({
+            actividadId: "",
+            tipoRecurso: "material",
+            descripcion: l.descripcion,
+            unidad: l.unidad || "",
+            cantidad: String(l.cantidad ?? 1),
+            precioUnitario: String(l.precioUnitario ?? 0),
+            tax: String(l.tax ?? 0),
+          }))
+        )
+        setAvisoIA(`Se encontraron ${datos.lineas.length} línea${datos.lineas.length !== 1 ? "s" : ""}. Verifica los datos y asigna una actividad a cada una.`)
+      } else {
+        setAvisoIA("La foto se archivó, pero no se pudo reconocer ningún artículo. Agrégalos a mano.")
+      }
+    })()
+  }
+
   const actualizarLinea = (idx: number, campo: keyof LineaDraft, valor: string) => {
     setLineas((prev) => prev.map((l, i) => (i === idx ? { ...l, [campo]: valor } : l)))
   }
@@ -303,15 +369,36 @@ function ModalRegistrarGasto({
 
         <div className="mb-4">
           <label className="flex items-center gap-1.5 text-xs font-medium text-slate-700 mb-1">
-            <ImageIcon className="h-3.5 w-3.5" /> Referencia de la foto del recibo (opcional)
+            <ImageIcon className="h-3.5 w-3.5" /> Foto del recibo (opcional)
           </label>
-          <input
-            value={fotoReferencia}
-            onChange={(e) => setFotoReferencia(e.target.value)}
-            placeholder="Por ahora solo texto -- ej. nombre del archivo o dónde la archivaste"
-            className={inputCls}
-          />
-          <p className="text-[11px] text-slate-400 mt-1">La subida real de la foto todavía no está lista -- esto es solo una nota de referencia.</p>
+          <div className="flex items-center gap-2">
+            <label
+              className={cn(
+                "text-xs px-3 py-1.5 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors shrink-0",
+                analizando && "opacity-50 pointer-events-none"
+              )}
+            >
+              {nombreFoto ? "Cambiar foto" : "Elegir foto..."}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                disabled={analizando}
+                onChange={(e) => handleSeleccionarFoto(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            {nombreFoto && <span className="text-xs text-slate-500 truncate">{nombreFoto}</span>}
+            {analizando && <span className="text-xs text-slate-400 animate-pulse shrink-0">Analizando recibo...</span>}
+          </div>
+          {avisoIA && (
+            <p className={cn("text-[11px] mt-1.5", fotoReferencia ? "text-emerald-600" : "text-amber-600")}>{avisoIA}</p>
+          )}
+          {!nombreFoto && (
+            <p className="text-[11px] text-slate-400 mt-1">
+              Sube la foto y una IA intentará leer el lugar, la fecha y los artículos por ti -- igual tendrás que asignar la actividad de cada línea.
+            </p>
+          )}
         </div>
 
         <div className="space-y-2 mb-3">
@@ -380,7 +467,7 @@ function ModalRegistrarGasto({
           <Button type="button" variant="outline" className="flex-1" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button type="button" className="flex-1" isLoading={isPending} onClick={handleSubmit}>
+          <Button type="button" className="flex-1" isLoading={isPending} disabled={analizando} onClick={handleSubmit}>
             Guardar factura
           </Button>
         </div>

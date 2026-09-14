@@ -73,9 +73,28 @@ async function getData() {
       arr.push(l)
       lineasPorFactura.set(l.factura_id, arr)
     }
-    facturas = ((facturasRaw ?? []) as unknown as Omit<FacturaGasto, "lineas">[]).map((f) => ({
+    const facturasBase = (facturasRaw ?? []) as unknown as Omit<FacturaGasto, "lineas" | "foto_url">[]
+
+    // foto_referencia puede ser una ruta real de Storage ("{proyecto}/{uuid}.jpg",
+    // subida por el análisis con IA) o una nota de texto libre de cuando el
+    // campo era manual -- intentamos firmar la URL y si falla, la tratamos
+    // como nota de texto simple (no rompe nada, solo no se muestra imagen).
+    const fotosFirmadas = new Map<string, string>()
+    await Promise.all(
+      facturasBase
+        .filter((f) => f.foto_referencia && f.foto_referencia.includes("/"))
+        .map(async (f) => {
+          const { data: firmada } = await supabase.storage
+            .from("recibos")
+            .createSignedUrl(f.foto_referencia as string, 3600)
+          if (firmada?.signedUrl) fotosFirmadas.set(f.id, firmada.signedUrl)
+        })
+    )
+
+    facturas = facturasBase.map((f) => ({
       ...f,
       lineas: (lineasPorFactura.get(f.id) ?? []) as FacturaGasto["lineas"],
+      foto_url: fotosFirmadas.get(f.id) ?? null,
     }))
     actividadesOpciones = (actividadesRaw ?? []) as ActividadOpcion[]
   }
