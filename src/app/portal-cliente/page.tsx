@@ -397,28 +397,37 @@ export default async function PortalClientePage() {
                             </div>
                           )}
                           {tieneDesgloseActividades && (
-                            <div className="space-y-2 mb-2">
-                              <p className="text-[11px] font-medium text-slate-500">Detalle por actividad:</p>
-                              {f.desglose_actividades!.map((d) => {
-                                const tieneAmortizacion = d.monto_amortizado !== undefined && d.monto_neto !== undefined
-                                return (
-                                  <div key={d.actividad_id} className="text-xs text-slate-500 border-b border-slate-100 last:border-0 pb-1.5 last:pb-0">
-                                    <div className="flex items-center justify-between">
-                                      <span>{d.actividad_codigo ? `${d.actividad_codigo} — ` : ""}{d.actividad_nombre} · {d.avance_pct}% avance</span>
-                                      <span>{formatoMoneda(d.monto_bruto)}</span>
-                                    </div>
-                                    {tieneAmortizacion && (
-                                      <div className="flex items-center gap-3 mt-0.5 text-[10px] text-slate-400">
-                                        <span>Ejecutado: {formatoMoneda(d.monto_bruto)}</span>
-                                        {d.monto_amortizado! > 0 && (
-                                          <span className="text-amber-600">−{formatoMoneda(d.monto_amortizado!)} anticipo</span>
-                                        )}
-                                        <span className="font-medium text-slate-600">A cobrar: {formatoMoneda(d.monto_neto!)}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                )
-                              })}
+                            <div className="mb-2 rounded-lg overflow-hidden border border-slate-100">
+                              <p className="text-[11px] font-medium text-slate-500 px-2 pt-2 pb-1 bg-white">Detalle por actividad:</p>
+                              <table className="w-full text-xs">
+                                <thead className="bg-slate-100">
+                                  <tr className="text-slate-400">
+                                    <th className="text-left font-medium px-2 py-1">Renglón</th>
+                                    <th className="text-right font-medium px-2 py-1">% avance</th>
+                                    <th className="text-right font-medium px-2 py-1">Ejecutado</th>
+                                    <th className="text-right font-medium px-2 py-1">Amort. anticipo</th>
+                                    <th className="text-right font-medium px-2 py-1">A cobrar</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 bg-white">
+                                  {f.desglose_actividades!.map((d) => {
+                                    const tieneAmortizacion = d.monto_amortizado !== undefined && d.monto_neto !== undefined
+                                    return (
+                                      <tr key={d.actividad_id} className="text-slate-500">
+                                        <td className="px-2 py-1">{d.actividad_codigo ? `${d.actividad_codigo} — ` : ""}{d.actividad_nombre}</td>
+                                        <td className="text-right px-2 py-1 text-slate-400">{d.avance_pct}%</td>
+                                        <td className="text-right px-2 py-1">{formatoMoneda(d.monto_bruto)}</td>
+                                        <td className="text-right px-2 py-1 text-amber-600">
+                                          {tieneAmortizacion && d.monto_amortizado! > 0 ? `−${formatoMoneda(d.monto_amortizado!)}` : "—"}
+                                        </td>
+                                        <td className="text-right px-2 py-1 font-medium text-slate-700">
+                                          {formatoMoneda(tieneAmortizacion ? d.monto_neto! : d.monto_bruto)}
+                                        </td>
+                                      </tr>
+                                    )
+                                  })}
+                                </tbody>
+                              </table>
                             </div>
                           )}
                           <div className="flex items-center justify-between text-xs text-slate-500">

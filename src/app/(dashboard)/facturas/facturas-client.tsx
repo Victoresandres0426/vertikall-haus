@@ -120,10 +120,15 @@ export function FacturasClient({
   const borradores = facturasCliente.filter((f) => f.estado === "borrador")
   const facturasClienteResueltas = facturasCliente.filter((f) => f.estado !== "borrador")
 
-  const totalCxC = facturasClienteResueltas.reduce((s, f) => s + f.monto, 0)
+  // "CxC (por cobrar)" / "CxP (por pagar)" deben ser el SALDO pendiente
+  // (facturado - ya cobrado/pagado), no el total facturado -- si no, una
+  // factura ya cobrada al 100% sigue apareciendo como "por cobrar".
+  const totalFacturadoCliente = facturasClienteResueltas.reduce((s, f) => s + f.monto, 0)
   const totalCobrado = facturasClienteResueltas.reduce((s, f) => s + f.monto_cobrado, 0)
-  const totalCxP = facturasProveedor.reduce((s, f) => s + f.monto, 0)
+  const totalCxC = Math.max(totalFacturadoCliente - totalCobrado, 0)
+  const totalFacturadoProveedor = facturasProveedor.reduce((s, f) => s + f.monto, 0)
   const totalPagado = facturasProveedor.reduce((s, f) => s + f.monto_pagado, 0)
+  const totalCxP = Math.max(totalFacturadoProveedor - totalPagado, 0)
 
   return (
     <div className="p-6 space-y-6">
@@ -408,28 +413,38 @@ function TarjetaBorrador({ f }: { f: FacturaCliente }) {
       )}
 
       {f.desglose_actividades && f.desglose_actividades.length > 0 && (
-        <div className="mt-2 bg-slate-50 border border-slate-200 rounded-md p-2 space-y-2">
-          <p className="text-[10px] font-medium text-slate-500">Desglose por actividad:</p>
-          {f.desglose_actividades.map((d) => {
-            const tieneAmortizacion = d.monto_amortizado !== undefined && d.monto_neto !== undefined
-            return (
-              <div key={d.actividad_id} className="text-[11px] text-slate-600 border-b border-slate-100 last:border-0 pb-1.5 last:pb-0">
-                <div className="flex items-center justify-between">
-                  <span>{d.actividad_codigo ? `${d.actividad_codigo} — ` : ""}{d.actividad_nombre} · {d.avance_pct}% avance</span>
-                  <span className="font-medium">{formatExacto(d.monto_bruto)}</span>
-                </div>
-                {tieneAmortizacion && (
-                  <div className="flex items-center gap-3 mt-0.5 text-[10px] text-slate-400 pl-0.5">
-                    <span>Ejecutado: <span className="text-slate-600">{formatExacto(d.monto_bruto)}</span></span>
-                    {d.monto_amortizado! > 0 && (
-                      <span>Amortización anticipo: <span className="text-amber-600">−{formatExacto(d.monto_amortizado!)}</span></span>
-                    )}
-                    <span>A cobrar: <span className="text-slate-700 font-medium">{formatExacto(d.monto_neto!)}</span></span>
-                  </div>
-                )}
-              </div>
-            )
-          })}
+        <div className="mt-2 bg-slate-50 border border-slate-200 rounded-md overflow-hidden">
+          <table className="w-full text-[11px]">
+            <thead className="bg-slate-100">
+              <tr className="text-slate-500">
+                <th className="text-left font-medium px-2 py-1.5">Renglón</th>
+                <th className="text-right font-medium px-2 py-1.5">% avance</th>
+                <th className="text-right font-medium px-2 py-1.5">Ejecutado</th>
+                <th className="text-right font-medium px-2 py-1.5">Amort. anticipo</th>
+                <th className="text-right font-medium px-2 py-1.5">A cobrar</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {f.desglose_actividades.map((d) => {
+                const tieneAmortizacion = d.monto_amortizado !== undefined && d.monto_neto !== undefined
+                return (
+                  <tr key={d.actividad_id} className="text-slate-600">
+                    <td className="px-2 py-1.5">
+                      {d.actividad_codigo ? `${d.actividad_codigo} — ` : ""}{d.actividad_nombre}
+                    </td>
+                    <td className="text-right px-2 py-1.5 text-slate-400">{d.avance_pct}%</td>
+                    <td className="text-right px-2 py-1.5">{formatExacto(d.monto_bruto)}</td>
+                    <td className="text-right px-2 py-1.5 text-amber-600">
+                      {tieneAmortizacion && d.monto_amortizado! > 0 ? `−${formatExacto(d.monto_amortizado!)}` : "—"}
+                    </td>
+                    <td className="text-right px-2 py-1.5 font-medium text-slate-800">
+                      {formatExacto(tieneAmortizacion ? d.monto_neto! : d.monto_bruto)}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
       {(!f.desglose_actividades || f.desglose_actividades.length === 0) && (
