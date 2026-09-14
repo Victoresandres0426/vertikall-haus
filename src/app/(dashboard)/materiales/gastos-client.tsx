@@ -60,6 +60,38 @@ type LineaDraft = {
   tax: string
 }
 
+// Las fotos tomadas directo con la cámara del celular suelen pesar varios MB
+// (4000x3000px o más) -- eso hace que subirlas y analizarlas por datos
+// móviles se sienta muy lento. Las reducimos en el propio navegador antes de
+// mandarlas: el recibo se sigue leyendo perfecto a 1800px de ancho, y el
+// archivo queda mucho más chico (típicamente <500KB en vez de varios MB).
+async function comprimirFoto(file: File, maxDim = 1800, calidad = 0.85): Promise<File> {
+  if (!file.type.startsWith("image/") || file.type === "image/gif") return file
+  try {
+    const bitmap = await createImageBitmap(file)
+    const escala = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height))
+    // Si ya es chica no vale la pena recomprimir (evita perder calidad de más).
+    if (escala >= 1 && file.size < 1.5 * 1024 * 1024) return file
+
+    const w = Math.max(1, Math.round(bitmap.width * escala))
+    const h = Math.max(1, Math.round(bitmap.height * escala))
+    const canvas = document.createElement("canvas")
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return file
+    ctx.drawImage(bitmap, 0, 0, w, h)
+
+    const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", calidad))
+    if (!blob) return file
+    return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" })
+  } catch {
+    // Si algo falla (formato no soportado por createImageBitmap, etc.)
+    // seguimos con el archivo original -- el servidor lo valida de todas formas.
+    return file
+  }
+}
+
 const lineaVacia: LineaDraft = {
   actividadId: "",
   tipoRecurso: "material",
@@ -259,8 +291,9 @@ function ModalRegistrarGasto({
     setAvisoIA("")
     setAnalizando(true)
     ;(async () => {
+      const fileParaSubir = await comprimirFoto(file)
       const fd = new FormData()
-      fd.append("foto", file)
+      fd.append("foto", fileParaSubir)
       const res = await analizarReciboFoto(fd, proyectoId)
       setAnalizando(false)
 
