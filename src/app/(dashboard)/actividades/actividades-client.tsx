@@ -453,6 +453,11 @@ export function ActividadesClient({
                               {(() => {
                                 const excedeCantidad = (act.cantidad_objetivo ?? 0) > 0 && (act.cantidad_ejecutada ?? 0) > (act.cantidad_objetivo as number)
                                 const excedeCosto = (act.costo_presupuesto ?? 0) > 0 && (act.costo_real ?? 0) > act.costo_presupuesto
+                                // Cada parte se compara contra SU PROPIO presupuesto (costo_material/
+                                // costo_mano_obra) -- puede sobregirarse una sin que el total se pase,
+                                // por ejemplo si la otra quedó muy por debajo de lo presupuestado.
+                                const excedeMO = (act.costo_mano_obra ?? 0) > 0 && (act.costo_real_mano_obra ?? 0) > (act.costo_mano_obra as number)
+                                const excedeMat = (act.costo_material ?? 0) > 0 && (act.costo_real_material ?? 0) > (act.costo_material as number)
                                 return (
                               <div className="flex items-center gap-3 mt-1 flex-wrap" title="Avance: % ejecutado vs. lo reportado hasta hoy">
                                 <Progress value={act.avance_porcentaje ?? 0} className="w-24 h-1" />
@@ -472,13 +477,23 @@ export function ActividadesClient({
                                   Costo: ${(act.costo_real ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} / ${(act.costo_presupuesto ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </span>
                                 {(act.costo_real ?? 0) > 0 && (
-                                  <span
-                                    className="text-xs text-slate-400"
-                                    title="Desglose del costo real por tipo de recurso"
-                                  >
-                                    (MO: ${(act.costo_real_mano_obra ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                    {" · "}Mat: ${(act.costo_real_material ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                    {(act.costo_real_otros ?? 0) > 0 ? ` · Otros: $${(act.costo_real_otros ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : ""})
+                                  <span className="text-xs text-slate-400">
+                                    (
+                                    <span
+                                      className={cn(excedeMO ? "text-red-600 font-semibold" : undefined)}
+                                      title="Mano de obra real / presupuestada"
+                                    >
+                                      MO: ${(act.costo_real_mano_obra ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                    </span>
+                                    {" · "}
+                                    <span
+                                      className={cn(excedeMat ? "text-red-600 font-semibold" : undefined)}
+                                      title="Material real / presupuestado"
+                                    >
+                                      Mat: ${(act.costo_real_material ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                    </span>
+                                    {(act.costo_real_otros ?? 0) > 0 ? ` · Otros: $${(act.costo_real_otros ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : ""}
+                                    )
                                   </span>
                                 )}
                                 {act.fecha_fin_plan && (
