@@ -366,7 +366,7 @@ function ModalRegistrarGasto({
     })
   }
 
-  const inputCls = "w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+  const inputCls = "w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900"
 
   return (
     <div
