@@ -56,6 +56,10 @@ type DesgloseActividad = {
   actividad_nombre: string
   avance_pct: number
   monto_bruto: number
+  // Ausentes en facturas generadas antes de esta migración -- por eso
+  // son opcionales.
+  monto_amortizado?: number
+  monto_neto?: number
 }
 
 type Factura = {
@@ -393,14 +397,28 @@ export default async function PortalClientePage() {
                             </div>
                           )}
                           {tieneDesgloseActividades && (
-                            <div className="space-y-1 mb-2">
+                            <div className="space-y-2 mb-2">
                               <p className="text-[11px] font-medium text-slate-500">Detalle por actividad:</p>
-                              {f.desglose_actividades!.map((d) => (
-                                <div key={d.actividad_id} className="flex items-center justify-between text-xs text-slate-500">
-                                  <span>{d.actividad_codigo ? `${d.actividad_codigo} — ` : ""}{d.actividad_nombre} · {d.avance_pct}% avance</span>
-                                  <span>{formatoMoneda(d.monto_bruto)}</span>
-                                </div>
-                              ))}
+                              {f.desglose_actividades!.map((d) => {
+                                const tieneAmortizacion = d.monto_amortizado !== undefined && d.monto_neto !== undefined
+                                return (
+                                  <div key={d.actividad_id} className="text-xs text-slate-500 border-b border-slate-100 last:border-0 pb-1.5 last:pb-0">
+                                    <div className="flex items-center justify-between">
+                                      <span>{d.actividad_codigo ? `${d.actividad_codigo} — ` : ""}{d.actividad_nombre} · {d.avance_pct}% avance</span>
+                                      <span>{formatoMoneda(d.monto_bruto)}</span>
+                                    </div>
+                                    {tieneAmortizacion && (
+                                      <div className="flex items-center gap-3 mt-0.5 text-[10px] text-slate-400">
+                                        <span>Ejecutado: {formatoMoneda(d.monto_bruto)}</span>
+                                        {d.monto_amortizado! > 0 && (
+                                          <span className="text-amber-600">−{formatoMoneda(d.monto_amortizado!)} anticipo</span>
+                                        )}
+                                        <span className="font-medium text-slate-600">A cobrar: {formatoMoneda(d.monto_neto!)}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
                             </div>
                           )}
                           <div className="flex items-center justify-between text-xs text-slate-500">

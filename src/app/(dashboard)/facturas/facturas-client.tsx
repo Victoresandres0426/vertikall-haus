@@ -30,6 +30,10 @@ export type DesgloseActividad = {
   actividad_nombre: string
   avance_pct: number
   monto_bruto: number
+  // Ausentes en facturas generadas antes de esta migración -- por eso
+  // son opcionales.
+  monto_amortizado?: number
+  monto_neto?: number
 }
 
 export type FacturaCliente = {
@@ -404,14 +408,28 @@ function TarjetaBorrador({ f }: { f: FacturaCliente }) {
       )}
 
       {f.desglose_actividades && f.desglose_actividades.length > 0 && (
-        <div className="mt-2 bg-slate-50 border border-slate-200 rounded-md p-2 space-y-1">
+        <div className="mt-2 bg-slate-50 border border-slate-200 rounded-md p-2 space-y-2">
           <p className="text-[10px] font-medium text-slate-500">Desglose por actividad:</p>
-          {f.desglose_actividades.map((d) => (
-            <div key={d.actividad_id} className="flex items-center justify-between text-[11px] text-slate-600">
-              <span>{d.actividad_codigo ? `${d.actividad_codigo} — ` : ""}{d.actividad_nombre} · {d.avance_pct}% avance</span>
-              <span className="font-medium">{formatExacto(d.monto_bruto)}</span>
-            </div>
-          ))}
+          {f.desglose_actividades.map((d) => {
+            const tieneAmortizacion = d.monto_amortizado !== undefined && d.monto_neto !== undefined
+            return (
+              <div key={d.actividad_id} className="text-[11px] text-slate-600 border-b border-slate-100 last:border-0 pb-1.5 last:pb-0">
+                <div className="flex items-center justify-between">
+                  <span>{d.actividad_codigo ? `${d.actividad_codigo} — ` : ""}{d.actividad_nombre} · {d.avance_pct}% avance</span>
+                  <span className="font-medium">{formatExacto(d.monto_bruto)}</span>
+                </div>
+                {tieneAmortizacion && (
+                  <div className="flex items-center gap-3 mt-0.5 text-[10px] text-slate-400 pl-0.5">
+                    <span>Ejecutado: <span className="text-slate-600">{formatExacto(d.monto_bruto)}</span></span>
+                    {d.monto_amortizado! > 0 && (
+                      <span>Amortización anticipo: <span className="text-amber-600">−{formatExacto(d.monto_amortizado!)}</span></span>
+                    )}
+                    <span>A cobrar: <span className="text-slate-700 font-medium">{formatExacto(d.monto_neto!)}</span></span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
       {(!f.desglose_actividades || f.desglose_actividades.length === 0) && (
