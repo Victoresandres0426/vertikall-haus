@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Plus, X, CheckCircle2, Receipt, Zap } from "lucide-react"
+import { Plus, X, CheckCircle2, Receipt, Zap, Pencil, Trash2, Send } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -11,8 +11,18 @@ import {
   marcarFacturaClienteCobrada,
   marcarFacturaProveedorPagada,
   generarFacturacionAutomatica,
+  aprobarFacturaCliente,
+  editarBorradorFacturaCliente,
+  descartarBorradorFacturaCliente,
   type FacturaGenerada,
 } from "./actions"
+
+export type DesglosePeriodo = {
+  periodo_inicio: string
+  periodo_fin: string
+  avance_pct: number
+  monto_bruto: number
+}
 
 export type FacturaCliente = {
   id: string
@@ -22,6 +32,9 @@ export type FacturaCliente = {
   monto: number
   retencion: number
   amortizacion_anticipo: number
+  periodo_inicio: string | null
+  periodo_fin: string | null
+  desglose_periodos: DesglosePeriodo[] | null
   fecha_emision: string | null
   fecha_vencimiento: string | null
   fecha_cobro: string | null
@@ -82,13 +95,21 @@ export function FacturasClient({
   const [showModalProveedor, setShowModalProveedor] = useState(false)
   const [showModalAuto, setShowModalAuto] = useState(false)
 
-  const totalCxC = facturasCliente.reduce((s, f) => s + f.monto, 0)
-  const totalCobrado = facturasCliente.reduce((s, f) => s + f.monto_cobrado, 0)
+  // Los borradores (estimaciones automáticas todavía sin aprobar) no
+  // cuentan como CxC real ni aparecen en la tabla normal -- se muestran
+  // aparte, en su propio panel, hasta que se aprueban o se descartan.
+  const borradores = facturasCliente.filter((f) => f.estado === "borrador")
+  const facturasClienteResueltas = facturasCliente.filter((f) => f.estado !== "borrador")
+
+  const totalCxC = facturasClienteResueltas.reduce((s, f) => s + f.monto, 0)
+  const totalCobrado = facturasClienteResueltas.reduce((s, f) => s + f.monto_cobrado, 0)
   const totalCxP = facturasProveedor.reduce((s, f) => s + f.monto, 0)
   const totalPagado = facturasProveedor.reduce((s, f) => s + f.monto_pagado, 0)
 
   return (
     <div className="p-6 space-y-6">
+      {borradores.length > 0 && <PanelBorradores borradores={borradores} />}
+
       <div className="grid grid-cols-4 gap-3">
         {[
           { label: "CxC (por cobrar)", val: formatMXN(totalCxC), color: "text-emerald-600" },
@@ -110,7 +131,7 @@ export function FacturasClient({
             className={cn("px-4 py-1.5 text-sm rounded-md font-medium transition-colors",
               tab === "cliente" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-800")}
           >
-            Cliente (CxC) · {facturasCliente.length}
+            Cliente (CxC) · {facturasClienteResueltas.length}
           </button>
           <button
             onClick={() => setTab("proveedor")}
@@ -133,7 +154,7 @@ export function FacturasClient({
       </div>
 
       {tab === "cliente" ? (
-        facturasCliente.length === 0 ? (
+        facturasClienteResueltas.length === 0 ? (
           <EstadoVacio texto="Sin facturas de cliente todavía." />
         ) : (
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -150,7 +171,7 @@ export function FacturasClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {facturasCliente.map((f) => (
+                {facturasClienteResueltas.map((f) => (
                   <FilaCliente key={f.id} f={f} />
                 ))}
               </tbody>
@@ -222,7 +243,7 @@ function ModalGenerarAutomatico({ onClose }: { onClose: () => void }) {
         </button>
         <h3 className="text-lg font-semibold text-slate-900 mb-2">Generar estimación semanal</h3>
         <p className="text-sm text-slate-500 mb-5">
-          Calcula el avance real de cada proyecto activo (ponderado por presupuesto) y genera una factura por la diferencia contra lo ya facturado como estimación. Esto mismo corre solo cada lunes; este botón sirve para generarlo ahora o para forzar una corrida puntual.
+          Calcula el avance real de cada proyecto activo (ponderado por presupuesto) y genera un <strong>borrador</strong> por la diferencia contra lo ya facturado como estimación. El borrador no se le envía a nadie todavía -- queda pendiente de que lo revises y lo apruebes desde el panel de arriba. Esto mismo corre solo cada lunes; este botón sirve para generarlo ahora o para forzar una corrida puntual.
         </p>
 
         {resultado === null ? (
@@ -236,24 +257,25 @@ function ModalGenerarAutomatico({ onClose }: { onClose: () => void }) {
         ) : resultado.length === 0 ? (
           <>
             <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-600 mb-4">
-              No había avance nuevo que facturar en ningún proyecto (o ya se generó una estimación reciente).
+              No había avance nuevo que facturar en ningún proyecto (o ya hay un borrador pendiente de aprobar, o ya se generó una estimación reciente).
             </div>
             <Button type="button" className="w-full" onClick={handleCerrar}>Cerrar</Button>
           </>
         ) : (
           <>
+            <p className="text-xs text-slate-500 mb-3">Se generaron estos borradores. Revísalos abajo antes de aprobarlos.</p>
             <div className="space-y-2 mb-4">
               {resultado.map((f) => (
-                <div key={f.numero_generado} className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm">
+                <div key={f.numero_generado} className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium text-emerald-800">{f.numero_generado}</p>
-                      <p className="text-xs text-emerald-600">{f.proyecto_codigo}</p>
+                      <p className="font-medium text-amber-800">{f.numero_generado}</p>
+                      <p className="text-xs text-amber-600">{f.proyecto_codigo}</p>
                     </div>
-                    <p className="font-semibold text-emerald-700">{formatMXN(f.monto_generado)}</p>
+                    <p className="font-semibold text-amber-700">{formatMXN(f.monto_generado)}</p>
                   </div>
                   {f.amortizacion_generada > 0 && (
-                    <p className="text-[11px] text-emerald-600 mt-1">
+                    <p className="text-[11px] text-amber-600 mt-1">
                       Incluye {formatMXN(f.amortizacion_generada)} descontado por amortización de anticipo
                     </p>
                   )}
@@ -273,6 +295,143 @@ function EstadoVacio({ texto }: { texto: string }) {
     <div className="text-center py-16 border border-dashed border-slate-200 rounded-xl text-slate-400">
       <Receipt className="h-10 w-10 mx-auto mb-3 opacity-30" />
       <p className="text-sm">{texto}</p>
+    </div>
+  )
+}
+
+function PanelBorradores({ borradores }: { borradores: FacturaCliente[] }) {
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Send className="h-4 w-4 text-amber-600" />
+        <h3 className="text-sm font-semibold text-amber-800">
+          {borradores.length === 1 ? "1 estimación pendiente de aprobar" : `${borradores.length} estimaciones pendientes de aprobar`}
+        </h3>
+      </div>
+      <p className="text-xs text-amber-700">
+        Estas estimaciones automáticas todavía no se le han enviado al cliente ni cuentan en el CxC. Revísalas y apruébalas para que se vuelvan visibles en su portal (y se le mande el correo, si está configurado).
+      </p>
+      <div className="space-y-2">
+        {borradores.map((f) => (
+          <TarjetaBorrador key={f.id} f={f} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function TarjetaBorrador({ f }: { f: FacturaCliente }) {
+  const [isPending, startTransition] = useTransition()
+  const [editando, setEditando] = useState(false)
+  const [montoEdit, setMontoEdit] = useState(String(f.monto))
+  const [descEdit, setDescEdit] = useState(f.descripcion ?? "")
+  const [error, setError] = useState("")
+
+  const bruto = f.monto + f.amortizacion_anticipo
+
+  const handleAprobar = () => {
+    if (!window.confirm(`¿Aprobar y enviar esta estimación de ${formatMXN(f.monto)} al cliente?`)) return
+    setError("")
+    startTransition(async () => {
+      const result = await aprobarFacturaCliente(f.id)
+      if (result.error) { setError(result.error); return }
+      window.location.reload()
+    })
+  }
+
+  const handleDescartar = () => {
+    if (!window.confirm("¿Descartar este borrador? El avance que representa no se pierde: la próxima corrida automática lo vuelve a incluir.")) return
+    setError("")
+    startTransition(async () => {
+      const result = await descartarBorradorFacturaCliente(f.id)
+      if (result.error) { setError(result.error); return }
+      window.location.reload()
+    })
+  }
+
+  const handleGuardarEdicion = () => {
+    setError("")
+    const monto = parseFloat(montoEdit)
+    if (isNaN(monto) || monto < 0) { setError("Monto inválido"); return }
+    startTransition(async () => {
+      const result = await editarBorradorFacturaCliente(f.id, { monto, descripcion: descEdit })
+      if (result.error) { setError(result.error); return }
+      window.location.reload()
+    })
+  }
+
+  return (
+    <div className="bg-white border border-amber-200 rounded-lg p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-800">
+            <span className="font-mono text-[10px] text-slate-400 mr-1">{f.proyectos?.codigo}</span>
+            {f.proyectos?.nombre} · {f.numero}
+          </p>
+          {f.periodo_inicio && f.periodo_fin && (
+            <p className="text-[11px] text-slate-500 mt-0.5">Período: {f.periodo_inicio} al {f.periodo_fin}</p>
+          )}
+          {!editando && <p className="text-xs text-slate-600 mt-1">{f.descripcion}</p>}
+        </div>
+        <p className="text-sm font-semibold text-slate-800 shrink-0">{formatMXN(f.monto)}</p>
+      </div>
+
+      {f.desglose_periodos && f.desglose_periodos.length > 1 && (
+        <div className="mt-2 bg-slate-50 border border-slate-200 rounded-md p-2 space-y-1">
+          <p className="text-[10px] font-medium text-slate-500">Esta estimación cubre más de un período:</p>
+          {f.desglose_periodos.map((d, i) => (
+            <div key={i} className="flex items-center justify-between text-[11px] text-slate-600">
+              <span>{d.periodo_inicio} al {d.periodo_fin} · {d.avance_pct}% avance</span>
+              <span className="font-medium">{formatMXN(d.monto_bruto)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 border-t border-slate-100 pt-2">
+        <div>Bruto: <span className="text-slate-700 font-medium">{formatMXN(bruto)}</span></div>
+        {f.amortizacion_anticipo > 0 && (
+          <div>Amortización de anticipo: <span className="text-amber-700 font-medium">−{formatMXN(f.amortizacion_anticipo)}</span></div>
+        )}
+        {f.retencion > 0 && (
+          <div>Retención: <span className="text-amber-700 font-medium">−{formatMXN(f.retencion)}</span></div>
+        )}
+        <div>Neto a facturar: <span className="text-slate-800 font-semibold">{formatMXN(f.monto)}</span></div>
+      </div>
+
+      {editando ? (
+        <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+          <div>
+            <label className="block text-[10px] font-medium text-slate-500 mb-1">Descripción</label>
+            <input value={descEdit} onChange={(e) => setDescEdit(e.target.value)} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-slate-500 mb-1">Monto neto a facturar</label>
+            <input type="number" step="0.01" value={montoEdit} onChange={(e) => setMontoEdit(e.target.value)} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+            <p className="text-[10px] text-slate-400 mt-1">Si lo bajas (ej. porque incluía algo que no corresponde a este proyecto), la diferencia no se pierde: queda pendiente y la próxima estimación automática la vuelve a incluir.</p>
+          </div>
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" className="flex-1 h-8 text-xs" onClick={() => setEditando(false)} disabled={isPending}>Cancelar</Button>
+            <Button type="button" className="flex-1 h-8 text-xs" isLoading={isPending} onClick={handleGuardarEdicion}>Guardar</Button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+          <div className="flex gap-3 mt-3">
+            <button onClick={() => setEditando(true)} disabled={isPending} className="text-slate-600 hover:text-slate-900 disabled:opacity-50 inline-flex items-center gap-1 text-xs">
+              <Pencil className="h-3.5 w-3.5" /> Editar
+            </button>
+            <button onClick={handleDescartar} disabled={isPending} className="text-red-600 hover:text-red-800 disabled:opacity-50 inline-flex items-center gap-1 text-xs">
+              <Trash2 className="h-3.5 w-3.5" /> Descartar
+            </button>
+            <button onClick={handleAprobar} disabled={isPending} className="ml-auto text-emerald-700 hover:text-emerald-900 disabled:opacity-50 inline-flex items-center gap-1 text-xs font-medium">
+              <Send className="h-3.5 w-3.5" /> Aprobar y enviar
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

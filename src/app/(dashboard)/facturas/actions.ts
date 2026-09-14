@@ -158,6 +158,108 @@ export type FacturaGenerada = {
   amortizacion_generada: number
 }
 
+// Aprueba un borrador de estimación automática: pasa a 'enviada', que es
+// lo que la hace visible en el portal del cliente y dispara el trigger de
+// correo (si Resend/Vault están configurados). Solo aplica sobre filas que
+// sigan en 'borrador' -- no se puede "re-aprobar" una ya enviada.
+export async function aprobarFacturaCliente(facturaId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+  if (!facturaId) return { error: "Falta la factura" }
+
+  const { data, error } = await supabase
+    .from("facturas_cliente")
+    .update({ estado: "enviada" })
+    .eq("id", facturaId)
+    .eq("estado", "borrador")
+    .select("id")
+
+  if (error) {
+    console.error("aprobarFacturaCliente error:", error)
+    return { error: "Error al aprobar la factura." }
+  }
+  if (!data || data.length === 0) {
+    return { error: "Esta factura ya no está en borrador (puede que alguien más ya la haya aprobado o descartado)." }
+  }
+
+  revalidatePath("/facturas")
+  revalidatePath("/flujo-caja")
+  return {}
+}
+
+// Ajusta el monto o la descripción de un borrador antes de aprobarlo. Si el
+// monto se reduce, esa diferencia no se pierde: al quedar un monto menor
+// "ya facturado" en el histórico, la siguiente corrida de facturación
+// automática vuelve a detectarla como avance pendiente y la incluye en la
+// próxima estimación.
+export async function editarBorradorFacturaCliente(
+  facturaId: string,
+  campos: { monto?: number; descripcion?: string }
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+  if (!facturaId) return { error: "Falta la factura" }
+
+  const patch: Record<string, unknown> = {}
+  if (campos.monto !== undefined) {
+    if (isNaN(campos.monto) || campos.monto < 0) return { error: "Monto inválido" }
+    patch.monto = campos.monto
+  }
+  if (campos.descripcion !== undefined) {
+    patch.descripcion = campos.descripcion || null
+  }
+  if (Object.keys(patch).length === 0) return {}
+
+  const { data, error } = await supabase
+    .from("facturas_cliente")
+    .update(patch)
+    .eq("id", facturaId)
+    .eq("estado", "borrador")
+    .select("id")
+
+  if (error) {
+    console.error("editarBorradorFacturaCliente error:", error)
+    return { error: "Error al editar el borrador." }
+  }
+  if (!data || data.length === 0) {
+    return { error: "Esta factura ya no está en borrador." }
+  }
+
+  revalidatePath("/facturas")
+  return {}
+}
+
+// Descarta un borrador (lo borra). Nunca llegó a enviarse ni a contar como
+// "ya facturado" de forma definitiva más que mientras existió, así que el
+// avance que representaba no se pierde: la próxima corrida automática lo
+// vuelve a incluir (ver comentario en la migración 078).
+export async function descartarBorradorFacturaCliente(facturaId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+  if (!facturaId) return { error: "Falta la factura" }
+
+  const { data, error } = await supabase
+    .from("facturas_cliente")
+    .delete()
+    .eq("id", facturaId)
+    .eq("estado", "borrador")
+    .select("id")
+
+  if (error) {
+    console.error("descartarBorradorFacturaCliente error:", error)
+    return { error: "Error al descartar el borrador." }
+  }
+  if (!data || data.length === 0) {
+    return { error: "Esta factura ya no está en borrador." }
+  }
+
+  revalidatePath("/facturas")
+  return {}
+}
+
 // Dispara la generación de estimaciones de avance para todos los
 // proyectos activos de la empresa (misma lógica que corre sola cada
 // lunes vía pg_cron). Solo genera lo que corresponda: si un proyecto

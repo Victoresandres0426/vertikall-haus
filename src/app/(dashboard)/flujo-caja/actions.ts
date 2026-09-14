@@ -116,7 +116,8 @@ export async function recalcularFlujoCajaAutomatico(proyectoId: string): Promise
     supabase
       .from("facturas_cliente")
       .select("proyecto_id, monto, monto_cobrado, fecha_emision, fecha_vencimiento, fecha_cobro, estado")
-      .eq("proyecto_id", proyectoId),
+      .eq("proyecto_id", proyectoId)
+      .neq("estado", "borrador"), // los borradores aún no se aprueban, no cuentan como CxC proyectada
     supabase
       .from("facturas_proveedor")
       .select("proyecto_id, monto, monto_pagado, fecha_recepcion, fecha_vencimiento, fecha_pago, estado")

@@ -43,12 +43,24 @@ type Reporte = {
   fotos: { url?: string; descripcion?: string }[]
 }
 
+type DesglosePeriodo = {
+  periodo_inicio: string
+  periodo_fin: string
+  avance_pct: number
+  monto_bruto: number
+}
+
 type Factura = {
   id: string
   numero: string | null
   descripcion: string | null
   hito_asociado: string | null
   monto: number
+  retencion: number
+  amortizacion_anticipo: number
+  periodo_inicio: string | null
+  periodo_fin: string | null
+  desglose_periodos: DesglosePeriodo[] | null
   fecha_emision: string | null
   fecha_vencimiento: string | null
   estado: string
@@ -310,18 +322,63 @@ export default async function PortalClientePage() {
                 </div>
               </div>
               <div className="divide-y divide-slate-50">
-                {facturas.map((f) => (
-                  <div key={f.id} className="flex items-center gap-3 px-5 py-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800">{f.numero ?? "Sin número"} {f.hito_asociado ? `· ${f.hito_asociado}` : ""}</p>
-                      <p className="text-xs text-slate-400">{f.descripcion ?? ""} · Vence {formatoFecha(f.fecha_vencimiento)}</p>
+                {facturas.map((f) => {
+                  const bruto = f.monto + (f.amortizacion_anticipo ?? 0) + (f.retencion ?? 0)
+                  const tieneDesglose = (f.desglose_periodos?.length ?? 0) > 1
+                  return (
+                    <div key={f.id} className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-800">{f.numero ?? "Sin número"} {f.hito_asociado ? `· ${f.hito_asociado}` : ""}</p>
+                          <p className="text-xs text-slate-400">
+                            {f.descripcion ?? ""} · Vence {formatoFecha(f.fecha_vencimiento)}
+                            {f.periodo_inicio && f.periodo_fin ? ` · Período ${formatoFecha(f.periodo_inicio)} al ${formatoFecha(f.periodo_fin)}` : ""}
+                          </p>
+                        </div>
+                        <span className="text-sm font-semibold text-slate-800 shrink-0">{formatoMoneda(f.monto)}</span>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${estadoFacturaColor[f.estado] ?? "bg-slate-100 text-slate-600"}`}>
+                          {estadoFacturaLabel[f.estado] ?? f.estado}
+                        </span>
+                      </div>
+
+                      {(f.amortizacion_anticipo > 0 || f.retencion > 0 || tieneDesglose) && (
+                        <div className="mt-2 ml-0 bg-slate-50 border border-slate-100 rounded-lg p-3 space-y-1.5">
+                          {tieneDesglose && (
+                            <div className="space-y-1 mb-2">
+                              <p className="text-[11px] font-medium text-slate-500">Esta estimación cubre más de un período:</p>
+                              {f.desglose_periodos!.map((d, i) => (
+                                <div key={i} className="flex items-center justify-between text-xs text-slate-500">
+                                  <span>{formatoFecha(d.periodo_inicio)} al {formatoFecha(d.periodo_fin)} · {d.avance_pct}% avance</span>
+                                  <span>{formatoMoneda(d.monto_bruto)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between text-xs text-slate-500">
+                            <span>Avance reconocido este período</span>
+                            <span>{formatoMoneda(bruto)}</span>
+                          </div>
+                          {f.amortizacion_anticipo > 0 && (
+                            <div className="flex items-center justify-between text-xs text-amber-600">
+                              <span>Amortización de anticipo aplicada</span>
+                              <span>−{formatoMoneda(f.amortizacion_anticipo)}</span>
+                            </div>
+                          )}
+                          {f.retencion > 0 && (
+                            <div className="flex items-center justify-between text-xs text-amber-600">
+                              <span>Retención</span>
+                              <span>−{formatoMoneda(f.retencion)}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between text-xs font-semibold text-slate-700 pt-1 border-t border-slate-200">
+                            <span>Total a pagar</span>
+                            <span>{formatoMoneda(f.monto)}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <span className="text-sm font-semibold text-slate-800 shrink-0">{formatoMoneda(f.monto)}</span>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${estadoFacturaColor[f.estado] ?? "bg-slate-100 text-slate-600"}`}>
-                      {estadoFacturaLabel[f.estado] ?? f.estado}
-                    </span>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
