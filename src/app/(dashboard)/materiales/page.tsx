@@ -6,6 +6,11 @@ import { MaterialesClient, type MaterialCatalogo, type MaterialActividad } from 
 import type { FacturaGasto, ActividadOpcion } from "./gastos-client"
 import { getProyectoActivoId, resolverProyectoActivo } from "@/lib/proyecto-activo"
 
+// El análisis de la foto del recibo con IA (gastos-actions.ts) puede tardar
+// más que el límite por defecto de las funciones de Vercel -- esto le da
+// más margen a las acciones de esta página (subir foto y luego analizar).
+export const maxDuration = 60
+
 const ROLES_GESTION = ["project_manager", "dueno", "superadmin", "administrador"]
 
 async function getData() {

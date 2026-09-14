@@ -2,7 +2,6 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
-import { after } from "next/server"
 
 const ROLES_GESTION = ["project_manager", "administrador", "dueno", "superadmin"]
 
@@ -340,9 +339,11 @@ async function aplicarAnalisisAFactura(
   }
 }
 
-// Sube la foto y crea la factura de inmediato (rápido -- solo la subida),
-// y programa el análisis de IA para que corra después de responder, sin
-// que el usuario tenga que esperar ni mantener la app abierta.
+// Sube la foto y crea la factura de inmediato (rápido -- solo la subida).
+// El análisis de IA se dispara aparte (ver reintentarAnalisisFactura) --
+// separarlo en dos llamadas es lo que le permite al que llama (el modal de
+// "Subir foto") no esperar a que la IA termine: dispara esa segunda
+// llamada sin esperarla y sigue de largo.
 export async function crearFacturaBorradorConFoto(
   proyectoId: string,
   formData: FormData
@@ -363,16 +364,13 @@ export async function crearFacturaBorradorConFoto(
   }
 
   let arrayBuffer: ArrayBuffer
-  let base64: string
   try {
     arrayBuffer = await file.arrayBuffer()
-    base64 = Buffer.from(arrayBuffer).toString("base64")
   } catch (err) {
     console.error("crearFacturaBorradorConFoto - lectura imagen:", err)
     return { error: "No se pudo leer la imagen." }
   }
 
-  const mediaType = file.type
   const ext = file.name.split(".").pop()?.toLowerCase() || "jpg"
   const ruta = `${proyectoId}/${crypto.randomUUID()}.${ext}`
 
@@ -409,19 +407,43 @@ export async function crearFacturaBorradorConFoto(
     return { error: "No se pudo guardar la factura." }
   }
 
-  // after() sigue corriendo en el servidor una vez que ya respondimos --
-  // el usuario no tiene que esperar ni mantener la conexión abierta.
-  after(() => aplicarAnalisisAFactura(supabase, factura.id, proyectoId, fechaHoy, base64, mediaType))
-
   revalidarTodo()
   return { id: factura.id }
 }
 
-// Reintenta el análisis de una factura que quedó en 'pendiente' (el
-// servidor se detuvo antes de terminar) o 'error' (la IA falló). Vuelve a
-// descargar la foto ya archivada -- no hace falta que el usuario la suba
-// de nuevo.
-export async function reintentarAnalisisFactura(facturaId: string): Promise<{ error?: string }> {
+export type LineaFacturaActualizada = {
+  id: string
+  factura_id: string | null
+  actividad_id: string | null
+  tipo_recurso: string
+  descripcion: string
+  unidad: string | null
+  cantidad: number | null
+  precio_unitario: number | null
+  tax: number | null
+  monto: number
+  actividades: { codigo: string; nombre: string } | null
+}
+
+export type FacturaActualizada = {
+  lugar: string
+  fecha: string
+  referencia: string | null
+  subtotal: number
+  tax_total: number
+  total: number
+  estado_analisis: string
+  lineas: LineaFacturaActualizada[]
+}
+
+// Corre (o reintenta) el análisis de IA de una factura que ya tiene una foto
+// archivada -- vuelve a descargarla de Storage, así que no hace falta que
+// el usuario la suba de nuevo. Quien llama a esta función decide si la
+// espera (el botón "Reintentar" de la lista) o no (el modal de "Subir
+// foto", que la dispara y sigue de largo sin bloquear al usuario). No usa
+// after()/background jobs -- corre dentro de esta misma llamada para no
+// depender de que el hosting soporte tareas después de responder.
+export async function reintentarAnalisisFactura(facturaId: string): Promise<{ error?: string; factura?: FacturaActualizada }> {
   const supabase = await createClient()
   const acceso = await verificarAcceso(supabase)
   if (!acceso.ok) return { error: acceso.error }
@@ -455,8 +477,33 @@ export async function reintentarAnalisisFactura(facturaId: string): Promise<{ er
 
   await supabase.from("facturas_gasto").update({ estado_analisis: "pendiente" }).eq("id", facturaId)
 
-  after(() => aplicarAnalisisAFactura(supabase, facturaId, factura.proyecto_id, factura.fecha, base64, mediaType))
+  // aplicarAnalisisAFactura ya atrapa sus propios errores y deja la factura
+  // en estado_analisis='error' si algo falla -- por eso no hace falta un
+  // try/catch aquí ni verificar un valor de retorno.
+  await aplicarAnalisisAFactura(supabase, facturaId, factura.proyecto_id, factura.fecha, base64, mediaType)
+
+  const { data: facturaFinal, error: errFinal } = await supabase
+    .from("facturas_gasto")
+    .select("lugar, fecha, referencia, subtotal, tax_total, total, estado_analisis")
+    .eq("id", facturaId)
+    .single()
+
+  const { data: lineasFinal } = await supabase
+    .from("costos_reales")
+    .select("id, factura_id, actividad_id, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, actividades ( codigo, nombre )")
+    .eq("factura_id", facturaId)
 
   revalidarTodo()
-  return {}
+
+  if (errFinal || !facturaFinal) {
+    console.error("reintentarAnalisisFactura - relectura:", errFinal)
+    return { error: "El análisis terminó pero no se pudo releer la factura." }
+  }
+
+  return {
+    factura: {
+      ...facturaFinal,
+      lineas: (lineasFinal ?? []) as unknown as LineaFacturaActualizada[],
+    },
+  }
 }

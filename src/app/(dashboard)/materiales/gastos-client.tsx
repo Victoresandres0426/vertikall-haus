@@ -11,6 +11,7 @@ import {
   reintentarAnalisisFactura,
   asignarActividadLinea,
   type LineaGastoInput,
+  type FacturaActualizada,
 } from "./gastos-actions"
 
 export type ActividadOpcion = { id: string; codigo: string; nombre: string }
@@ -136,6 +137,10 @@ export function GastosClient({
     })
   }
 
+  const mergeFacturaActualizada = (facturaId: string, actualizada: FacturaActualizada) => {
+    setFacturas((prev) => prev.map((f) => (f.id === facturaId ? { ...f, ...actualizada } : f)))
+  }
+
   const handleReintentar = (facturaId: string) => {
     setReintentando(facturaId)
     startTransition(async () => {
@@ -145,8 +150,38 @@ export function GastosClient({
         alert(res.error)
         return
       }
-      setFacturas((prev) => prev.map((f) => (f.id === facturaId ? { ...f, estado_analisis: "pendiente" } : f)))
+      if (res.factura) mergeFacturaActualizada(facturaId, res.factura)
     })
+  }
+
+  // Se llama justo después de que ModalSubirFoto termina de subir la foto
+  // (rápido). La factura ya se guardó, así que se agrega de inmediato a la
+  // lista local -- y el análisis de IA se dispara aparte, SIN esperarlo:
+  // cuando termine (5-15s después, quizás con el modal ya cerrado), esta
+  // misma promesa actualiza la lista si el usuario sigue en la página.
+  const handleFotoSubida = (facturaId: string) => {
+    setFacturas((prev) => [
+      {
+        id: facturaId,
+        fecha: new Date().toISOString().slice(0, 10),
+        lugar: "Analizando recibo…",
+        referencia: null,
+        foto_referencia: null,
+        foto_url: null,
+        subtotal: 0,
+        tax_total: 0,
+        total: 0,
+        estado_analisis: "pendiente",
+        lineas: [],
+      },
+      ...prev,
+    ])
+
+    reintentarAnalisisFactura(facturaId)
+      .then((res) => {
+        if (res.factura) mergeFacturaActualizada(facturaId, res.factura)
+      })
+      .catch((err) => console.error("Análisis de recibo en segundo plano falló:", err))
   }
 
   const handleAsignarActividad = (lineaId: string, actividadId: string) => {
@@ -252,13 +287,25 @@ export function GastosClient({
 
                 {abierta && (
                   <div className="border-t border-slate-100 px-4 py-3 space-y-3">
-                    {f.estado_analisis === "error" && puedeCrear && (
-                      <div className="rounded-lg bg-red-50 border border-red-200 p-3 flex items-center justify-between gap-3">
-                        <p className="text-xs text-red-600">La IA no pudo terminar de analizar esta foto.</p>
+                    {(f.estado_analisis === "error" || f.estado_analisis === "pendiente") && puedeCrear && (
+                      <div
+                        className={cn(
+                          "rounded-lg border p-3 flex items-center justify-between gap-3",
+                          f.estado_analisis === "error" ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"
+                        )}
+                      >
+                        <p className={cn("text-xs", f.estado_analisis === "error" ? "text-red-600" : "text-amber-700")}>
+                          {f.estado_analisis === "error"
+                            ? "La IA no pudo terminar de analizar esta foto."
+                            : "Si esto lleva rato aquí, el análisis se quedó a medias -- puedes reintentarlo."}
+                        </p>
                         <button
                           onClick={() => handleReintentar(f.id)}
                           disabled={reintentando === f.id}
-                          className="text-xs font-medium text-red-700 hover:text-red-900 flex items-center gap-1 shrink-0 disabled:opacity-50"
+                          className={cn(
+                            "text-xs font-medium flex items-center gap-1 shrink-0 disabled:opacity-50",
+                            f.estado_analisis === "error" ? "text-red-700 hover:text-red-900" : "text-amber-800 hover:text-amber-950"
+                          )}
                         >
                           <RefreshCw className={cn("h-3.5 w-3.5", reintentando === f.id && "animate-spin")} /> Reintentar
                         </button>
@@ -358,7 +405,14 @@ export function GastosClient({
       )}
 
       {showModalFoto && (
-        <ModalSubirFoto proyectoId={proyectoActivoId} onClose={() => setShowModalFoto(false)} />
+        <ModalSubirFoto
+          proyectoId={proyectoActivoId}
+          onClose={() => setShowModalFoto(false)}
+          onCreada={(facturaId) => {
+            handleFotoSubida(facturaId)
+            setShowModalFoto(false)
+          }}
+        />
       )}
     </div>
   )
@@ -369,7 +423,15 @@ export function GastosClient({
 // foto archivada) y aparece en la lista como "analizando con IA…"; cuando
 // el análisis termine en segundo plano, ya va a tener sus líneas listas
 // para que el usuario les asigne la actividad cuando tenga tiempo.
-function ModalSubirFoto({ proyectoId, onClose }: { proyectoId: string; onClose: () => void }) {
+function ModalSubirFoto({
+  proyectoId,
+  onClose,
+  onCreada,
+}: {
+  proyectoId: string
+  onClose: () => void
+  onCreada: (facturaId: string) => void
+}) {
   const [subiendo, setSubiendo] = useState(false)
   const [error, setError] = useState("")
 
@@ -382,12 +444,15 @@ function ModalSubirFoto({ proyectoId, onClose }: { proyectoId: string; onClose: 
       const fd = new FormData()
       fd.append("foto", fileParaSubir)
       const res = await crearFacturaBorradorConFoto(proyectoId, fd)
-      if (res.error) {
+      if (res.error || !res.id) {
         setSubiendo(false)
-        setError(res.error)
+        setError(res.error || "No se pudo guardar la factura.")
         return
       }
-      window.location.reload()
+      // No recargamos la página: si lo hiciéramos, el navegador cancelaría
+      // el análisis de IA que se dispara justo después de esto (ver
+      // handleFotoSubida), ya que recargar destruye la conexión en curso.
+      onCreada(res.id)
     })()
   }
 
