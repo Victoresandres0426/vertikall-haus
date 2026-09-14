@@ -68,6 +68,7 @@ export function PresupuestoClient({
   const [presupuestos] = useState<Presupuesto[]>(presupuestosIniciales)
   const [showModalVersion, setShowModalVersion] = useState(false)
   const [presupuestoParaPartida, setPresupuestoParaPartida] = useState<Presupuesto | null>(null)
+  const [expandidos, setExpandidos] = useState<Record<string, boolean>>({})
 
   const totalPresupuestado = presupuestos.reduce((s, p) => s + (p.monto_total ?? 0), 0)
   const totalPartidas = presupuestos.reduce((s, p) => s + p.partidas.length, 0)
@@ -191,7 +192,7 @@ export function PresupuestoClient({
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-50">
-                    {pres.partidas.slice(0, 10).map((partida) => {
+                    {(expandidos[pres.id] ? pres.partidas : pres.partidas.slice(0, 10)).map((partida) => {
                       const desviacion = (partida.monto_ejercido ?? 0) - (partida.monto_presupuestado ?? 0)
                       return (
                         <div key={partida.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 text-sm">
@@ -217,9 +218,15 @@ export function PresupuestoClient({
                       )
                     })}
                     {pres.partidas.length > 10 && (
-                      <div className="px-4 py-2 text-xs text-slate-400 text-center">
-                        +{pres.partidas.length - 10} partidas más
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setExpandidos((prev) => ({ ...prev, [pres.id]: !prev[pres.id] }))}
+                        className="w-full px-4 py-2 text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-50 text-center font-medium"
+                      >
+                        {expandidos[pres.id]
+                          ? "Ver menos"
+                          : `+${pres.partidas.length - 10} partidas más — ver todas`}
+                      </button>
                     )}
                   </div>
                 )}
