@@ -174,6 +174,17 @@ export default async function PortalClientePage() {
   const totalFacturado = facturas.reduce((sum, f) => sum + Number(f.monto ?? 0), 0)
   const totalCobrado = facturas.reduce((sum, f) => sum + Number(f.monto_cobrado ?? 0), 0)
 
+  // Resumen claro para el cliente: cuánto es anticipo vs. avance de
+  // obra, cuánto de cada uno ya se pagó, y cuánto falta contra el
+  // contrato completo.
+  const facturasAnticipo = facturas.filter((f) => f.numero?.startsWith("ANT-"))
+  const facturasAvance = facturas.filter((f) => f.numero?.startsWith("EST-"))
+  const anticipoFacturado = facturasAnticipo.reduce((s, f) => s + Number(f.monto ?? 0), 0)
+  const anticipoPagado = facturasAnticipo.reduce((s, f) => s + Number(f.monto_cobrado ?? 0), 0)
+  const avanceFacturado = facturasAvance.reduce((s, f) => s + Number(f.monto ?? 0), 0)
+  const avancePagado = facturasAvance.reduce((s, f) => s + Number(f.monto_cobrado ?? 0), 0)
+  const saldoPendienteContrato = Math.max((proyecto.presupuesto_venta ?? 0) - totalCobrado, 0)
+
   return (
     <div className="min-h-screen bg-[#F7F9FC]">
       {/* Header */}
@@ -316,18 +327,35 @@ export default async function PortalClientePage() {
             <p className="text-sm text-slate-400 bg-white border border-slate-200 rounded-xl p-5">Aún no hay facturas emitidas.</p>
           ) : (
             <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-              <div className="grid grid-cols-3 gap-4 px-5 py-3 border-b border-slate-100 bg-slate-50">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 px-5 py-4 border-b border-slate-100 bg-slate-50">
                 <div>
-                  <p className="text-xs text-slate-400">Total facturado</p>
-                  <p className="text-sm font-semibold text-slate-800">{formatoMoneda(totalFacturado)}</p>
+                  <p className="text-xs text-slate-400">Anticipo</p>
+                  <p className="text-sm font-semibold text-slate-800">
+                    {formatoMoneda(anticipoPagado)}
+                    <span className="text-xs font-normal text-slate-400"> pagado</span>
+                  </p>
+                  {anticipoFacturado > anticipoPagado && (
+                    <p className="text-[11px] text-amber-600">de {formatoMoneda(anticipoFacturado)} facturado</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Avance de obra</p>
+                  <p className="text-sm font-semibold text-slate-800">
+                    {formatoMoneda(avancePagado)}
+                    <span className="text-xs font-normal text-slate-400"> pagado</span>
+                  </p>
+                  {avanceFacturado > avancePagado && (
+                    <p className="text-[11px] text-amber-600">de {formatoMoneda(avanceFacturado)} facturado</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-xs text-slate-400">Total pagado</p>
                   <p className="text-sm font-semibold text-emerald-600">{formatoMoneda(totalCobrado)}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400">Saldo pendiente</p>
-                  <p className="text-sm font-semibold text-amber-600">{formatoMoneda(totalFacturado - totalCobrado)}</p>
+                  <p className="text-xs text-slate-400">Saldo pendiente del contrato</p>
+                  <p className="text-sm font-semibold text-amber-600">{formatoMoneda(saldoPendienteContrato)}</p>
+                  <p className="text-[11px] text-slate-400">de {formatoMoneda(proyecto.presupuesto_venta)} contratado</p>
                 </div>
               </div>
               <div className="divide-y divide-slate-50">
