@@ -22,7 +22,7 @@ async function getData() {
   if (!perfil || !ROLES_VEN_FACTURAS.includes(perfil.rol)) redirect("/sin-acceso")
 
   const [{ data: proyectos }, { data: proveedores }] = await Promise.all([
-    supabase.from("proyectos").select("id, nombre, codigo").order("nombre"),
+    supabase.from("proyectos").select("id, nombre, codigo, presupuesto_venta").order("nombre"),
     supabase.from("proveedores").select("id, nombre").eq("activo", true).order("nombre"),
   ])
 
@@ -68,11 +68,12 @@ async function getData() {
     puedeCrear: !!perfil && ROLES_FACTURAS.includes(perfil.rol),
     todosLosProyectos,
     proyectoActivoId: proyectoActivo?.id ?? null,
+    proyectoActivoPresupuestoVenta: (proyectoActivo as { presupuesto_venta?: number } | null)?.presupuesto_venta ?? null,
   }
 }
 
 export default async function FacturasPage() {
-  const { facturasCliente, facturasProveedor, proyectos, proveedores, puedeCrear, todosLosProyectos, proyectoActivoId } = await getData()
+  const { facturasCliente, facturasProveedor, proyectos, proveedores, puedeCrear, todosLosProyectos, proyectoActivoId, proyectoActivoPresupuestoVenta } = await getData()
 
   const total = facturasCliente.length + facturasProveedor.length
 
@@ -97,6 +98,7 @@ export default async function FacturasPage() {
         proyectos={proyectos}
         proveedores={proveedores}
         puedeCrear={puedeCrear}
+        proyectoActivoPresupuestoVenta={proyectoActivoPresupuestoVenta}
       />
     </div>
   )

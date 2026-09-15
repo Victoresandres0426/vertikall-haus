@@ -100,12 +100,14 @@ export function FacturasClient({
   proyectos,
   proveedores,
   puedeCrear,
+  proyectoActivoPresupuestoVenta,
 }: {
   facturasClienteIniciales: FacturaCliente[]
   facturasProveedorIniciales: FacturaProveedor[]
   proyectos: ProyectoOpcion[]
   proveedores: ProveedorOpcion[]
   puedeCrear: boolean
+  proyectoActivoPresupuestoVenta?: number | null
 }) {
   const [tab, setTab] = useState<"cliente" | "proveedor">("cliente")
   const [facturasCliente] = useState(facturasClienteIniciales)
@@ -132,7 +134,13 @@ export function FacturasClient({
 
   return (
     <div className="p-6 space-y-6">
-      {borradores.length > 0 && <PanelBorradores borradores={borradores} />}
+      {borradores.length > 0 && (
+        <PanelBorradores
+          borradores={borradores}
+          totalYaFacturado={totalFacturadoCliente}
+          presupuestoVenta={proyectoActivoPresupuestoVenta ?? null}
+        />
+      )}
 
       <div className="grid grid-cols-4 gap-3">
         {[
@@ -323,7 +331,15 @@ function EstadoVacio({ texto }: { texto: string }) {
   )
 }
 
-function PanelBorradores({ borradores }: { borradores: FacturaCliente[] }) {
+function PanelBorradores({
+  borradores,
+  totalYaFacturado,
+  presupuestoVenta,
+}: {
+  borradores: FacturaCliente[]
+  totalYaFacturado: number
+  presupuestoVenta: number | null
+}) {
   return (
     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
       <div className="flex items-center gap-2">
@@ -337,14 +353,22 @@ function PanelBorradores({ borradores }: { borradores: FacturaCliente[] }) {
       </p>
       <div className="space-y-2">
         {borradores.map((f) => (
-          <TarjetaBorrador key={f.id} f={f} />
+          <TarjetaBorrador key={f.id} f={f} totalYaFacturado={totalYaFacturado} presupuestoVenta={presupuestoVenta} />
         ))}
       </div>
     </div>
   )
 }
 
-function TarjetaBorrador({ f }: { f: FacturaCliente }) {
+function TarjetaBorrador({
+  f,
+  totalYaFacturado,
+  presupuestoVenta,
+}: {
+  f: FacturaCliente
+  totalYaFacturado: number
+  presupuestoVenta: number | null
+}) {
   const [isPending, startTransition] = useTransition()
   const [editando, setEditando] = useState(false)
   const [montoEdit, setMontoEdit] = useState(String(f.monto))
@@ -352,6 +376,23 @@ function TarjetaBorrador({ f }: { f: FacturaCliente }) {
   const [error, setError] = useState("")
 
   const bruto = f.monto + f.amortizacion_anticipo
+
+  // Totales por columna -- de las líneas del desglose si existen (más
+  // exacto), si no de los campos de arriba de la factura (estimaciones
+  // viejas sin desglose).
+  const totalEjecutado = f.desglose_actividades?.length
+    ? f.desglose_actividades.reduce((s, d) => s + d.monto_bruto, 0)
+    : bruto
+  const totalAmortizado = f.desglose_actividades?.length
+    ? f.desglose_actividades.reduce((s, d) => s + (d.monto_amortizado ?? 0), 0)
+    : f.amortizacion_anticipo
+  const totalACobrarTabla = f.desglose_actividades?.length
+    ? f.desglose_actividades.reduce((s, d) => s + (d.monto_neto ?? d.monto_bruto), 0)
+    : f.monto
+
+  // Resumen de facturación del contrato completo (no solo esta factura).
+  const facturadoAcumulado = totalYaFacturado + f.monto
+  const porCobrar = presupuestoVenta != null ? Math.max(presupuestoVenta - facturadoAcumulado, 0) : null
 
   const handleAprobar = () => {
     if (!window.confirm(`¿Aprobar y enviar esta estimación de ${formatExacto(f.monto)} al cliente?`)) return
@@ -397,7 +438,6 @@ function TarjetaBorrador({ f }: { f: FacturaCliente }) {
           )}
           {!editando && <p className="text-xs text-slate-600 mt-1">{f.descripcion}</p>}
         </div>
-        <p className="text-sm font-semibold text-slate-800 shrink-0">{formatExacto(f.monto)}</p>
       </div>
 
       {f.desglose_periodos && f.desglose_periodos.length > 1 && (
@@ -444,6 +484,16 @@ function TarjetaBorrador({ f }: { f: FacturaCliente }) {
                 )
               })}
             </tbody>
+            <tfoot>
+              <tr className="bg-slate-100 font-semibold text-slate-800 border-t border-slate-200">
+                <td className="px-2 py-1.5" colSpan={2}>Total</td>
+                <td className="text-right px-2 py-1.5">{formatExacto(totalEjecutado)}</td>
+                <td className="text-right px-2 py-1.5 text-amber-700">
+                  {totalAmortizado > 0 ? `−${formatExacto(totalAmortizado)}` : "—"}
+                </td>
+                <td className="text-right px-2 py-1.5">{formatExacto(totalACobrarTabla)}</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
@@ -451,15 +501,10 @@ function TarjetaBorrador({ f }: { f: FacturaCliente }) {
         <p className="mt-2 text-[10px] text-slate-400 italic">Sin desglose por actividad (esta estimación se generó antes de que existiera ese detalle).</p>
       )}
 
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 border-t border-slate-100 pt-2">
-        <div>Bruto: <span className="text-slate-700 font-medium">{formatExacto(bruto)}</span></div>
-        {f.amortizacion_anticipo > 0 && (
-          <div>Amortización de anticipo: <span className="text-amber-700 font-medium">−{formatExacto(f.amortizacion_anticipo)}</span></div>
-        )}
-        {f.retencion > 0 && (
-          <div>Retención: <span className="text-amber-700 font-medium">−{formatExacto(f.retencion)}</span></div>
-        )}
-        <div>Neto a facturar: <span className="text-slate-800 font-semibold">{formatExacto(f.monto)}</span></div>
+      <div className="mt-2 grid grid-cols-3 gap-3 text-[11px] text-slate-500 border-t border-slate-100 pt-2">
+        <div>Contratado: <span className="text-slate-700 font-medium">{presupuestoVenta != null ? formatExacto(presupuestoVenta) : "—"}</span></div>
+        <div>Facturado acumulado: <span className="text-slate-700 font-medium">{formatExacto(facturadoAcumulado)}</span></div>
+        <div>Por cobrar: <span className="text-slate-800 font-semibold">{porCobrar != null ? formatExacto(porCobrar) : "—"}</span></div>
       </div>
 
       {editando ? (
