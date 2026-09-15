@@ -487,11 +487,18 @@ function TarjetaBorrador({
             <tfoot>
               <tr className="bg-slate-100 font-semibold text-slate-800 border-t border-slate-200">
                 <td className="px-2 py-1.5" colSpan={2}>Total</td>
-                <td className="text-right px-2 py-1.5">{formatExacto(totalEjecutado)}</td>
+                <td className="text-right px-2 py-1.5">
+                  <span className="block text-[9px] font-normal text-slate-400">Ejecutado</span>
+                  {formatExacto(totalEjecutado)}
+                </td>
                 <td className="text-right px-2 py-1.5 text-amber-700">
+                  <span className="block text-[9px] font-normal text-slate-400">Amort. anticipo</span>
                   {totalAmortizado > 0 ? `−${formatExacto(totalAmortizado)}` : "—"}
                 </td>
-                <td className="text-right px-2 py-1.5">{formatExacto(totalACobrarTabla)}</td>
+                <td className="text-right px-2 py-1.5">
+                  <span className="block text-[9px] font-normal text-slate-400">A cobrar</span>
+                  {formatExacto(totalACobrarTabla)}
+                </td>
               </tr>
             </tfoot>
           </table>
@@ -501,10 +508,19 @@ function TarjetaBorrador({
         <p className="mt-2 text-[10px] text-slate-400 italic">Sin desglose por actividad (esta estimación se generó antes de que existiera ese detalle).</p>
       )}
 
-      <div className="mt-2 grid grid-cols-3 gap-3 text-[11px] text-slate-500 border-t border-slate-100 pt-2">
-        <div>Contratado: <span className="text-slate-700 font-medium">{presupuestoVenta != null ? formatExacto(presupuestoVenta) : "—"}</span></div>
-        <div>Facturado acumulado: <span className="text-slate-700 font-medium">{formatExacto(facturadoAcumulado)}</span></div>
-        <div>Por cobrar: <span className="text-slate-800 font-semibold">{porCobrar != null ? formatExacto(porCobrar) : "—"}</span></div>
+      <div className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-500 max-w-[220px] space-y-0.5">
+        <div className="flex items-center justify-between">
+          <span>Contratado</span>
+          <span className="text-slate-700 font-medium">{presupuestoVenta != null ? formatExacto(presupuestoVenta) : "—"}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>Facturado acumulado</span>
+          <span className="text-slate-700 font-medium">−{formatExacto(facturadoAcumulado)}</span>
+        </div>
+        <div className="flex items-center justify-between border-t border-slate-200 mt-1 pt-1">
+          <span className="font-medium text-slate-600">Por cobrar</span>
+          <span className="text-slate-800 font-semibold">{porCobrar != null ? formatExacto(porCobrar) : "—"}</span>
+        </div>
       </div>
 
       {editando ? (
