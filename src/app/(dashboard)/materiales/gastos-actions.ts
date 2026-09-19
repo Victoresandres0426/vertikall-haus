@@ -32,6 +32,11 @@ function revalidarTodo() {
 
 export type LineaGastoInput = {
   actividadId: string | null
+  // Enlace directo a una partida de presupuesto -- solo tiene efecto
+  // cuando actividadId es null: gastos generales/indirectos que no
+  // corresponden a ninguna actividad puntual (herramienta menor, agua,
+  // etc.), para que sí se descuenten de "Ejercido" en Presupuesto.
+  partidaId?: string | null
   tipoRecurso: "material" | "equipo" | "subcontrato" | "indirecto"
   descripcion: string
   unidad: string | null
@@ -97,6 +102,7 @@ export async function crearFacturaGasto(input: FacturaGastoInput): Promise<{ err
     input.lineas.map((l) => ({
       proyecto_id: input.proyectoId,
       actividad_id: l.actividadId || null,
+      partida_id: l.actividadId ? null : l.partidaId || null,
       tipo_recurso: l.tipoRecurso,
       descripcion: l.descripcion.trim(),
       fecha: input.fecha,
@@ -290,14 +296,40 @@ export async function asignarActividadLinea(lineaId: string, actividadId: string
   const acceso = await verificarAcceso(supabase)
   if (!acceso.ok) return { error: acceso.error }
 
+  // Si se le asigna una actividad, cualquier partida directa que tuviera
+  // deja de tener sentido (el costo ya se cuenta vía la actividad) --
+  // se limpia para no dejarlo enlazado a las dos cosas a la vez.
   const { error } = await supabase
     .from("costos_reales")
-    .update({ actividad_id: actividadId })
+    .update({ actividad_id: actividadId, partida_id: actividadId ? null : undefined })
     .eq("id", lineaId)
 
   if (error) {
     console.error("asignarActividadLinea:", error)
     return { error: "No se pudo asignar la actividad." }
+  }
+
+  revalidarTodo()
+  return {}
+}
+
+// Vincula (o quita) un costo real SIN actividad directo a una partida de
+// presupuesto -- para gastos generales/indirectos (herramienta menor,
+// agua, etc.) que no corresponden a ninguna actividad puntual. Es el
+// equivalente de asignarActividadLinea, pero para ese caso.
+export async function asignarPartidaLinea(lineaId: string, partidaId: string | null): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  const { error } = await supabase
+    .from("costos_reales")
+    .update({ partida_id: partidaId })
+    .eq("id", lineaId)
+
+  if (error) {
+    console.error("asignarPartidaLinea:", error)
+    return { error: "No se pudo asignar la partida." }
   }
 
   revalidarTodo()
@@ -578,6 +610,7 @@ export type LineaFacturaActualizada = {
   id: string
   factura_id: string | null
   actividad_id: string | null
+  partida_id: string | null
   tipo_recurso: string
   descripcion: string
   unidad: string | null
@@ -653,7 +686,7 @@ export async function reintentarAnalisisFactura(facturaId: string): Promise<{ er
 
   const { data: lineasFinal } = await supabase
     .from("costos_reales")
-    .select("id, factura_id, actividad_id, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, actividades ( codigo, nombre )")
+    .select("id, factura_id, actividad_id, partida_id, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, actividades ( codigo, nombre )")
     .eq("factura_id", facturaId)
 
   revalidarTodo()

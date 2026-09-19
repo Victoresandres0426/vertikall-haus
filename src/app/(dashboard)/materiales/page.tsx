@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { SelectorProyectoActivo } from "@/components/layout/selector-proyecto-activo"
 import { MaterialesClient, type MaterialCatalogo, type MaterialActividad } from "./materiales-client"
-import type { FacturaGasto, ActividadOpcion } from "./gastos-client"
+import type { FacturaGasto, ActividadOpcion, PartidaOpcion } from "./gastos-client"
 import { getProyectoActivoId, resolverProyectoActivo } from "@/lib/proyecto-activo"
 
 // El análisis de la foto del recibo con IA (gastos-actions.ts) puede tardar
@@ -39,8 +39,9 @@ async function getData() {
   let asignados: MaterialActividad[] = []
   let facturas: FacturaGasto[] = []
   let actividadesOpciones: ActividadOpcion[] = []
+  let partidasIndirectasOpciones: PartidaOpcion[] = []
   if (proyectoActivo) {
-    const [{ data }, { data: facturasRaw }, { data: lineasRaw }, { data: actividadesRaw }] = await Promise.all([
+    const [{ data }, { data: facturasRaw }, { data: lineasRaw }, { data: actividadesRaw }, { data: presupuestoActivo }] = await Promise.all([
       supabase
         .from("materiales_actividad")
         .select(`
@@ -60,7 +61,7 @@ async function getData() {
         .order("fecha", { ascending: false }),
       supabase
         .from("costos_reales")
-        .select("id, factura_id, actividad_id, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, actividades ( codigo, nombre )")
+        .select("id, factura_id, actividad_id, partida_id, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, actividades ( codigo, nombre )")
         .eq("proyecto_id", proyectoActivo.id)
         .not("factura_id", "is", null),
       supabase
@@ -69,8 +70,16 @@ async function getData() {
         .eq("proyecto_id", proyectoActivo.id)
         .eq("activa", true)
         .order("codigo"),
+      supabase
+        .from("presupuestos")
+        .select("id, partidas:partidas_presupuesto ( id, codigo, descripcion, actividad_id )")
+        .eq("proyecto_id", proyectoActivo.id)
+        .eq("es_baseline_actual", true)
+        .maybeSingle(),
     ])
     asignados = (data ?? []) as unknown as MaterialActividad[]
+    const partidasBaseline = (presupuestoActivo as unknown as { partidas: PartidaOpcion[] } | null)?.partidas ?? []
+    partidasIndirectasOpciones = partidasBaseline.filter((p) => !p.actividad_id)
 
     const lineasPorFactura = new Map<string, unknown[]>()
     for (const l of (lineasRaw ?? []) as { factura_id: string }[]) {
@@ -109,6 +118,7 @@ async function getData() {
     asignados,
     facturas,
     actividadesOpciones,
+    partidasIndirectasOpciones,
     puedeCrear: !!perfil && ROLES_GESTION.includes(perfil.rol),
     todosLosProyectos,
     proyectoActivoId: proyectoActivo?.id ?? null,
@@ -116,7 +126,7 @@ async function getData() {
 }
 
 export default async function MaterialesPage() {
-  const { catalogo, asignados, facturas, actividadesOpciones, puedeCrear, todosLosProyectos, proyectoActivoId } = await getData()
+  const { catalogo, asignados, facturas, actividadesOpciones, partidasIndirectasOpciones, puedeCrear, todosLosProyectos, proyectoActivoId } = await getData()
 
   const categorias = Array.from(new Set(catalogo.map((m) => m.categoria ?? "Sin categoría")))
   const bajoStock = catalogo.filter(
@@ -144,6 +154,7 @@ export default async function MaterialesPage() {
         puedeCrear={puedeCrear}
         facturasIniciales={facturas}
         actividadesOpciones={actividadesOpciones}
+        partidasIndirectasOpciones={partidasIndirectasOpciones}
         proyectoActivoId={proyectoActivoId}
       />
     </div>

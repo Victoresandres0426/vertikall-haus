@@ -10,6 +10,7 @@ import {
   crearFacturaBorradorConFoto,
   reintentarAnalisisFactura,
   asignarActividadLinea,
+  asignarPartidaLinea,
   actualizarLineaGasto,
   eliminarLineaGasto,
   actualizarFacturaGasto,
@@ -19,10 +20,18 @@ import {
 
 export type ActividadOpcion = { id: string; codigo: string; nombre: string }
 
+// Partidas del presupuesto SIN actividad_id -- costos indirectos/generales
+// del proyecto completo (supervisión, seguro, contingencia, gastos
+// generales, etc.). Sirven para vincular un gasto que no corresponde a
+// ninguna actividad puntual (herramienta menor, agua, etc.) directo a una
+// de estas partidas, para que sí se descuente de "Ejercido" en Presupuesto.
+export type PartidaOpcion = { id: string; codigo: string; descripcion: string; actividad_id: string | null }
+
 export type LineaCostoReal = {
   id: string
   factura_id: string | null
   actividad_id: string | null
+  partida_id?: string | null
   tipo_recurso: string
   descripcion: string
   unidad: string | null
@@ -64,6 +73,7 @@ function formatoFecha(iso: string) {
 
 type LineaDraft = {
   actividadId: string
+  partidaId: string
   tipoRecurso: LineaGastoInput["tipoRecurso"]
   descripcion: string
   unidad: string
@@ -118,6 +128,7 @@ async function comprimirFoto(file: File, maxDim = 1800, calidad = 0.85): Promise
 
 const lineaVacia: LineaDraft = {
   actividadId: "",
+  partidaId: "",
   tipoRecurso: "material",
   descripcion: "",
   unidad: "",
@@ -129,11 +140,13 @@ const lineaVacia: LineaDraft = {
 export function GastosClient({
   facturasIniciales,
   actividadesOpciones,
+  partidasIndirectasOpciones,
   puedeCrear,
   proyectoActivoId,
 }: {
   facturasIniciales: FacturaGasto[]
   actividadesOpciones: ActividadOpcion[]
+  partidasIndirectasOpciones: PartidaOpcion[]
   puedeCrear: boolean
   proyectoActivoId: string | null
 }) {
@@ -219,6 +232,24 @@ export function GastosClient({
     )
     startTransition(async () => {
       const res = await asignarActividadLinea(lineaId, valor)
+      if (res.error) alert(res.error)
+    })
+  }
+
+  // Igual que handleAsignarActividad, pero para costos generales/indirectos
+  // que no corresponden a ninguna actividad puntual (herramienta menor,
+  // agua, etc.) -- se vinculan directo a una partida de presupuesto en vez
+  // de a una actividad, para que sí se descuenten de "Ejercido".
+  const handleAsignarPartida = (lineaId: string, partidaId: string) => {
+    const valor = partidaId || null
+    setFacturas((prev) =>
+      prev.map((f) => ({
+        ...f,
+        lineas: f.lineas.map((l) => (l.id === lineaId ? { ...l, partida_id: valor } : l)),
+      }))
+    )
+    startTransition(async () => {
+      const res = await asignarPartidaLinea(lineaId, valor)
       if (res.error) alert(res.error)
     })
   }
@@ -356,7 +387,7 @@ export function GastosClient({
         <div className="space-y-3">
           {facturas.map((f) => {
             const abierta = expandida === f.id
-            const sinAsignar = f.lineas.filter((l) => !l.actividad_id).length
+            const sinAsignar = f.lineas.filter((l) => !l.actividad_id && !l.partida_id).length
 
             return (
               <div key={f.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -381,7 +412,7 @@ export function GastosClient({
                       {f.lineas.length} línea{f.lineas.length !== 1 ? "s" : ""}
                       {f.referencia ? ` · Ref: ${f.referencia}` : ""}
                       {sinAsignar > 0 && (
-                        <span className="text-amber-600"> · {sinAsignar} sin actividad</span>
+                        <span className="text-amber-600"> · {sinAsignar} sin clasificar</span>
                       )}
                       {f.foto_url ? (
                         <>
@@ -504,7 +535,7 @@ export function GastosClient({
                               <th className="pb-1.5 pr-3 font-medium text-right">P. unit.</th>
                               <th className="pb-1.5 pr-3 font-medium text-right">Tax</th>
                               <th className="pb-1.5 pr-3 font-medium text-right">Monto</th>
-                              <th className="pb-1.5 pr-3 font-medium">Actividad</th>
+                              <th className="pb-1.5 pr-3 font-medium">Actividad / partida</th>
                               {puedeCrear && <th className="pb-1.5 font-medium">Acciones</th>}
                             </tr>
                           </thead>
@@ -515,7 +546,7 @@ export function GastosClient({
                               const smallInputCls = "w-full border border-slate-200 rounded-md px-1.5 py-1 text-xs"
 
                               return (
-                                <tr key={l.id} className={!l.actividad_id && !editando ? "bg-amber-50/60" : undefined}>
+                                <tr key={l.id} className={!l.actividad_id && !l.partida_id && !editando ? "bg-amber-50/60" : undefined}>
                                   {editando && draft ? (
                                     <>
                                       <td className="py-1.5 pr-3">
@@ -597,22 +628,46 @@ export function GastosClient({
                                       <td className="py-1.5 pr-3 text-right font-medium text-slate-900">{formatoMoneda(l.monto)}</td>
                                       <td className="py-1.5 pr-3">
                                         {puedeCrear ? (
-                                          <select
-                                            value={l.actividad_id ?? ""}
-                                            onChange={(e) => handleAsignarActividad(l.id, e.target.value)}
-                                            className={cn(
-                                              "text-xs border rounded-md px-1.5 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900",
-                                              l.actividad_id ? "border-slate-200 text-slate-700" : "border-amber-300 text-amber-700"
+                                          <div className="flex flex-col gap-1">
+                                            <select
+                                              value={l.actividad_id ?? ""}
+                                              onChange={(e) => handleAsignarActividad(l.id, e.target.value)}
+                                              className={cn(
+                                                "text-xs border rounded-md px-1.5 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900",
+                                                l.actividad_id ? "border-slate-200 text-slate-700" : "border-amber-300 text-amber-700"
+                                              )}
+                                            >
+                                              <option value="">Sin actividad</option>
+                                              {actividadesOpciones.map((a) => (
+                                                <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                                              ))}
+                                            </select>
+                                            {/* Solo tiene sentido elegir una partida general cuando NO hay
+                                                actividad -- para gastos que no corresponden a ninguna tarea
+                                                puntual (herramienta menor, agua, etc.). */}
+                                            {!l.actividad_id && partidasIndirectasOpciones.length > 0 && (
+                                              <select
+                                                value={l.partida_id ?? ""}
+                                                onChange={(e) => handleAsignarPartida(l.id, e.target.value)}
+                                                className={cn(
+                                                  "text-xs border rounded-md px-1.5 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900",
+                                                  l.partida_id ? "border-slate-200 text-slate-700" : "border-slate-200 text-slate-400"
+                                                )}
+                                              >
+                                                <option value="">Sin partida general</option>
+                                                {partidasIndirectasOpciones.map((p) => (
+                                                  <option key={p.id} value={p.id}>{p.codigo} — {p.descripcion}</option>
+                                                ))}
+                                              </select>
                                             )}
-                                          >
-                                            <option value="">Sin asignar</option>
-                                            {actividadesOpciones.map((a) => (
-                                              <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
-                                            ))}
-                                          </select>
+                                          </div>
                                         ) : (
                                           <span className="text-slate-600">
-                                            {l.actividades ? `${l.actividades.codigo} — ${l.actividades.nombre}` : "—"}
+                                            {l.actividades
+                                              ? `${l.actividades.codigo} — ${l.actividades.nombre}`
+                                              : partidasIndirectasOpciones.find((p) => p.id === l.partida_id)
+                                                ? `${partidasIndirectasOpciones.find((p) => p.id === l.partida_id)?.codigo} — ${partidasIndirectasOpciones.find((p) => p.id === l.partida_id)?.descripcion}`
+                                                : "—"}
                                           </span>
                                         )}
                                       </td>
@@ -670,6 +725,7 @@ export function GastosClient({
         <ModalRegistrarGasto
           proyectoId={proyectoActivoId}
           actividadesOpciones={actividadesOpciones}
+          partidasIndirectasOpciones={partidasIndirectasOpciones}
           onClose={() => setShowModalManual(false)}
         />
       )}
@@ -783,10 +839,12 @@ function ModalSubirFoto({
 function ModalRegistrarGasto({
   proyectoId,
   actividadesOpciones,
+  partidasIndirectasOpciones,
   onClose,
 }: {
   proyectoId: string
   actividadesOpciones: ActividadOpcion[]
+  partidasIndirectasOpciones: PartidaOpcion[]
   onClose: () => void
 }) {
   const [isPending, startTransition] = useTransition()
@@ -818,6 +876,7 @@ function ModalRegistrarGasto({
         fotoReferencia: null,
         lineas: lineas.map((l) => ({
           actividadId: l.actividadId || null,
+          partidaId: l.actividadId ? null : l.partidaId || null,
           tipoRecurso: l.tipoRecurso,
           descripcion: l.descripcion,
           unidad: l.unidad || null,
@@ -909,6 +968,21 @@ function ModalRegistrarGasto({
                   ))}
                 </select>
               </div>
+              {/* Solo aplica cuando no hay actividad -- gastos generales del
+                  proyecto (herramienta menor, agua, etc.) que no corresponden
+                  a ninguna tarea puntual, para que sí se descuenten de una
+                  partida real en vez de quedar flotando. */}
+              {!l.actividadId && partidasIndirectasOpciones.length > 0 && (
+                <div className="col-span-8 sm:col-span-2">
+                  <label className="block text-[10px] text-slate-400 mb-0.5">Partida general (si no aplica a una actividad)</label>
+                  <select value={l.partidaId} onChange={(e) => actualizarLinea(idx, "partidaId", e.target.value)} className={cn(inputCls, "bg-white")}>
+                    <option value="">Sin partida general</option>
+                    {partidasIndirectasOpciones.map((p) => (
+                      <option key={p.id} value={p.id}>{p.codigo} — {p.descripcion}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="col-span-12 sm:col-span-1 flex justify-end">
                 {lineas.length > 1 && (
                   <button onClick={() => quitarLinea(idx)} className="text-slate-300 hover:text-red-500">

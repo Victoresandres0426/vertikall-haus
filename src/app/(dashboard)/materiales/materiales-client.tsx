@@ -5,7 +5,7 @@ import { Package, Ruler, FolderOpen, AlertCircle, Plus, X, Receipt } from "lucid
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { crearMaterial } from "./actions"
-import { GastosClient, type FacturaGasto, type ActividadOpcion } from "./gastos-client"
+import { GastosClient, type FacturaGasto, type ActividadOpcion, type PartidaOpcion } from "./gastos-client"
 
 export type MaterialCatalogo = {
   id: string
@@ -45,6 +45,7 @@ export function MaterialesClient({
   puedeCrear,
   facturasIniciales,
   actividadesOpciones,
+  partidasIndirectasOpciones,
   proyectoActivoId,
 }: {
   catalogoInicial: MaterialCatalogo[]
@@ -52,6 +53,7 @@ export function MaterialesClient({
   puedeCrear: boolean
   facturasIniciales: FacturaGasto[]
   actividadesOpciones: ActividadOpcion[]
+  partidasIndirectasOpciones: PartidaOpcion[]
   proyectoActivoId: string | null
 }) {
   const [catalogo] = useState<MaterialCatalogo[]>(catalogoInicial)
@@ -97,6 +99,7 @@ export function MaterialesClient({
         <GastosClient
           facturasIniciales={facturasIniciales}
           actividadesOpciones={actividadesOpciones}
+          partidasIndirectasOpciones={partidasIndirectasOpciones}
           puedeCrear={puedeCrear}
           proyectoActivoId={proyectoActivoId}
         />
