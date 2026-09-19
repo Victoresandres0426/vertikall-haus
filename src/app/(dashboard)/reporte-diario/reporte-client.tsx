@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useEffect } from "react"
+import { useState, useTransition, useEffect, useMemo } from "react"
 import Link from "next/link"
 import {
   CheckCircle, Clock, Send, CloudSun, HardHat, Users,
@@ -521,6 +521,30 @@ export function ReporteClient({
   const presentes = trabajadores.filter((t) => t.asistencia === "presente").length
   const totalHoras = trabajadores.reduce((s, t) => s + t.horas + t.extra, 0)
 
+  // El resumen de Avance (Paso 2) solo cuenta lo que cada trabajador puso
+  // en el campo "Avance" de su split -- las horas no suman nada ahí. Si a
+  // alguien se le queda un split con horas cargadas pero sin avance, ese
+  // trabajo "desaparece" del progreso de la actividad aunque las horas sí
+  // quedaron registradas (para nómina). Se avisa para no confundir "nadie
+  // trabajó en esto" con "se les olvidó anotar cuánto avanzaron".
+  // Se excluye el split base (i===0) de un capataz vinculado con más de
+  // un split: ese es "resto del día" de supervisión, sin unidad que medir.
+  const splitsSinAvance = useMemo(() => {
+    const actividadesActivas = actividadesPorProyecto[proyectoId] ?? []
+    const avisos: { trabajador: string; actividad: string }[] = []
+    for (const t of trabajadores) {
+      if (t.asistencia === "ausente") continue
+      t.splits.forEach((s, i) => {
+        if (i === 0 && t.requiere_qr && t.splits.length > 1) return
+        if (!s.actividadId || !(s.horas > 0)) return
+        if (s.avance > 0) return
+        const actividad = actividadesActivas.find((a) => a.id === s.actividadId)
+        avisos.push({ trabajador: t.nombre_completo, actividad: actividad?.nombre ?? "actividad seleccionada" })
+      })
+    }
+    return avisos
+  }, [trabajadores, actividadesPorProyecto, proyectoId])
+
   return (
     <div>
       <Header
@@ -879,6 +903,17 @@ export function ReporteClient({
               )}
             </Card>
 
+            {splitsSinAvance.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 space-y-1">
+                <p className="font-semibold">⚠ Hay horas cargadas sin avance producido:</p>
+                {splitsSinAvance.map((a, i) => (
+                  <p key={i}>
+                    <span className="font-medium">{a.trabajador}</span> tiene horas en &quot;{a.actividad}&quot; pero el campo Avance quedó vacío -- ese trabajo no va a sumar al % de la actividad. Complétalo si sí produjo algo.
+                  </p>
+                ))}
+              </div>
+            )}
+
             <div className="flex justify-end">
               <Button onClick={handleContinuarAvance}>Continuar con Avance →</Button>
             </div>
@@ -1050,6 +1085,17 @@ export function ReporteClient({
                 {errorEnvio && (
                   <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-600">
                     {errorEnvio}
+                  </div>
+                )}
+
+                {splitsSinAvance.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 space-y-1">
+                    <p className="font-semibold">⚠ Antes de enviar: hay horas sin avance producido</p>
+                    {splitsSinAvance.map((a, i) => (
+                      <p key={i}>
+                        <span className="font-medium">{a.trabajador}</span> -- &quot;{a.actividad}&quot;: tiene horas cargadas pero el Avance quedó en 0. Ese trabajo no se va a reflejar en el % de esa actividad. Puedes enviar igual si es correcto (ej. solo supervisó), o volver a Asistencia a completarlo.
+                      </p>
+                    ))}
                   </div>
                 )}
 
