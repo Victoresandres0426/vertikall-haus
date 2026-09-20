@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Header } from "@/components/layout/header"
-import { ArrowRight, CalendarDays } from "lucide-react"
+import { ArrowRight, CalendarDays, Check, Clock } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 const ROLES_VEN_HISTORIAL = ["dueno", "superadmin", "administrador", "project_manager"]
 
@@ -14,6 +15,7 @@ type ReporteRow = {
   proyectos: { nombre: string } | null
   capataz_id: string
   perfiles_usuario: { nombre_completo: string } | null
+  estado_reporte: string | null
 }
 
 async function getData() {
@@ -32,7 +34,7 @@ async function getData() {
   const { data: reportesRaw } = await supabase
     .from("reportes_diarios")
     .select(`
-      id, fecha, clima, proyecto_id,
+      id, fecha, clima, proyecto_id, estado_reporte,
       proyectos ( nombre ),
       capataz_id,
       perfiles_usuario!capataz_id ( nombre_completo )
@@ -125,6 +127,20 @@ export default async function HistorialReportesPage() {
                       {s.costo > 0 ? `$${s.costo.toLocaleString("es-MX", { maximumFractionDigits: 0 })}` : "—"}
                     </span>
                   </div>
+                  <span
+                    className={cn(
+                      "hidden md:inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium shrink-0",
+                      r.estado_reporte === "validado"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-amber-50 text-amber-700"
+                    )}
+                  >
+                    {r.estado_reporte === "validado" ? (
+                      <><Check className="h-3 w-3" /> Validado</>
+                    ) : (
+                      <><Clock className="h-3 w-3" /> Sin validar</>
+                    )}
+                  </span>
                   <ArrowRight className="h-4 w-4 text-slate-300 shrink-0" />
                 </Link>
               )

@@ -9,6 +9,11 @@ export type EntradaAvance = {
   cantidad_ejecutada_dia: number
   porcentaje_avance_total: number
   incidencias?: string
+  // Fotos de avance ya subidas a Storage (bucket 'reporte-fotos',
+  // migración 104) antes de enviar el reporte -- solo se manda la ruta,
+  // no el archivo. Vinculadas a ESTA actividad específica dentro de
+  // ESTE reporte (columna avance_diario.fotos).
+  fotos?: { storage_path: string; descripcion?: string }[]
 }
 
 export type EntradaAsistencia = {
@@ -70,6 +75,7 @@ export async function crearReporteDiario(input: {
           cantidad_ejecutada_dia: a.cantidad_ejecutada_dia,
           porcentaje_avance_total: a.porcentaje_avance_total,
           incidencias: a.incidencias ?? null,
+          fotos: a.fotos ?? [],
         })),
         { onConflict: "reporte_id,actividad_id" }
       )
@@ -197,6 +203,40 @@ export async function actualizarReporteDiario(input: {
   revalidatePath("/alertas")
   revalidatePath("/desempeno")
   revalidatePath("/personal")
+
+  return {}
+}
+
+// ── Validar un reporte para que se vuelva visible en el portal del cliente ──
+// Solo dueno/superadmin/administrador/project_manager (mismos roles que
+// pueden editar historial) -- la función SQL validar_reporte_diario
+// (migración 102) valida el rol y el acceso al proyecto de nuevo por su
+// cuenta, así que esto no depende únicamente del gating en la UI.
+export async function validarReporteDiario(reporteId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  const { error: rpcError } = await supabase.rpc("validar_reporte_diario", {
+    p_reporte_id: reporteId,
+  })
+
+  if (rpcError) {
+    if (rpcError.message?.includes("sin_permisos")) {
+      return { error: "No tienes permisos para validar reportes" }
+    }
+    if (rpcError.message?.includes("sin_acceso")) {
+      return { error: "No tienes acceso a este proyecto" }
+    }
+    if (rpcError.message?.includes("reporte_no_encontrado")) {
+      return { error: "Ese reporte ya no existe" }
+    }
+    return { error: "No se pudo validar el reporte: " + rpcError.message }
+  }
+
+  revalidatePath("/reporte-diario/historial")
+  revalidatePath(`/reporte-diario/historial/${reporteId}`)
 
   return {}
 }

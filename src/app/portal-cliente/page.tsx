@@ -43,6 +43,31 @@ type Actividad = {
   es_critica: boolean
 }
 
+// Fotos generales del proyecto (categoría "fotos" de Archivos del
+// proyecto, migración 037/103) -- distintas de las fotos que en teoría
+// vienen dentro de un reporte diario (Reporte.fotos, más abajo): estas
+// son la galería general que sube el equipo, sin fecha de reporte
+// asociada.
+type Foto = {
+  id: string
+  nombre_archivo: string
+  storage_path: string
+  created_at: string
+  url?: string
+}
+
+// Fotos de avance vinculadas a UNA actividad dentro de un reporte
+// (avance_diario.fotos, migraciones 104/105) -- agrupadas así en vez
+// de una lista plana, para que quede claro qué actividad muestra cada
+// foto.
+type FotoActividadReporte = {
+  actividad_id: string
+  codigo: string | null
+  nombre: string
+  nombre_en: string | null
+  fotos: { storage_path?: string; url?: string; descripcion?: string }[]
+}
+
 type Reporte = {
   // Ausente en reportes calculados antes de la migración 098.
   id?: string
@@ -54,7 +79,9 @@ type Reporte = {
   clima_en?: string | null
   observaciones_generales: string | null
   observaciones_generales_en?: string | null
-  fotos: { url?: string; descripcion?: string }[]
+  // Ausente en reportes calculados antes de la migración 105 (que
+  // reemplazó la clave "fotos" plana por esta agrupada por actividad).
+  fotos_por_actividad?: FotoActividadReporte[]
 }
 
 // Traduce con IA (cacheando el resultado en la base) los reportes que
@@ -278,8 +305,10 @@ const t = {
     sinActividades: "Aún no hay actividades cargadas.",
     actividad: "actividad",
     actividades: "actividades",
-    fotosYReportes: "Fotos y reportes de obra",
+    fotosYReportes: "Reportes de obra",
     sinReportes: "Todavía no hay reportes publicados.",
+    fotosDelProyecto: "Fotos del proyecto",
+    sinFotos: "Todavía no hay fotos publicadas.",
     cuentaSinProyecto: "Tu cuenta todavía no tiene un proyecto asignado.",
     contactaContacto: "Contacta a tu contacto en Vertikall Haus.",
   },
@@ -326,8 +355,10 @@ const t = {
     sinActividades: "No activities loaded yet.",
     actividad: "activity",
     actividades: "activities",
-    fotosYReportes: "Site photos and reports",
+    fotosYReportes: "Site reports",
     sinReportes: "No reports published yet.",
+    fotosDelProyecto: "Project photos",
+    sinFotos: "No photos published yet.",
     cuentaSinProyecto: "Your account doesn't have a project assigned yet.",
     contactaContacto: "Contact your Vertikall Haus representative.",
   },
@@ -379,18 +410,54 @@ export default async function PortalClientePage() {
   if (!perfil) redirect("/login")
   if (perfil.rol !== "cliente") redirect("/dashboard")
 
-  const [proyectoRes, avanceRes, avanceGeneralRes, reportesRes, facturasRes] = await Promise.all([
+  const [proyectoRes, avanceRes, avanceGeneralRes, reportesRes, facturasRes, fotosRes] = await Promise.all([
     supabase.rpc("cliente_ver_proyecto"),
     supabase.rpc("cliente_ver_avance"),
     supabase.rpc("cliente_ver_avance_general"),
     supabase.rpc("cliente_ver_reportes"),
     supabase.rpc("cliente_ver_facturas"),
+    // cliente_ver_fotos (migración 103) puede no existir todavía si esa
+    // migración no se ha corrido -- si falla, la sección de fotos
+    // simplemente sale vacía en vez de tumbar el portal completo.
+    supabase.rpc("cliente_ver_fotos"),
   ])
 
   const proyecto = proyectoRes.data as Proyecto | null
   const avance = (avanceRes.data ?? []) as Actividad[]
   const reportes = (reportesRes.data ?? []) as Reporte[]
   const facturas = (facturasRes.data ?? []) as Factura[]
+  const fotos = (fotosRes.data ?? []) as Foto[]
+
+  // Fotos generales del proyecto: URL firmada (bucket privado), igual
+  // patrón que archivos-proyecto.tsx / materiales/page.tsx. Si alguna
+  // falla, esa foto simplemente no sale (nunca tumba el portal).
+  if (fotos.length > 0) {
+    await Promise.all(
+      fotos.map(async (foto) => {
+        const { data: firmada } = await supabase.storage
+          .from("proyecto-archivos")
+          .createSignedUrl(foto.storage_path, 3600)
+        if (firmada?.signedUrl) foto.url = firmada.signedUrl
+      })
+    )
+  }
+
+  // Fotos de avance por actividad dentro de cada reporte (bucket
+  // privado 'reporte-fotos', migraciones 104/105) -- misma técnica de
+  // URL firmada que la galería general de arriba.
+  await Promise.all(
+    reportes.flatMap((r) =>
+      (r.fotos_por_actividad ?? []).flatMap((grupo) =>
+        grupo.fotos.map(async (foto) => {
+          if (!foto.storage_path) return
+          const { data: firmada } = await supabase.storage
+            .from("reporte-fotos")
+            .createSignedUrl(foto.storage_path, 3600)
+          if (firmada?.signedUrl) foto.url = firmada.signedUrl
+        })
+      )
+    )
+  )
 
   if (!proyecto) {
     return (
@@ -598,7 +665,30 @@ export default async function PortalClientePage() {
           )}
         </section>
 
-        {/* Reportes y fotos */}
+        {/* Fotos del proyecto (galería general, sin fecha de reporte) */}
+        <section>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-3">
+            <Camera className="h-4 w-4 text-slate-400" /> {tf.fotosDelProyecto}
+          </h3>
+          {fotos.length === 0 ? (
+            <p className="text-sm text-slate-400 bg-white border border-slate-200 rounded-xl p-5">{tf.sinFotos}</p>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-2xl p-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {fotos.map((foto) => (
+                  foto.url ? (
+                    <a key={foto.id} href={foto.url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden border border-slate-100">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={foto.url} alt={foto.nombre_archivo} className="w-full h-28 object-cover" />
+                    </a>
+                  ) : null
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* Reportes de obra */}
         <section>
           <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-3">
             <Camera className="h-4 w-4 text-slate-400" /> {tf.fotosYReportes}
@@ -616,15 +706,24 @@ export default async function PortalClientePage() {
                   {r.observaciones_generales && (
                     <p className="text-sm text-slate-600 mb-3">{facturaEnIngles ? (r.observaciones_generales_en || r.observaciones_generales) : r.observaciones_generales}</p>
                   )}
-                  {r.fotos.length > 0 && (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {r.fotos.map((foto, fi) => (
-                        foto?.url ? (
-                          <a key={fi} href={foto.url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden border border-slate-100">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={foto.url} alt={foto.descripcion ?? ""} className="w-full h-28 object-cover" />
-                          </a>
-                        ) : null
+                  {(r.fotos_por_actividad?.length ?? 0) > 0 && (
+                    <div className="space-y-3">
+                      {r.fotos_por_actividad!.map((grupo) => (
+                        <div key={grupo.actividad_id}>
+                          <p className="text-xs font-medium text-slate-500 mb-1.5">
+                            {grupo.codigo ? `${grupo.codigo} — ` : ""}{facturaEnIngles ? (grupo.nombre_en || grupo.nombre) : grupo.nombre}
+                          </p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {grupo.fotos.map((foto, fi) => (
+                              foto?.url ? (
+                                <a key={fi} href={foto.url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden border border-slate-100">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={foto.url} alt={foto.descripcion ?? ""} className="w-full h-28 object-cover" />
+                                </a>
+                              ) : null
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   )}

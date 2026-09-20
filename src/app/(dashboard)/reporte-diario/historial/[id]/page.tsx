@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect, notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
+import { Check } from "lucide-react"
+import { validarReporteDiario } from "../../actions"
 import { HistorialEditClient } from "./historial-edit-client"
 import type { TrabajadorHist, ActividadHist, SplitInicial, AsistenciaInicial, AvanceInicial, RendimientoTotales, RendimientoTrabajador } from "./historial-edit-client"
 import {
@@ -36,7 +38,7 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
   const { data: reporte } = await supabase
     .from("reportes_diarios")
     .select(`
-      id, fecha, clima, observaciones_generales, proyecto_id,
+      id, fecha, clima, observaciones_generales, proyecto_id, estado_reporte,
       proyectos ( nombre ),
       perfiles_usuario!capataz_id ( nombre_completo )
     `)
@@ -225,11 +227,29 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
     }))
     .sort((a, b) => a.nombre.localeCompare(b.nombre))
 
+  const validado = reporte.estado_reporte === "validado"
+
   return (
     <div>
       <Header
         titulo="Editar reporte"
         subtitulo={`${(reporte.proyectos as unknown as { nombre: string } | null)?.nombre ?? "—"} · Capataz: ${(reporte.perfiles_usuario as unknown as { nombre_completo: string } | null)?.nombre_completo ?? "—"}`}
+        acciones={
+          validado ? (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium">
+              <Check className="h-4 w-4" /> Validado -- visible en el portal del cliente
+            </span>
+          ) : (
+            <form action={validarReporteDiario.bind(null, reporte.id)}>
+              <button
+                type="submit"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors"
+              >
+                <Check className="h-4 w-4" /> Validar -- hacer visible al cliente
+              </button>
+            </form>
+          )
+        }
       />
       <HistorialEditClient
         reporteId={reporte.id}

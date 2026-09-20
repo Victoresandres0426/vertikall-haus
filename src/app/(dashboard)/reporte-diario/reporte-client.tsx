@@ -5,6 +5,7 @@ import Link from "next/link"
 import {
   CheckCircle, Clock, Send, CloudSun, HardHat, Users,
   ChevronDown, Plus, X, History, CalendarClock, AlertTriangle,
+  Camera, Loader2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Header } from "@/components/layout/header"
@@ -14,6 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input, Textarea } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
+import { createClient } from "@/lib/supabase/client"
 import { crearReporteDiario } from "./actions"
 
 // ──────────────────────────────────────────────
@@ -86,6 +88,12 @@ type TrabajadorLocal = TrabajadorDB & {
   splits: SplitActividad[]
 }
 
+// Foto ya subida a Storage (bucket 'reporte-fotos', migración 104)
+// vinculada a esta actividad dentro de este reporte -- previewUrl es
+// local (URL.createObjectURL) solo para mostrar la miniatura de
+// inmediato sin esperar una URL firmada de ida y vuelta.
+type FotoLocal = { path: string; nombre: string; previewUrl: string }
+
 type ActividadLocal = ActividadDB & {
   cantidad_hoy: number
   incidencias: string
@@ -93,6 +101,7 @@ type ActividadLocal = ActividadDB & {
   // de los splits de Asistencia -- se apaga (false) en cuanto el capataz
   // edita el número a mano en el Paso 2, para no pisarle su corrección.
   auto: boolean
+  fotos: FotoLocal[]
 }
 
 // ──────────────────────────────────────────────
@@ -227,8 +236,38 @@ export function ReporteClient({
       cantidad_hoy: 0,
       incidencias: "",
       auto: true,
+      fotos: [],
     }))
   )
+
+  // Sube fotos de avance de una actividad al bucket 'reporte-fotos'
+  // (migración 104), vinculadas a esta actividad y este proyecto. El
+  // reporte_id todavía no existe en este punto (se crea al enviar), así
+  // que la ruta usa proyecto/actividad/fecha en vez de reporte_id.
+  const [subiendoFotos, setSubiendoFotos] = useState<Record<string, boolean>>({})
+
+  const handleSubirFotos = async (actividadId: string, files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setSubiendoFotos((prev) => ({ ...prev, [actividadId]: true }))
+    const supabase = createClient()
+    for (const file of Array.from(files)) {
+      const nombreLimpio = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")
+      const path = `${proyectoId}/${actividadId}/${fecha}_${Date.now()}_${nombreLimpio}`
+      const { error } = await supabase.storage.from("reporte-fotos").upload(path, file)
+      if (error) continue
+      const previewUrl = URL.createObjectURL(file)
+      setActividades((prev) =>
+        prev.map((a) => a.id === actividadId ? { ...a, fotos: [...a.fotos, { path, nombre: file.name, previewUrl }] } : a)
+      )
+    }
+    setSubiendoFotos((prev) => ({ ...prev, [actividadId]: false }))
+  }
+
+  const quitarFoto = (actividadId: string, index: number) => {
+    setActividades((prev) =>
+      prev.map((a) => a.id === actividadId ? { ...a, fotos: a.fotos.filter((_, i) => i !== index) } : a)
+    )
+  }
 
   const proyectoActual = proyectos.find((p) => p.id === proyectoId)
 
@@ -242,6 +281,7 @@ export function ReporteClient({
         cantidad_hoy: 0,
         incidencias: "",
         auto: true,
+        fotos: [],
       }))
     )
     setTrabajadores(
@@ -422,6 +462,7 @@ export function ReporteClient({
             cantidad_ejecutada_dia: a.cantidad_hoy,
             porcentaje_avance_total: a.avance_porcentaje,
             incidencias: a.incidencias || undefined,
+            fotos: a.fotos.length > 0 ? a.fotos.map((f) => ({ storage_path: f.path })) : undefined,
           })),
         asistencia: trabajadores
           .filter((t) => t.asistencia !== "ausente")
@@ -1012,6 +1053,47 @@ export function ReporteClient({
                         }
                         className="mt-2 text-xs"
                       />
+
+                      {/* Fotos de avance -- quedan vinculadas a ESTA actividad
+                          (avance_diario.fotos), no como galería suelta. */}
+                      <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                        {a.fotos.map((f, fi) => (
+                          <div key={fi} className="relative h-12 w-12 rounded-lg overflow-hidden border border-slate-200 shrink-0">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={f.previewUrl} alt={f.nombre} className="h-full w-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => quitarFoto(a.id, fi)}
+                              className="absolute top-0 right-0 bg-black/60 text-white rounded-bl px-1 text-[9px] leading-tight"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                        <label className="h-12 w-12 flex items-center justify-center rounded-lg border border-dashed border-slate-300 text-slate-400 cursor-pointer hover:border-slate-400 hover:text-slate-600 shrink-0">
+                          {subiendoFotos[a.id] ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Camera className="h-4 w-4" />
+                          )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                              handleSubirFotos(a.id, e.target.files)
+                              e.target.value = ""
+                            }}
+                          />
+                        </label>
+                        {a.fotos.length > 0 && (
+                          <span className="text-[10px] text-slate-400">
+                            {a.fotos.length} foto{a.fotos.length !== 1 ? "s" : ""} de avance
+                          </span>
+                        )}
+                      </div>
                     </div>
                     )
                   })}
