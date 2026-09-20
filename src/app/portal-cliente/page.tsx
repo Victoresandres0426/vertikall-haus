@@ -78,6 +78,17 @@ type FotoActividadReporte = {
   fotos: { storage_path?: string; url?: string; descripcion?: string }[]
 }
 
+// Avance del DÍA (no acumulado) por actividad dentro de un reporte,
+// en % -- sin nombre de trabajador ni dinero, a propósito (migración
+// 106): el cliente ve cuánto avanzó cada actividad ese día, nada más.
+type AvancePorActividad = {
+  actividad_id: string
+  codigo: string | null
+  nombre: string
+  nombre_en: string | null
+  avance_dia_pct: number | null
+}
+
 type Reporte = {
   // Ausente en reportes calculados antes de la migración 098.
   id?: string
@@ -89,6 +100,8 @@ type Reporte = {
   clima_en?: string | null
   observaciones_generales: string | null
   observaciones_generales_en?: string | null
+  // Ausente en reportes calculados antes de la migración 106.
+  avance_por_actividad?: AvancePorActividad[]
   // Ausente en reportes calculados antes de la migración 105 (que
   // reemplazó la clave "fotos" plana por esta agrupada por actividad).
   fotos_por_actividad?: FotoActividadReporte[]
@@ -320,6 +333,7 @@ const t = {
     fotosDelProyecto: "Fotos del proyecto",
     sinFotos: "Todavía no hay fotos publicadas.",
     volver: "Volver",
+    avanceDelDia: "Avance del día",
     cuentaSinProyecto: "Tu cuenta todavía no tiene un proyecto asignado.",
     contactaContacto: "Contacta a tu contacto en Vertikall Haus.",
   },
@@ -371,6 +385,7 @@ const t = {
     fotosDelProyecto: "Project photos",
     sinFotos: "No photos published yet.",
     volver: "Back",
+    avanceDelDia: "Progress that day",
     cuentaSinProyecto: "Your account doesn't have a project assigned yet.",
     contactaContacto: "Contact your Vertikall Haus representative.",
   },
@@ -719,34 +734,65 @@ export default async function PortalClientePage() {
           {reportes.length === 0 ? (
             <p className="text-sm text-slate-400 bg-white border border-slate-200 rounded-xl p-5">{tf.sinReportes}</p>
           ) : (
-            <div className="space-y-4">
-              {reportes.map((r, i) => (
-                <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm font-semibold text-slate-800">{formatoFecha(r.fecha, facturaEnIngles)}</p>
-                    {r.clima && <span className="text-xs text-slate-400">{facturaEnIngles ? (r.clima_en || r.clima) : r.clima}</span>}
-                  </div>
-                  {r.observaciones_generales && (
-                    <p className="text-sm text-slate-600 mb-3">{facturaEnIngles ? (r.observaciones_generales_en || r.observaciones_generales) : r.observaciones_generales}</p>
-                  )}
-                  {(r.fotos_por_actividad?.length ?? 0) > 0 && (
-                    <div className="space-y-3">
-                      {r.fotos_por_actividad!.map((grupo) => (
-                        <div key={grupo.actividad_id}>
-                          <p className="text-xs font-medium text-slate-500 mb-1.5">
-                            {grupo.codigo ? `${grupo.codigo} — ` : ""}{facturaEnIngles ? (grupo.nombre_en || grupo.nombre) : grupo.nombre}
-                          </p>
-                          <GaleriaFotos
-                            fotos={grupo.fotos.filter((f) => f.url).map((f) => ({ url: f.url!, alt: f.descripcion ?? grupo.nombre }))}
-                            columnas="grid-cols-2 sm:grid-cols-3"
-                            labelVolver={tf.volver}
-                          />
+            <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100 overflow-hidden">
+              {reportes.map((r, i) => {
+                const avances = r.avance_por_actividad ?? []
+                const fotosGrupos = r.fotos_por_actividad ?? []
+                return (
+                  <details key={i} className="group p-4">
+                    <summary className="flex items-center justify-between gap-2 cursor-pointer list-none marker:content-none [&::-webkit-details-marker]:hidden">
+                      <span className="text-sm font-semibold text-slate-800">{formatoFecha(r.fecha, facturaEnIngles)}</span>
+                      <span className="flex items-center gap-2 text-xs text-slate-400 shrink-0">
+                        {r.clima && <span>{facturaEnIngles ? (r.clima_en || r.clima) : r.clima}</span>}
+                        <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                      </span>
+                    </summary>
+                    <div className="space-y-4 mt-4">
+                      {r.observaciones_generales && (
+                        <p className="text-sm text-slate-600">{facturaEnIngles ? (r.observaciones_generales_en || r.observaciones_generales) : r.observaciones_generales}</p>
+                      )}
+
+                      {/* Solo el % que avanzó cada actividad ESE día --
+                          nunca quién lo hizo ni cuánto representa en
+                          dinero (migración 106, a propósito). */}
+                      {avances.length > 0 && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{tf.avanceDelDia}</p>
+                          <div className="space-y-1.5">
+                            {avances.map((a) => (
+                              <div key={a.actividad_id} className="flex items-center justify-between text-sm">
+                                <span className="text-slate-700 truncate">
+                                  {a.codigo ? `${a.codigo} — ` : ""}{facturaEnIngles ? (a.nombre_en || a.nombre) : a.nombre}
+                                </span>
+                                <span className="font-medium text-[#3B72D8] shrink-0 ml-2">
+                                  {a.avance_dia_pct != null ? `+${a.avance_dia_pct}%` : "—"}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      ))}
+                      )}
+
+                      {fotosGrupos.length > 0 && (
+                        <div className="space-y-3">
+                          {fotosGrupos.map((grupo) => (
+                            <div key={grupo.actividad_id}>
+                              <p className="text-xs font-medium text-slate-500 mb-1.5">
+                                {grupo.codigo ? `${grupo.codigo} — ` : ""}{facturaEnIngles ? (grupo.nombre_en || grupo.nombre) : grupo.nombre}
+                              </p>
+                              <GaleriaFotos
+                                fotos={grupo.fotos.filter((f) => f.url).map((f) => ({ url: f.url!, alt: f.descripcion ?? grupo.nombre }))}
+                                columnas="grid-cols-2 sm:grid-cols-3"
+                                labelVolver={tf.volver}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              ))}
+                  </details>
+                )
+              })}
             </div>
           )}
         </section>
