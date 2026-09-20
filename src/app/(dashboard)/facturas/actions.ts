@@ -158,10 +158,11 @@ export type FacturaGenerada = {
   amortizacion_generada: number
 }
 
-// Aprueba un borrador de estimación automática: pasa a 'enviada', que es
-// lo que la hace visible en el portal del cliente y dispara el trigger de
-// correo (si Resend/Vault están configurados). Solo aplica sobre filas que
-// sigan en 'borrador' -- no se puede "re-aprobar" una ya enviada.
+// Aprueba un borrador de estimación automática: pasa de 'borrador' a
+// 'aprobada' -- una revisión/aceptación interna. El cliente TODAVÍA NO
+// la ve en su portal ni recibe correo en este paso (ver migración 099);
+// eso solo ocurre al usar enviarFacturaCliente(). Solo aplica sobre
+// filas que sigan en 'borrador'.
 export async function aprobarFacturaCliente(facturaId: string): Promise<{ error?: string }> {
   const supabase = await createClient()
   const acceso = await verificarAcceso(supabase)
@@ -170,7 +171,7 @@ export async function aprobarFacturaCliente(facturaId: string): Promise<{ error?
 
   const { data, error } = await supabase
     .from("facturas_cliente")
-    .update({ estado: "enviada" })
+    .update({ estado: "aprobada" })
     .eq("id", facturaId)
     .eq("estado", "borrador")
     .select("id")
@@ -184,15 +185,45 @@ export async function aprobarFacturaCliente(facturaId: string): Promise<{ error?
   }
 
   revalidatePath("/facturas")
+  return {}
+}
+
+// Envía al cliente una estimación ya aprobada: pasa de 'aprobada' a
+// 'enviada', que es lo que la hace visible en el portal del cliente y
+// dispara el trigger de correo (si Resend/Vault están configurados).
+// Solo aplica sobre filas que sigan en 'aprobada'.
+export async function enviarFacturaCliente(facturaId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+  if (!facturaId) return { error: "Falta la factura" }
+
+  const { data, error } = await supabase
+    .from("facturas_cliente")
+    .update({ estado: "enviada" })
+    .eq("id", facturaId)
+    .eq("estado", "aprobada")
+    .select("id")
+
+  if (error) {
+    console.error("enviarFacturaCliente error:", error)
+    return { error: "Error al enviar la factura." }
+  }
+  if (!data || data.length === 0) {
+    return { error: "Esta factura ya no está aprobada y pendiente de enviar (puede que alguien más ya la haya enviado o descartado)." }
+  }
+
+  revalidatePath("/facturas")
   revalidatePath("/flujo-caja")
   return {}
 }
 
-// Ajusta el monto o la descripción de un borrador antes de aprobarlo. Si el
-// monto se reduce, esa diferencia no se pierde: al quedar un monto menor
-// "ya facturado" en el histórico, la siguiente corrida de facturación
-// automática vuelve a detectarla como avance pendiente y la incluye en la
-// próxima estimación.
+// Ajusta el monto o la descripción de una estimación antes de enviarla --
+// funciona tanto en 'borrador' como ya 'aprobada' (pero no enviada), por si
+// hay que corregir algo entre aprobar y enviar. Si el monto se reduce, esa
+// diferencia no se pierde: al quedar un monto menor "ya facturado" en el
+// histórico, la siguiente corrida de facturación automática vuelve a
+// detectarla como avance pendiente y la incluye en la próxima estimación.
 export async function editarBorradorFacturaCliente(
   facturaId: string,
   campos: { monto?: number; descripcion?: string }
@@ -216,25 +247,26 @@ export async function editarBorradorFacturaCliente(
     .from("facturas_cliente")
     .update(patch)
     .eq("id", facturaId)
-    .eq("estado", "borrador")
+    .in("estado", ["borrador", "aprobada"])
     .select("id")
 
   if (error) {
     console.error("editarBorradorFacturaCliente error:", error)
-    return { error: "Error al editar el borrador." }
+    return { error: "Error al editar la estimación." }
   }
   if (!data || data.length === 0) {
-    return { error: "Esta factura ya no está en borrador." }
+    return { error: "Esta factura ya se envió, no se puede editar." }
   }
 
   revalidatePath("/facturas")
   return {}
 }
 
-// Descarta un borrador (lo borra). Nunca llegó a enviarse ni a contar como
-// "ya facturado" de forma definitiva más que mientras existió, así que el
-// avance que representaba no se pierde: la próxima corrida automática lo
-// vuelve a incluir (ver comentario en la migración 078).
+// Descarta un borrador o una estimación ya aprobada pero no enviada (lo
+// borra). Nunca llegó a enviarse ni a contar como "ya facturado" de forma
+// definitiva más que mientras existió, así que el avance que representaba
+// no se pierde: la próxima corrida automática lo vuelve a incluir (ver
+// comentario en la migración 078).
 export async function descartarBorradorFacturaCliente(facturaId: string): Promise<{ error?: string }> {
   const supabase = await createClient()
   const acceso = await verificarAcceso(supabase)
@@ -245,15 +277,15 @@ export async function descartarBorradorFacturaCliente(facturaId: string): Promis
     .from("facturas_cliente")
     .delete()
     .eq("id", facturaId)
-    .eq("estado", "borrador")
+    .in("estado", ["borrador", "aprobada"])
     .select("id")
 
   if (error) {
     console.error("descartarBorradorFacturaCliente error:", error)
-    return { error: "Error al descartar el borrador." }
+    return { error: "Error al descartar la estimación." }
   }
   if (!data || data.length === 0) {
-    return { error: "Esta factura ya no está en borrador." }
+    return { error: "Esta factura ya se envió, no se puede descartar." }
   }
 
   revalidatePath("/facturas")

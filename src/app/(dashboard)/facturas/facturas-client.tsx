@@ -1,7 +1,7 @@
 "use client"
 
 import { Fragment, useState, useTransition } from "react"
-import { Plus, X, CheckCircle2, Receipt, Zap, Pencil, Trash2, Send } from "lucide-react"
+import { Plus, X, Check, CheckCircle2, Receipt, Zap, Pencil, Trash2, Send } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -12,6 +12,7 @@ import {
   marcarFacturaProveedorPagada,
   generarFacturacionAutomatica,
   aprobarFacturaCliente,
+  enviarFacturaCliente,
   editarBorradorFacturaCliente,
   descartarBorradorFacturaCliente,
   type FacturaGenerada,
@@ -134,11 +135,12 @@ export function FacturasClient({
   const [showModalProveedor, setShowModalProveedor] = useState(false)
   const [showModalAuto, setShowModalAuto] = useState(false)
 
-  // Los borradores (estimaciones automáticas todavía sin aprobar) no
+  // Los borradores y las ya aprobadas-pero-sin-enviar (estimaciones
+  // automáticas que todavía no llegan al cliente, ver migración 099) no
   // cuentan como CxC real ni aparecen en la tabla normal -- se muestran
-  // aparte, en su propio panel, hasta que se aprueban o se descartan.
-  const borradores = facturasCliente.filter((f) => f.estado === "borrador")
-  const facturasClienteResueltas = facturasCliente.filter((f) => f.estado !== "borrador")
+  // aparte, en su propio panel, hasta que se envían o se descartan.
+  const pendientes = facturasCliente.filter((f) => f.estado === "borrador" || f.estado === "aprobada")
+  const facturasClienteResueltas = facturasCliente.filter((f) => f.estado !== "borrador" && f.estado !== "aprobada")
 
   // "CxC (por cobrar)" / "CxP (por pagar)" deben ser el SALDO pendiente
   // (facturado - ya cobrado/pagado), no el total facturado -- si no, una
@@ -152,9 +154,9 @@ export function FacturasClient({
 
   return (
     <div className="p-6 space-y-6">
-      {borradores.length > 0 && (
+      {pendientes.length > 0 && (
         <PanelBorradores
-          borradores={borradores}
+          borradores={pendientes}
           totalYaFacturado={totalFacturadoCliente}
           presupuestoVenta={proyectoActivoPresupuestoVenta ?? null}
         />
@@ -363,11 +365,11 @@ function PanelBorradores({
       <div className="flex items-center gap-2">
         <Send className="h-4 w-4 text-amber-600" />
         <h3 className="text-sm font-semibold text-amber-800">
-          {borradores.length === 1 ? "1 estimación pendiente de aprobar" : `${borradores.length} estimaciones pendientes de aprobar`}
+          {borradores.length === 1 ? "1 estimación pendiente" : `${borradores.length} estimaciones pendientes`}
         </h3>
       </div>
       <p className="text-xs text-amber-700">
-        Estas estimaciones automáticas todavía no se le han enviado al cliente ni cuentan en el CxC. Revísalas y apruébalas para que se vuelvan visibles en su portal (y se le mande el correo, si está configurado).
+        Estas estimaciones automáticas todavía no se le han enviado al cliente ni cuentan en el CxC. Primero Aprueba (revisión interna) y luego Envía cuando quieras que el cliente la vea en su portal (y le llegue el correo, si está configurado) -- son dos pasos separados.
       </p>
       <div className="space-y-2">
         {borradores.map((f) => (
@@ -413,10 +415,20 @@ function TarjetaBorrador({
   const porCobrar = presupuestoVenta != null ? Math.max(presupuestoVenta - facturadoAcumulado, 0) : null
 
   const handleAprobar = () => {
-    if (!window.confirm(`¿Aprobar y enviar esta estimación de ${formatExacto(f.monto)} al cliente?`)) return
+    if (!window.confirm(`¿Aprobar esta estimación de ${formatExacto(f.monto)}? Todavía no se le enviará al cliente -- eso se hace por separado con "Enviar".`)) return
     setError("")
     startTransition(async () => {
       const result = await aprobarFacturaCliente(f.id)
+      if (result.error) { setError(result.error); return }
+      window.location.reload()
+    })
+  }
+
+  const handleEnviar = () => {
+    if (!window.confirm(`¿Enviar esta estimación de ${formatExacto(f.monto)} al cliente? Se volverá visible en su portal y se le mandará el correo (si está configurado).`)) return
+    setError("")
+    startTransition(async () => {
+      const result = await enviarFacturaCliente(f.id)
       if (result.error) { setError(result.error); return }
       window.location.reload()
     })
@@ -447,9 +459,15 @@ function TarjetaBorrador({
     <div className="bg-white border border-amber-200 rounded-lg p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-800">
+          <p className="text-sm font-medium text-slate-800 flex items-center gap-2">
             <span className="font-mono text-[10px] text-slate-400 mr-1">{f.proyectos?.codigo}</span>
             {f.proyectos?.nombre} · {f.numero}
+            <span className={cn(
+              "text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0",
+              f.estado === "aprobada" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+            )}>
+              {f.estado === "aprobada" ? "Aprobada · sin enviar" : "Borrador"}
+            </span>
           </p>
           {f.periodo_inicio && f.periodo_fin && (
             <p className="text-[11px] text-slate-500 mt-0.5">Período: {f.periodo_inicio} al {f.periodo_fin}</p>
@@ -600,9 +618,15 @@ function TarjetaBorrador({
             <button onClick={handleDescartar} disabled={isPending} className="text-red-600 hover:text-red-800 disabled:opacity-50 inline-flex items-center gap-1 text-xs">
               <Trash2 className="h-3.5 w-3.5" /> Descartar
             </button>
-            <button onClick={handleAprobar} disabled={isPending} className="ml-auto text-emerald-700 hover:text-emerald-900 disabled:opacity-50 inline-flex items-center gap-1 text-xs font-medium">
-              <Send className="h-3.5 w-3.5" /> Aprobar y enviar
-            </button>
+            {f.estado === "aprobada" ? (
+              <button onClick={handleEnviar} disabled={isPending} className="ml-auto text-emerald-700 hover:text-emerald-900 disabled:opacity-50 inline-flex items-center gap-1 text-xs font-medium">
+                <Send className="h-3.5 w-3.5" /> Enviar
+              </button>
+            ) : (
+              <button onClick={handleAprobar} disabled={isPending} className="ml-auto text-emerald-700 hover:text-emerald-900 disabled:opacity-50 inline-flex items-center gap-1 text-xs font-medium">
+                <Check className="h-3.5 w-3.5" /> Aprobar
+              </button>
+            )}
           </div>
         </>
       )}
