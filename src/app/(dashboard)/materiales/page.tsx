@@ -56,7 +56,7 @@ async function getData() {
         .limit(20),
       supabase
         .from("facturas_gasto")
-        .select("id, fecha, lugar, referencia, foto_referencia, subtotal, tax_total, total, estado_analisis")
+        .select("id, fecha, lugar, referencia, foto_referencia, subtotal, tax_total, total, estado_analisis, posible_duplicado_nota")
         .eq("proyecto_id", proyectoActivo.id)
         .order("fecha", { ascending: false }),
       supabase

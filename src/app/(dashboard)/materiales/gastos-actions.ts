@@ -129,6 +129,29 @@ export async function crearFacturaGasto(input: FacturaGastoInput): Promise<{ err
   return { id: factura.id }
 }
 
+// Quita el aviso de "posible duplicado" de una factura -- para cuando el
+// usuario ya revisó y confirmó que sí son dos compras distintas (mismo
+// lugar/fecha/total por coincidencia, ej. dos viajes a Home Depot el
+// mismo día por el mismo monto).
+export async function descartarAvisoDuplicado(facturaId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  const { error } = await supabase
+    .from("facturas_gasto")
+    .update({ posible_duplicado_nota: null })
+    .eq("id", facturaId)
+
+  if (error) {
+    console.error("descartarAvisoDuplicado:", error)
+    return { error: "No se pudo descartar el aviso." }
+  }
+
+  revalidarTodo()
+  return {}
+}
+
 export async function eliminarFacturaGasto(facturaId: string): Promise<{ error?: string }> {
   const supabase = await createClient()
   const acceso = await verificarAcceso(supabase)
@@ -491,10 +514,47 @@ async function aplicarAnalisisAFactura(
         return
       }
 
+      const totalFinal = subtotal + taxTotal
       await supabase
         .from("facturas_gasto")
-        .update({ subtotal, tax_total: taxTotal, total: subtotal + taxTotal })
+        .update({ subtotal, tax_total: taxTotal, total: totalFinal })
         .eq("id", facturaId)
+
+      // ── Aviso de posible duplicado por CONTENIDO ──
+      // El hash de la foto (077) solo detecta cuando se sube el MISMO
+      // archivo dos veces. Si el usuario toma dos fotos distintas del
+      // mismo recibo físico, cada una es un archivo diferente y el hash
+      // no lo agarra. Esto compara lo que la IA ya leyó (lugar + fecha +
+      // total) contra otras facturas del mismo proyecto -- si coinciden,
+      // probablemente es el mismo ticket fotografiado dos veces. Solo
+      // avisa, no bloquea nada.
+      const lugarFinal = datos.lugar?.trim() || "Sin especificar"
+      const fechaFinal = datos.fecha || fechaOriginal
+      const { data: otras } = await supabase
+        .from("facturas_gasto")
+        .select("id, lugar, fecha, total, referencia")
+        .eq("proyecto_id", proyectoId)
+        .eq("fecha", fechaFinal)
+        .neq("id", facturaId)
+
+      const duplicado = (otras ?? []).find(
+        (f) =>
+          (f.lugar ?? "").trim().toLowerCase() === lugarFinal.toLowerCase() &&
+          Math.abs((f.total ?? 0) - totalFinal) < 0.01
+      )
+
+      if (duplicado) {
+        const nota = `Parece ser la misma compra que otra factura ya registrada: ${lugarFinal} · ${fechaFinal} · $${totalFinal.toFixed(2)}${duplicado.referencia ? ` (ref. de la otra: ${duplicado.referencia})` : ""}. Revisa y borra la que sobre.`
+        await supabase.from("facturas_gasto").update({ posible_duplicado_nota: nota }).eq("id", facturaId)
+        // Si la otra factura todavía no tenía el aviso, se lo ponemos
+        // también -- así se ve el aviso sin importar cuál de las dos
+        // se esté mirando en la lista.
+        await supabase
+          .from("facturas_gasto")
+          .update({ posible_duplicado_nota: nota })
+          .eq("id", duplicado.id)
+          .is("posible_duplicado_nota", null)
+      }
     }
   } catch (err) {
     console.error("aplicarAnalisisAFactura:", err)
@@ -629,6 +689,7 @@ export type FacturaActualizada = {
   tax_total: number
   total: number
   estado_analisis: string
+  posible_duplicado_nota: string | null
   lineas: LineaFacturaActualizada[]
 }
 
@@ -680,7 +741,7 @@ export async function reintentarAnalisisFactura(facturaId: string): Promise<{ er
 
   const { data: facturaFinal, error: errFinal } = await supabase
     .from("facturas_gasto")
-    .select("lugar, fecha, referencia, subtotal, tax_total, total, estado_analisis")
+    .select("lugar, fecha, referencia, subtotal, tax_total, total, estado_analisis, posible_duplicado_nota")
     .eq("id", facturaId)
     .single()
 

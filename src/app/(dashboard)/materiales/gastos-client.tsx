@@ -14,6 +14,7 @@ import {
   actualizarLineaGasto,
   eliminarLineaGasto,
   actualizarFacturaGasto,
+  descartarAvisoDuplicado,
   type LineaGastoInput,
   type FacturaActualizada,
 } from "./gastos-actions"
@@ -53,6 +54,7 @@ export type FacturaGasto = {
   tax_total: number
   total: number
   estado_analisis: string
+  posible_duplicado_nota?: string | null
   lineas: LineaCostoReal[]
 }
 
@@ -184,6 +186,14 @@ export function GastosClient({
         return
       }
       if (res.factura) mergeFacturaActualizada(facturaId, res.factura)
+    })
+  }
+
+  const handleDescartarDuplicado = (facturaId: string) => {
+    setFacturas((prev) => prev.map((f) => (f.id === facturaId ? { ...f, posible_duplicado_nota: null } : f)))
+    startTransition(async () => {
+      const res = await descartarAvisoDuplicado(facturaId)
+      if (res.error) alert(res.error)
     })
   }
 
@@ -407,6 +417,11 @@ export function GastosClient({
                           <AlertTriangle className="h-3 w-3" /> error al analizar
                         </span>
                       )}
+                      {f.posible_duplicado_nota && (
+                        <span className="ml-2 text-xs text-orange-600 inline-flex items-center gap-0.5">
+                          <AlertTriangle className="h-3 w-3" /> posible duplicado
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-slate-400">
                       {f.lineas.length} línea{f.lineas.length !== 1 ? "s" : ""}
@@ -489,6 +504,22 @@ export function GastosClient({
                             className="text-xs text-slate-400 hover:text-slate-700 flex items-center gap-1"
                           >
                             <Pencil className="h-3 w-3" /> Editar lugar / fecha / referencia
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {f.posible_duplicado_nota && (
+                      <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 flex items-center justify-between gap-3">
+                        <p className="text-xs text-orange-700">
+                          <AlertTriangle className="h-3 w-3 inline mr-1" /> {f.posible_duplicado_nota}
+                        </p>
+                        {puedeCrear && (
+                          <button
+                            onClick={() => handleDescartarDuplicado(f.id)}
+                            className="text-xs font-medium text-orange-800 hover:text-orange-950 shrink-0"
+                          >
+                            No es duplicado
                           </button>
                         )}
                       </div>
@@ -749,6 +780,25 @@ export function GastosClient({
 // foto archivada) y aparece en la lista como "analizando con IA…"; cuando
 // el análisis termine en segundo plano, ya va a tener sus líneas listas
 // para que el usuario les asigne la actividad cuando tenga tiempo.
+// En obra la señal suele ser mala -- sin esto, una subida que se cuelga
+// (wifi/datos lentos o caídos) deja al usuario mirando el spinner sin
+// ninguna salida, porque mientras subiendo=true no se puede ni cerrar el
+// modal. Envuelve la promesa con un límite de tiempo: si no resuelve en
+// ese plazo, se rechaza con un mensaje claro y el usuario recupera el
+// control (puede reintentar o cerrar). Ojo: esto NO cancela la subida en
+// curso -- si de verdad terminaba más tarde, puede quedar una factura
+// huérfana en la lista, pero ahora el aviso de "posible duplicado" (091)
+// ayuda a detectarlo si el usuario reintenta y crea otra.
+function conLimiteDeTiempo<T>(promesa: Promise<T>, ms: number, mensaje: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(mensaje)), ms)
+    promesa.then(
+      (v) => { clearTimeout(t); resolve(v) },
+      (e) => { clearTimeout(t); reject(e) }
+    )
+  })
+}
+
 function ModalSubirFoto({
   proyectoId,
   onClose,
@@ -766,46 +816,57 @@ function ModalSubirFoto({
     setError("")
     setSubiendo(true)
     ;(async () => {
-      const fileParaSubir = await comprimirFoto(file)
-      const fd = new FormData()
-      fd.append("foto", fileParaSubir)
-      let res = await crearFacturaBorradorConFoto(proyectoId, fd)
-
-      if (res.duplicado) {
-        const d = res.duplicado
-        const seguir = window.confirm(
-          `Esta misma foto ya se subió el ${formatoFecha(d.fecha)} como "${d.lugar}" (${formatoMoneda(d.total)}). ¿Subirla de todas formas?`
+      try {
+        const fileParaSubir = await comprimirFoto(file)
+        const fd = new FormData()
+        fd.append("foto", fileParaSubir)
+        let res = await conLimiteDeTiempo(
+          crearFacturaBorradorConFoto(proyectoId, fd),
+          45000,
+          "Está tardando demasiado -- probablemente la señal está mala. Cierra esto e intenta de nuevo cuando tengas mejor conexión."
         )
-        if (!seguir) {
+
+        if (res.duplicado) {
+          const d = res.duplicado
+          const seguir = window.confirm(
+            `Esta misma foto ya se subió el ${formatoFecha(d.fecha)} como "${d.lugar}" (${formatoMoneda(d.total)}). ¿Subirla de todas formas?`
+          )
+          if (!seguir) {
+            setSubiendo(false)
+            return
+          }
+          res = await conLimiteDeTiempo(
+            crearFacturaBorradorConFoto(proyectoId, fd, true),
+            45000,
+            "Está tardando demasiado -- probablemente la señal está mala. Cierra esto e intenta de nuevo cuando tengas mejor conexión."
+          )
+        }
+
+        if (res.error || !res.id) {
           setSubiendo(false)
+          setError(res.error || "No se pudo guardar la factura.")
           return
         }
-        res = await crearFacturaBorradorConFoto(proyectoId, fd, true)
-      }
-
-      if (res.error || !res.id) {
+        // No recargamos la página: si lo hiciéramos, el navegador cancelaría
+        // el análisis de IA que se dispara justo después de esto (ver
+        // handleFotoSubida), ya que recargar destruye la conexión en curso.
+        onCreada(res.id)
+      } catch (err) {
         setSubiendo(false)
-        setError(res.error || "No se pudo guardar la factura.")
-        return
+        setError(err instanceof Error ? err.message : "No se pudo subir la foto. Revisa tu conexión e intenta de nuevo.")
       }
-      // No recargamos la página: si lo hiciéramos, el navegador cancelaría
-      // el análisis de IA que se dispara justo después de esto (ver
-      // handleFotoSubida), ya que recargar destruye la conexión en curso.
-      onCreada(res.id)
     })()
   }
 
   return (
     <div
       className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget && !subiendo) onClose() }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 relative text-center">
-        {!subiendo && (
-          <button className="absolute right-4 top-4 text-slate-400 hover:text-slate-600" onClick={onClose}>
-            <X className="h-5 w-5" />
-          </button>
-        )}
+        <button className="absolute right-4 top-4 text-slate-400 hover:text-slate-600" onClick={onClose}>
+          <X className="h-5 w-5" />
+        </button>
 
         <Camera className="h-10 w-10 mx-auto mb-3 text-slate-300" />
         <h3 className="text-lg font-semibold text-slate-900 mb-1">Subir foto del recibo</h3>
@@ -818,7 +879,16 @@ function ModalSubirFoto({
         )}
 
         {subiendo ? (
-          <p className="text-sm text-slate-500 animate-pulse">Subiendo foto...</p>
+          <div className="space-y-2">
+            <p className="text-sm text-slate-500 animate-pulse">Subiendo foto...</p>
+            {/* Antes esto se quedaba pegado sin salida si la señal fallaba a
+                medio subir -- ahora siempre se puede cerrar, y aparte hay un
+                límite de tiempo (ver conLimiteDeTiempo) que muestra un error
+                claro si tarda demasiado. */}
+            <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-600 underline">
+              Cancelar y cerrar
+            </button>
+          </div>
         ) : (
           <label className="inline-flex items-center gap-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg px-4 py-2.5 cursor-pointer transition-colors">
             <Camera className="h-4 w-4" /> Tomar o elegir foto
