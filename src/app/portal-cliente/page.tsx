@@ -6,6 +6,15 @@ import { CalendarDays, MapPin, Camera, Receipt, ListChecks, ChevronDown } from "
 import { CerrarSesionBoton } from "./cerrar-sesion-boton"
 import { IdiomaToggle } from "./idioma-toggle"
 
+// Esta página ya hacía una llamada a la API de Anthropic para traducir
+// reportes (migración 098), y ahora además firma URLs de Storage para
+// las fotos (generales y por actividad, migraciones 103/104/105) --
+// varias llamadas de red seguidas pueden acercarse al límite por
+// defecto de las funciones de Vercel y cortarse a medio camino (mismo
+// problema ya resuelto así en reporte-diario/page.tsx y
+// historial/[id]/page.tsx).
+export const maxDuration = 60
+
 type Proyecto = {
   id: string
   codigo: string
@@ -410,54 +419,70 @@ export default async function PortalClientePage() {
   if (!perfil) redirect("/login")
   if (perfil.rol !== "cliente") redirect("/dashboard")
 
-  const [proyectoRes, avanceRes, avanceGeneralRes, reportesRes, facturasRes, fotosRes] = await Promise.all([
+  const [proyectoRes, avanceRes, avanceGeneralRes, reportesRes, facturasRes] = await Promise.all([
     supabase.rpc("cliente_ver_proyecto"),
     supabase.rpc("cliente_ver_avance"),
     supabase.rpc("cliente_ver_avance_general"),
     supabase.rpc("cliente_ver_reportes"),
     supabase.rpc("cliente_ver_facturas"),
-    // cliente_ver_fotos (migración 103) puede no existir todavía si esa
-    // migración no se ha corrido -- si falla, la sección de fotos
-    // simplemente sale vacía en vez de tumbar el portal completo.
-    supabase.rpc("cliente_ver_fotos"),
   ])
 
   const proyecto = proyectoRes.data as Proyecto | null
   const avance = (avanceRes.data ?? []) as Actividad[]
   const reportes = (reportesRes.data ?? []) as Reporte[]
   const facturas = (facturasRes.data ?? []) as Factura[]
-  const fotos = (fotosRes.data ?? []) as Foto[]
+
+  // cliente_ver_fotos (migración 103) va aparte del Promise.all de
+  // arriba y con try/catch propio: si esa migración (o la 104/105) no
+  // se ha corrido todavía, esto no debe tumbar el portal completo --
+  // solo esa sección sale vacía.
+  let fotos: Foto[] = []
+  try {
+    const fotosRes = await supabase.rpc("cliente_ver_fotos")
+    fotos = (fotosRes.data ?? []) as Foto[]
+  } catch (e) {
+    console.error("cliente_ver_fotos falló (¿falta correr la migración 103?):", e)
+  }
 
   // Fotos generales del proyecto: URL firmada (bucket privado), igual
   // patrón que archivos-proyecto.tsx / materiales/page.tsx. Si alguna
   // falla, esa foto simplemente no sale (nunca tumba el portal).
   if (fotos.length > 0) {
-    await Promise.all(
-      fotos.map(async (foto) => {
-        const { data: firmada } = await supabase.storage
-          .from("proyecto-archivos")
-          .createSignedUrl(foto.storage_path, 3600)
-        if (firmada?.signedUrl) foto.url = firmada.signedUrl
-      })
-    )
-  }
-
-  // Fotos de avance por actividad dentro de cada reporte (bucket
-  // privado 'reporte-fotos', migraciones 104/105) -- misma técnica de
-  // URL firmada que la galería general de arriba.
-  await Promise.all(
-    reportes.flatMap((r) =>
-      (r.fotos_por_actividad ?? []).flatMap((grupo) =>
-        grupo.fotos.map(async (foto) => {
-          if (!foto.storage_path) return
+    try {
+      await Promise.all(
+        fotos.map(async (foto) => {
           const { data: firmada } = await supabase.storage
-            .from("reporte-fotos")
+            .from("proyecto-archivos")
             .createSignedUrl(foto.storage_path, 3600)
           if (firmada?.signedUrl) foto.url = firmada.signedUrl
         })
       )
+    } catch (e) {
+      console.error("Firmar URLs de fotos del proyecto falló:", e)
+    }
+  }
+
+  // Fotos de avance por actividad dentro de cada reporte (bucket
+  // privado 'reporte-fotos', migraciones 104/105) -- misma técnica de
+  // URL firmada que la galería general de arriba. Si el bucket todavía
+  // no existe (104 no corrida), no debe tumbar el portal.
+  try {
+    await Promise.all(
+      reportes.flatMap((r) =>
+        (r.fotos_por_actividad ?? []).flatMap((grupo) =>
+          grupo.fotos.map(async (foto) => {
+            if (!foto.storage_path) return
+            const { data: firmada } = await supabase.storage
+              .from("reporte-fotos")
+              .createSignedUrl(foto.storage_path, 3600)
+            if (firmada?.signedUrl) foto.url = firmada.signedUrl
+          })
+        )
+      )
     )
-  )
+  } catch (e) {
+    console.error("Firmar URLs de fotos de reporte falló:", e)
+  }
 
   if (!proyecto) {
     return (
