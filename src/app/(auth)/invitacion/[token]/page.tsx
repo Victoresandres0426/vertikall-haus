@@ -124,8 +124,15 @@ export default function InvitacionPage({ params }: { params: Promise<{ token: st
           <h1 className="text-2xl font-bold text-white mb-2">Invitación no válida</h1>
           <p className="text-slate-400 text-sm max-w-sm">
             Este link de invitación ha expirado, ya fue usado, o no existe.
-            Solicita a tu administrador que genere uno nuevo.
+            Si ya activaste tu cuenta antes, inicia sesión normalmente abajo.
+            Si no, solicita a tu administrador que genere una invitación nueva.
           </p>
+          <a
+            href="/login"
+            className="inline-block mt-6 px-6 py-2 bg-white text-slate-900 rounded-lg text-sm font-medium hover:bg-slate-100 transition-colors"
+          >
+            Ir al inicio de sesión
+          </a>
         </div>
       </div>
     )
