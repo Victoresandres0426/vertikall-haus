@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { Fragment, useState, useTransition } from "react"
 import { Plus, X, CheckCircle2, Receipt, Zap, Pencil, Trash2, Send } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -24,6 +24,13 @@ export type DesglosePeriodo = {
   monto_bruto: number
 }
 
+export type ActividadDelGrupo = {
+  actividad_id: string
+  codigo: string | null
+  nombre: string
+  avance_actual_pct: number
+}
+
 export type DesgloseActividad = {
   actividad_id: string
   actividad_codigo: string | null
@@ -34,6 +41,12 @@ export type DesgloseActividad = {
   // son opcionales.
   monto_amortizado?: number
   monto_neto?: number
+  // Presentes solo cuando el proyecto factura agrupado por disciplina
+  // (migración 094). Si "actividades" existe, este renglón es un
+  // encabezado de disciplina y "actividades" son sus sub-renglones
+  // informativos (sin valor en dinero).
+  disciplina?: string
+  actividades?: ActividadDelGrupo[]
 }
 
 export type FacturaCliente = {
@@ -467,6 +480,36 @@ function TarjetaBorrador({
             <tbody className="divide-y divide-slate-200">
               {f.desglose_actividades.map((d) => {
                 const tieneAmortizacion = d.monto_amortizado !== undefined && d.monto_neto !== undefined
+
+                if (d.actividades) {
+                  // Renglón agrupado por disciplina (migración 094): fila
+                  // de encabezado con $ + sub-filas informativas por
+                  // actividad, sin valor en dinero.
+                  return (
+                    <Fragment key={`grupo-${d.disciplina}`}>
+                      <tr className="text-slate-800 bg-slate-50/70 font-medium">
+                        <td className="px-2 py-1.5">{d.disciplina}</td>
+                        <td className="text-right px-2 py-1.5 text-slate-400">{d.avance_pct}%</td>
+                        <td className="text-right px-2 py-1.5">{formatExacto(d.monto_bruto)}</td>
+                        <td className="text-right px-2 py-1.5 text-amber-600">
+                          {tieneAmortizacion && d.monto_amortizado! > 0 ? `−${formatExacto(d.monto_amortizado!)}` : "—"}
+                        </td>
+                        <td className="text-right px-2 py-1.5 font-medium text-slate-800">
+                          {formatExacto(tieneAmortizacion ? d.monto_neto! : d.monto_bruto)}
+                        </td>
+                      </tr>
+                      {d.actividades.map((sub) => (
+                        <tr key={sub.actividad_id} className="text-slate-400">
+                          <td className="pl-5 pr-2 py-1">
+                            {sub.codigo ? `${sub.codigo} — ` : ""}{sub.nombre}
+                          </td>
+                          <td className="text-right px-2 py-1" colSpan={4}>{sub.avance_actual_pct}% avance actual</td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  )
+                }
+
                 return (
                   <tr key={d.actividad_id} className="text-slate-600">
                     <td className="px-2 py-1.5">

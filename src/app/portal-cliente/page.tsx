@@ -1,3 +1,4 @@
+import { Fragment } from "react"
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import Image from "next/image"
@@ -51,6 +52,21 @@ type DesglosePeriodo = {
   monto_bruto: number
 }
 
+// Actividad individual dentro de un grupo de disciplina (migración 094)
+// -- solo trae su avance ACUMULADO actual, sin montos en dinero.
+type ActividadDelGrupo = {
+  actividad_id: string
+  codigo: string | null
+  nombre: string
+  nombre_en?: string | null
+  avance_actual_pct: number
+}
+
+// Un renglón del desglose puede venir en dos formatos:
+// - Plano (como siempre, por actividad individual) -- proyectos sin
+//   disciplina_presupuesto cargada.
+// - Agrupado por disciplina (migración 094, trae "actividades") --
+//   cuando el proyecto sí tiene esa clasificación.
 type DesgloseActividad = {
   actividad_id: string
   actividad_codigo: string | null
@@ -64,6 +80,10 @@ type DesgloseActividad = {
   // son opcionales.
   monto_amortizado?: number
   monto_neto?: number
+  // Presentes solo en el formato agrupado por disciplina.
+  disciplina?: string
+  disciplina_en?: string
+  actividades?: ActividadDelGrupo[]
 }
 
 type Factura = {
@@ -146,6 +166,7 @@ const t = {
     ejecutado: "Ejecutado",
     amortAnticipo: "Amort. anticipo",
     aCobrar: "A cobrar",
+    avanceActual: "avance actual",
     avanceReconocido: "Avance reconocido este período",
     amortizacionAplicada: "Amortización de anticipo aplicada",
     retencion: "Retención",
@@ -175,6 +196,7 @@ const t = {
     ejecutado: "Amount",
     amortAnticipo: "Deposit amort.",
     aCobrar: "Due",
+    avanceActual: "current progress",
     avanceReconocido: "Progress recognized this period",
     amortizacionAplicada: "Deposit amortization applied",
     retencion: "Retention",
@@ -560,6 +582,36 @@ export default async function PortalClientePage() {
                                 <tbody className="divide-y divide-slate-100 bg-white">
                                   {f.desglose_actividades!.map((d) => {
                                     const tieneAmortizacion = d.monto_amortizado !== undefined && d.monto_neto !== undefined
+                                    // Formato agrupado por disciplina (migración 094): fila con $
+                                    // + sub-filas de actividades solo con su avance actual, sin $.
+                                    if (d.actividades) {
+                                      const nombreDisciplina = facturaEnIngles ? (d.disciplina_en || d.disciplina) : d.disciplina
+                                      return (
+                                        <Fragment key={`grupo-${nombreDisciplina}`}>
+                                          <tr className="text-slate-800 bg-slate-50/70">
+                                            <td className="px-2 py-1 font-semibold">{nombreDisciplina}</td>
+                                            <td className="text-right px-2 py-1 font-semibold">{d.avance_pct}%</td>
+                                            <td className="text-right px-2 py-1 font-semibold">{formatoMoneda(d.monto_bruto)}</td>
+                                            <td className="text-right px-2 py-1 font-semibold text-amber-600">
+                                              {tieneAmortizacion && d.monto_amortizado! > 0 ? `−${formatoMoneda(d.monto_amortizado!)}` : "—"}
+                                            </td>
+                                            <td className="text-right px-2 py-1 font-semibold text-slate-700">
+                                              {formatoMoneda(tieneAmortizacion ? d.monto_neto! : d.monto_bruto)}
+                                            </td>
+                                          </tr>
+                                          {d.actividades.map((sub) => {
+                                            const nombreSub = facturaEnIngles ? (sub.nombre_en || sub.nombre) : sub.nombre
+                                            return (
+                                              <tr key={sub.actividad_id} className="text-slate-400">
+                                                <td className="pl-5 pr-2 py-1">{sub.codigo ? `${sub.codigo} — ` : ""}{nombreSub}</td>
+                                                <td className="text-right px-2 py-1" colSpan={4}>{sub.avance_actual_pct}% {tf.avanceActual}</td>
+                                              </tr>
+                                            )
+                                          })}
+                                        </Fragment>
+                                      )
+                                    }
+                                    // Formato plano (proyectos sin disciplina_presupuesto).
                                     const nombreMostrado = facturaEnIngles ? (d.actividad_nombre_en || d.actividad_nombre) : d.actividad_nombre
                                     return (
                                       <tr key={d.actividad_id} className="text-slate-500">
