@@ -11,6 +11,11 @@ import {
   type TrabajadorDia,
 } from "@/lib/engine/rendimiento"
 
+// actualizarReporteDiario también dispara el motor de reglas (CPM + IIDP
+// + alertas) -- mismo margen extra que en reporte-diario/page.tsx para
+// evitar que se corte la conexión a medio guardado.
+export const maxDuration = 60
+
 const ROLES_EDITAN = ["dueno", "superadmin", "administrador", "project_manager"]
 
 export default async function HistorialReporteDetallePage({ params }: { params: Promise<{ id: string }> }) {

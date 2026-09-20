@@ -377,6 +377,11 @@ export function HistorialEditClient({
     )
 
     startTransition(async () => {
+      // Igual que en reporte-client.tsx: sin try/catch, una falla a nivel
+      // de red (timeout del motor de reglas, conexión cortada) revienta la
+      // promesa sin capturar y se ve como la pantalla nativa de error en
+      // vez de un mensaje claro aquí.
+      try {
       const res = await actualizarReporteDiario({
         reporte_id: reporteId,
         proyecto_id: proyectoId,
@@ -397,6 +402,12 @@ export function HistorialEditClient({
         // por registrar_asistencia_actividad al guardar) se quedaría
         // mostrando el valor viejo hasta salir y volver a entrar.
         window.location.reload()
+      }
+      } catch (err) {
+        console.error("actualizarReporteDiario falló:", err)
+        setError(
+          "No se pudo guardar la edición -- probablemente la conexión se cortó o el servidor tardó demasiado. Intenta de nuevo."
+        )
       }
     })
   }

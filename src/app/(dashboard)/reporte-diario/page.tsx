@@ -4,6 +4,14 @@ import { ReporteClient } from "./reporte-client"
 import type { ActividadDB, TrabajadorDB, ProyectoSimple } from "./reporte-client"
 import { getProyectoActivoId, resolverProyectoActivo } from "@/lib/proyecto-activo"
 
+// crearReporteDiario dispara el motor de reglas (CPM + IIDP + alertas)
+// después de guardar -- en proyectos con mucho historial (o reportes
+// atrasados que disparan más recálculo) puede acercarse al límite por
+// defecto de las funciones de Vercel. Le da más margen para no cortar
+// la conexión a medio guardado (lo que el usuario ve como una pantalla
+// de "This page couldn't load" en vez de un error claro).
+export const maxDuration = 60
+
 async function getData(): Promise<{
   proyectos: ProyectoSimple[]
   todosLosProyectos: ProyectoSimple[]

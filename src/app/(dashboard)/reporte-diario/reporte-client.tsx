@@ -404,7 +404,13 @@ export function ReporteClient({
   const handleEnviar = () => {
     setErrorEnvio(null)
     startTransition(async () => {
-      const result = await crearReporteDiario({
+      // Sin este try/catch, si la acción de servidor falla a nivel de red
+      // (timeout, conexión cortada) en vez de devolver un error normal, la
+      // promesa revienta sin capturar -- eso es lo que se veía como la
+      // pantalla nativa "This page couldn't load" en vez de un mensaje
+      // claro aquí en el formulario.
+      try {
+        const result = await crearReporteDiario({
         proyecto_id: proyectoId,
         fecha,
         clima,
@@ -438,11 +444,17 @@ export function ReporteClient({
                 avance_cantidad: s.avance > 0 ? s.avance : undefined,
               }))
           ),
-      })
-      if (result.error) {
-        setErrorEnvio(result.error)
-      } else {
-        setEnviado(true)
+        })
+        if (result.error) {
+          setErrorEnvio(result.error)
+        } else {
+          setEnviado(true)
+        }
+      } catch (err) {
+        console.error("crearReporteDiario falló:", err)
+        setErrorEnvio(
+          "No se pudo enviar el reporte -- probablemente la conexión se cortó a medio camino o el servidor tardó demasiado. Intenta de nuevo; si ya se guardó, lo verás duplicado en el historial y avísame."
+        )
       }
     })
   }
