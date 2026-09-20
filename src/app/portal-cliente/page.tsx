@@ -119,12 +119,27 @@ const estadoProyectoLabel: Record<string, string> = {
   cancelado: "Cancelado",
 }
 
+const estadoProyectoLabelEn: Record<string, string> = {
+  activo: "In progress",
+  pausado: "Paused",
+  completado: "Completed",
+  cancelado: "Cancelled",
+}
+
 const estadoActividadLabel: Record<string, string> = {
   no_iniciada: "No iniciada",
   en_progreso: "En progreso",
   completada: "Completada",
   bloqueada: "Bloqueada",
   cancelada: "Cancelada",
+}
+
+const estadoActividadLabelEn: Record<string, string> = {
+  no_iniciada: "Not started",
+  en_progreso: "In progress",
+  completada: "Completed",
+  bloqueada: "Blocked",
+  cancelada: "Cancelled",
 }
 
 const estadoFacturaLabel: Record<string, string> = {
@@ -135,9 +150,10 @@ const estadoFacturaLabel: Record<string, string> = {
   en_disputa: "En disputa",
 }
 
-// Traducciones para la sección "Facturas" del portal (correo + factura,
-// ver migración 092). El resto del portal (cronograma, reportes) sigue
-// en español -- ver alcance en el comentario de esa migración.
+// Traducciones de todo el portal según idioma_cliente (migración 096
+// extiende el alcance original de la migración 092, que solo cubría
+// la sección "Facturas", a las demás secciones: resumen, cronograma,
+// reportes).
 const estadoFacturaLabelEn: Record<string, string> = {
   enviada: "Sent",
   parcialmente_pagada: "Partially paid",
@@ -176,6 +192,24 @@ const t = {
     amortizacionAplicada: "Amortización de anticipo aplicada",
     retencion: "Retención",
     totalAPagar: "Total a pagar",
+    portalCliente: "Portal del cliente",
+    inicio: "Inicio",
+    entregaEstimada: "Entrega estimada",
+    avanceGeneral: "Avance general",
+    montoContratado: "Monto contratado",
+    avanceRealLabel: "Avance real",
+    avanceSegunPlan: "Avance según plan (a hoy)",
+    adelantadoPlan: "Adelantado al plan por",
+    enLineaConPlan: "En línea con el plan",
+    detrasDelPlan: "detrás del plan",
+    cronogramaYAvance: "Cronograma y avance",
+    sinActividades: "Aún no hay actividades cargadas.",
+    actividad: "actividad",
+    actividades: "actividades",
+    fotosYReportes: "Fotos y reportes de obra",
+    sinReportes: "Todavía no hay reportes publicados.",
+    cuentaSinProyecto: "Tu cuenta todavía no tiene un proyecto asignado.",
+    contactaContacto: "Contacta a tu contacto en Vertikall Haus.",
   },
   en: {
     facturas: "Invoices",
@@ -206,6 +240,24 @@ const t = {
     amortizacionAplicada: "Deposit amortization applied",
     retencion: "Retention",
     totalAPagar: "Total due",
+    portalCliente: "Client portal",
+    inicio: "Start",
+    entregaEstimada: "Estimated delivery",
+    avanceGeneral: "Overall progress",
+    montoContratado: "Contracted amount",
+    avanceRealLabel: "Actual progress",
+    avanceSegunPlan: "Planned progress (as of today)",
+    adelantadoPlan: "Ahead of plan by",
+    enLineaConPlan: "On track with plan",
+    detrasDelPlan: "behind plan",
+    cronogramaYAvance: "Schedule and progress",
+    sinActividades: "No activities loaded yet.",
+    actividad: "activity",
+    actividades: "activities",
+    fotosYReportes: "Site photos and reports",
+    sinReportes: "No reports published yet.",
+    cuentaSinProyecto: "Your account doesn't have a project assigned yet.",
+    contactaContacto: "Contact your Vertikall Haus representative.",
   },
 } as const
 
@@ -318,11 +370,13 @@ export default async function PortalClientePage() {
   const avancePagado = facturasAvance.reduce((s, f) => s + Number(f.monto_cobrado ?? 0), 0)
   const saldoPendienteContrato = Math.max((proyecto.presupuesto_venta ?? 0) - totalCobrado, 0)
 
-  // Alcance inicial (ver migración 092): solo la sección "Facturas" de
-  // este portal respeta el idioma del cliente -- el resto de la página
-  // (cronograma, reportes) sigue en español por ahora.
+  // Idioma del cliente aplicado a todo el portal (migración 096 amplía
+  // el alcance original de la migración 092, que solo cubría la
+  // sección "Facturas").
   const facturaEnIngles = proyecto.idioma_cliente === "en"
   const tf = t[facturaEnIngles ? "en" : "es"]
+  const estadoProyectoLabelActivo = facturaEnIngles ? estadoProyectoLabelEn : estadoProyectoLabel
+  const estadoActividadLabelActivo = facturaEnIngles ? estadoActividadLabelEn : estadoActividadLabel
 
   return (
     <div className="min-h-screen bg-[#F7F9FC]">
@@ -332,7 +386,7 @@ export default async function PortalClientePage() {
           <div className="flex items-center gap-3">
             <Image src="/logo/mark.png" alt="Vertikall Haus" width={36} height={54} className="h-9 w-auto" />
             <div>
-              <p className="text-[10px] font-semibold tracking-[0.2em] text-[#3B72D8] uppercase">Portal del cliente</p>
+              <p className="text-[10px] font-semibold tracking-[0.2em] text-[#3B72D8] uppercase">{tf.portalCliente}</p>
               <h1 className="text-lg font-bold text-[#0F2040]">{proyecto.nombre}</h1>
             </div>
           </div>
@@ -357,28 +411,28 @@ export default async function PortalClientePage() {
               )}
             </div>
             <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#3B72D8]/10 text-[#3B72D8]">
-              {estadoProyectoLabel[proyecto.estado] ?? proyecto.estado}
+              {estadoProyectoLabelActivo[proyecto.estado] ?? proyecto.estado}
             </span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-5 border-t border-slate-100">
             <div>
-              <p className="text-xs text-slate-400 flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Inicio</p>
-              <p className="text-sm font-semibold text-slate-800">{formatoFecha(proyecto.fecha_inicio_real ?? proyecto.fecha_inicio_plan)}</p>
+              <p className="text-xs text-slate-400 flex items-center gap-1"><CalendarDays className="h-3 w-3" /> {tf.inicio}</p>
+              <p className="text-sm font-semibold text-slate-800">{formatoFecha(proyecto.fecha_inicio_real ?? proyecto.fecha_inicio_plan, facturaEnIngles)}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-400 flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Entrega estimada</p>
-              <p className="text-sm font-semibold text-slate-800">{formatoFecha(proyecto.fecha_fin_forecast ?? proyecto.fecha_fin_plan)}</p>
+              <p className="text-xs text-slate-400 flex items-center gap-1"><CalendarDays className="h-3 w-3" /> {tf.entregaEstimada}</p>
+              <p className="text-sm font-semibold text-slate-800">{formatoFecha(proyecto.fecha_fin_forecast ?? proyecto.fecha_fin_plan, facturaEnIngles)}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-400">Avance general</p>
+              <p className="text-xs text-slate-400">{tf.avanceGeneral}</p>
               <p className="text-sm font-semibold text-slate-800">
                 {avanceReal}%
                 {avancePlan != null && <span className="text-xs font-normal text-slate-400"> · plan {avancePlan}%</span>}
               </p>
             </div>
             <div>
-              <p className="text-xs text-slate-400">Monto contratado</p>
+              <p className="text-xs text-slate-400">{tf.montoContratado}</p>
               <p className="text-sm font-semibold text-slate-800">{formatoMoneda(proyecto.presupuesto_venta)}</p>
             </div>
           </div>
@@ -386,7 +440,7 @@ export default async function PortalClientePage() {
           <div className="mt-4 space-y-2">
             <div>
               <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-                <span>Avance real</span><span>{avanceReal}%</span>
+                <span>{tf.avanceRealLabel}</span><span>{avanceReal}%</span>
               </div>
               <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                 <div className="h-full rounded-full bg-[#3B72D8] transition-all" style={{ width: `${Math.min(100, Math.max(0, avanceReal))}%` }} />
@@ -395,7 +449,7 @@ export default async function PortalClientePage() {
             {avancePlan != null && (
               <div>
                 <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-                  <span>Avance según plan (a hoy)</span><span>{avancePlan}%</span>
+                  <span>{tf.avanceSegunPlan}</span><span>{avancePlan}%</span>
                 </div>
                 <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                   <div className="h-full rounded-full bg-slate-400 transition-all" style={{ width: `${Math.min(100, Math.max(0, avancePlan))}%` }} />
@@ -405,10 +459,10 @@ export default async function PortalClientePage() {
             {diferenciaPlan != null && (
               <p className={`text-xs font-medium ${diferenciaPlan >= -3 ? "text-emerald-600" : "text-amber-600"}`}>
                 {diferenciaPlan >= 3
-                  ? `Adelantado al plan por ${Math.round(diferenciaPlan)}%`
+                  ? `${tf.adelantadoPlan} ${Math.round(diferenciaPlan)}%`
                   : diferenciaPlan >= -3
-                    ? "En línea con el plan"
-                    : `${Math.abs(Math.round(diferenciaPlan))}% detrás del plan`}
+                    ? tf.enLineaConPlan
+                    : `${Math.abs(Math.round(diferenciaPlan))}% ${tf.detrasDelPlan}`}
               </p>
             )}
           </div>
@@ -417,10 +471,10 @@ export default async function PortalClientePage() {
         {/* Cronograma / avance */}
         <section>
           <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-3">
-            <ListChecks className="h-4 w-4 text-slate-400" /> Cronograma y avance
+            <ListChecks className="h-4 w-4 text-slate-400" /> {tf.cronogramaYAvance}
           </h3>
           {procesos.length === 0 ? (
-            <p className="text-sm text-slate-400 bg-white border border-slate-200 rounded-xl p-5">Aún no hay actividades cargadas.</p>
+            <p className="text-sm text-slate-400 bg-white border border-slate-200 rounded-xl p-5">{tf.sinActividades}</p>
           ) : (
             <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100 overflow-hidden">
               {procesos.map((proc) => {
@@ -432,7 +486,7 @@ export default async function PortalClientePage() {
                     <summary className="flex items-center justify-between gap-2 cursor-pointer list-none marker:content-none [&::-webkit-details-marker]:hidden">
                       <span className="text-sm font-semibold text-slate-800">{proc.nombre}</span>
                       <span className="flex items-center gap-2 text-xs text-slate-400 shrink-0">
-                        {avanceProc}% · {proc.actividades.length} actividad{proc.actividades.length !== 1 ? "es" : ""}
+                        {avanceProc}% · {proc.actividades.length} {proc.actividades.length !== 1 ? tf.actividades : tf.actividad}
                         <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
                       </span>
                     </summary>
@@ -442,7 +496,7 @@ export default async function PortalClientePage() {
                           <div className="flex items-center justify-between gap-2 mb-1">
                             <span className="text-sm text-slate-700 truncate">{a.nombre}</span>
                             <span className="text-xs text-slate-400 shrink-0">
-                              {estadoActividadLabel[a.estado] ?? a.estado} · {Math.round(a.avance_porcentaje ?? 0)}%
+                              {estadoActividadLabelActivo[a.estado] ?? a.estado} · {Math.round(a.avance_porcentaje ?? 0)}%
                             </span>
                           </div>
                           <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
@@ -464,16 +518,16 @@ export default async function PortalClientePage() {
         {/* Reportes y fotos */}
         <section>
           <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-3">
-            <Camera className="h-4 w-4 text-slate-400" /> Fotos y reportes de obra
+            <Camera className="h-4 w-4 text-slate-400" /> {tf.fotosYReportes}
           </h3>
           {reportes.length === 0 ? (
-            <p className="text-sm text-slate-400 bg-white border border-slate-200 rounded-xl p-5">Todavía no hay reportes publicados.</p>
+            <p className="text-sm text-slate-400 bg-white border border-slate-200 rounded-xl p-5">{tf.sinReportes}</p>
           ) : (
             <div className="space-y-4">
               {reportes.map((r, i) => (
                 <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm font-semibold text-slate-800">{formatoFecha(r.fecha)}</p>
+                    <p className="text-sm font-semibold text-slate-800">{formatoFecha(r.fecha, facturaEnIngles)}</p>
                     {r.clima && <span className="text-xs text-slate-400">{r.clima}</span>}
                   </div>
                   {r.observaciones_generales && (
