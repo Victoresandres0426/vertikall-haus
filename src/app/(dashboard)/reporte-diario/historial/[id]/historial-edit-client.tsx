@@ -314,12 +314,19 @@ export function HistorialEditClient({
         // cual (no se pisa con "suma" indefinida) hasta que algún split
         // vuelva a apuntarle a esta actividad.
         if (suma === undefined) return r
-        if (suma === r.cantidadHoy) return r
-        cambio = true
         const act = actividadPorId.get(r.actividadId)
         const objetivo = act?.cantidad_objetivo ?? 0
         const base = baseSinEsteReporte(r.actividadId)
         const pct = objetivo > 0 ? Math.round(((base + suma) / objetivo) * 100) : r.porcentajeTotal
+        // OJO: el % acumulado se recalcula SIEMPRE (no solo cuando cambia
+        // "suma"), porque "base" viene de la corrección de OTRO reporte de
+        // la misma actividad -- si alguien corrigió el día 16, el % que
+        // quedó guardado en el renglón del día 17 sigue siendo el viejo
+        // (105%) aunque su propia cantidad (50) no haya cambiado. Sin
+        // esto, el % mostrado aquí queda desfasado del de Actividades
+        // hasta que alguien edite ese renglón a mano.
+        if (suma === r.cantidadHoy && pct === r.porcentajeTotal) return r
+        cambio = true
         return { ...r, cantidadHoy: suma, porcentajeTotal: pct }
       })
       for (const [actividadId, suma] of Object.entries(sumas)) {
