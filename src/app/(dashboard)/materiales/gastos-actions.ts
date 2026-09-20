@@ -524,12 +524,22 @@ async function aplicarAnalisisAFactura(
       // El hash de la foto (077) solo detecta cuando se sube el MISMO
       // archivo dos veces. Si el usuario toma dos fotos distintas del
       // mismo recibo físico, cada una es un archivo diferente y el hash
-      // no lo agarra. Esto compara lo que la IA ya leyó (lugar + fecha +
-      // total) contra otras facturas del mismo proyecto -- si coinciden,
-      // probablemente es el mismo ticket fotografiado dos veces. Solo
-      // avisa, no bloquea nada.
+      // no lo agarra. Esto compara lo que la IA ya leyó contra otras
+      // facturas del mismo proyecto -- si coincide, probablemente es el
+      // mismo ticket fotografiado dos veces. Solo avisa, no bloquea nada.
+      //
+      // El lugar NO alcanza como único criterio: la IA lo lee distinto
+      // entre una foto y otra del mismo recibo por variaciones de ángulo
+      // o nitidez (ej. "The Home Depot - Miami Beach, FL" vs. "The Home
+      // Depot - N Miami Beach, FL", perdiendo la "N"). El número de
+      // referencia impreso en el ticket es mucho más confiable -- se
+      // normaliza (solo letras/números, sin espacios ni puntuación) para
+      // que coincida aunque la IA haya leído "0251-00034-79938" en una
+      // foto y "0251 00034 79938" en la otra.
+      const normalizarRef = (s: string | null | undefined) => (s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "")
       const lugarFinal = datos.lugar?.trim() || "Sin especificar"
       const fechaFinal = datos.fecha || fechaOriginal
+      const refFinal = normalizarRef(datos.referencia)
       const { data: otras } = await supabase
         .from("facturas_gasto")
         .select("id, lugar, fecha, total, referencia")
@@ -537,11 +547,12 @@ async function aplicarAnalisisAFactura(
         .eq("fecha", fechaFinal)
         .neq("id", facturaId)
 
-      const duplicado = (otras ?? []).find(
-        (f) =>
-          (f.lugar ?? "").trim().toLowerCase() === lugarFinal.toLowerCase() &&
-          Math.abs((f.total ?? 0) - totalFinal) < 0.01
-      )
+      const duplicado = (otras ?? []).find((f) => {
+        if (Math.abs((f.total ?? 0) - totalFinal) >= 0.01) return false
+        const mismaRef = refFinal.length > 0 && normalizarRef(f.referencia) === refFinal
+        const mismoLugar = (f.lugar ?? "").trim().toLowerCase() === lugarFinal.toLowerCase()
+        return mismaRef || mismoLugar
+      })
 
       if (duplicado) {
         const nota = `Parece ser la misma compra que otra factura ya registrada: ${lugarFinal} · ${fechaFinal} · $${totalFinal.toFixed(2)}${duplicado.referencia ? ` (ref. de la otra: ${duplicado.referencia})` : ""}. Revisa y borra la que sobre.`
