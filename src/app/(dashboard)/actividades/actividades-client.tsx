@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils"
 import {
   actualizarProyectoInfo, crearProceso, actualizarProceso, eliminarProceso,
   crearActividad, actualizarActividad, eliminarActividad,
-  obtenerHistorialAvance, traducirActividadesAlIngles,
+  obtenerHistorialAvance, traducirActividadesAlIngles, traducirProcesosAlIngles,
   type ProyectoInfoInput, type ActividadInput, type EntradaHistorialAvance,
 } from "./actions"
 
@@ -50,6 +50,10 @@ type Proceso = {
   id: string
   codigo: string
   nombre: string
+  // Nombre en inglés -- se usa en el Cronograma del portal del
+  // cliente cuando el proyecto tiene idioma_cliente='en'. Opcional:
+  // si queda vacío, el portal cae de vuelta al nombre en español.
+  nombre_en: string | null
   orden: number
   actividades: Actividad[]
 }
@@ -139,9 +143,9 @@ export function ActividadesClient({
 
   // Edición / creación de procesos
   const [editandoProcesoId, setEditandoProcesoId] = useState<string | null>(null)
-  const [draftProceso, setDraftProceso] = useState<{ codigo: string; nombre: string } | null>(null)
+  const [draftProceso, setDraftProceso] = useState<{ codigo: string; nombre: string; nombre_en: string | null } | null>(null)
   const [creandoProcesoEn, setCreandoProcesoEn] = useState<string | null>(null)
-  const [draftNuevoProceso, setDraftNuevoProceso] = useState({ codigo: "", nombre: "" })
+  const [draftNuevoProceso, setDraftNuevoProceso] = useState<{ codigo: string; nombre: string; nombre_en: string | null }>({ codigo: "", nombre: "", nombre_en: null })
 
   // Edición / creación de actividades
   const [editandoActividadId, setEditandoActividadId] = useState<string | null>(null)
@@ -166,11 +170,22 @@ export function ActividadesClient({
     setTraduciendoProyectoId(proyectoId)
     setTraduccionMsg(null)
     startTransition(async () => {
-      const res = await traducirActividadesAlIngles(proyectoId)
+      const [resActividades, resProcesos] = await Promise.all([
+        traducirActividadesAlIngles(proyectoId),
+        traducirProcesosAlIngles(proyectoId),
+      ])
       setTraduciendoProyectoId(null)
-      if (res.error) setTraduccionMsg(res.error)
-      else if (res.traducidas === 0) setTraduccionMsg("Todas las actividades ya tenían nombre en inglés.")
-      else setTraduccionMsg(`Se tradujeron ${res.traducidas} actividad(es). Puedes corregir cualquiera a mano abajo.`)
+      if (resActividades.error || resProcesos.error) {
+        setTraduccionMsg(resActividades.error || resProcesos.error || "Error al traducir.")
+        return
+      }
+      const totalActividades = resActividades.traducidas ?? 0
+      const totalProcesos = resProcesos.traducidas ?? 0
+      if (totalActividades === 0 && totalProcesos === 0) {
+        setTraduccionMsg("Todo (actividades y procesos) ya tenía nombre en inglés.")
+      } else {
+        setTraduccionMsg(`Se tradujeron ${totalActividades} actividad(es) y ${totalProcesos} proceso(s). Puedes corregir cualquiera a mano abajo.`)
+      }
     })
   }
 
@@ -216,14 +231,14 @@ export function ActividadesClient({
   const iniciarEdicionProceso = (proc: Proceso) => {
     setError(null)
     setEditandoProcesoId(proc.id)
-    setDraftProceso({ codigo: proc.codigo, nombre: proc.nombre })
+    setDraftProceso({ codigo: proc.codigo, nombre: proc.nombre, nombre_en: proc.nombre_en })
   }
 
   const guardarProceso = (procesoId: string) => {
     if (!draftProceso) return
     setError(null)
     startTransition(async () => {
-      const res = await actualizarProceso(procesoId, draftProceso.codigo, draftProceso.nombre)
+      const res = await actualizarProceso(procesoId, draftProceso.codigo, draftProceso.nombre, draftProceso.nombre_en)
       if (res.error) setError(res.error)
       else { setEditandoProcesoId(null); setDraftProceso(null) }
     })
@@ -242,9 +257,9 @@ export function ActividadesClient({
     if (!draftNuevoProceso.nombre.trim()) { setError("El nombre del proceso es obligatorio"); return }
     setError(null)
     startTransition(async () => {
-      const res = await crearProceso(proyectoId, draftNuevoProceso.codigo, draftNuevoProceso.nombre)
+      const res = await crearProceso(proyectoId, draftNuevoProceso.codigo, draftNuevoProceso.nombre, draftNuevoProceso.nombre_en)
       if (res.error) setError(res.error)
-      else { setCreandoProcesoEn(null); setDraftNuevoProceso({ codigo: "", nombre: "" }) }
+      else { setCreandoProcesoEn(null); setDraftNuevoProceso({ codigo: "", nombre: "", nombre_en: null }) }
     })
   }
 
@@ -412,6 +427,7 @@ export function ActividadesClient({
                         <div className="flex items-center gap-2 flex-1">
                           <input value={draftProceso.codigo} onChange={(e) => setDraftProceso({ ...draftProceso, codigo: e.target.value })} className={cn(inputCls, "w-16")} placeholder="Código" />
                           <input value={draftProceso.nombre} onChange={(e) => setDraftProceso({ ...draftProceso, nombre: e.target.value })} className={cn(inputCls, "flex-1")} placeholder="Nombre del proceso" />
+                          <input value={draftProceso.nombre_en ?? ""} onChange={(e) => setDraftProceso({ ...draftProceso, nombre_en: e.target.value || null })} className={cn(inputCls, "flex-1")} placeholder="English name (optional)" title="Se usa en el Cronograma del portal del cliente cuando el proyecto tiene idioma en inglés. Si se deja vacío, se usa el nombre en español." />
                           <button onClick={() => guardarProceso(proc.id)} disabled={isPending} className="text-emerald-600 hover:text-emerald-700"><Check className="h-4 w-4" /></button>
                           <button onClick={() => { setEditandoProcesoId(null); setDraftProceso(null) }} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
                         </div>
@@ -674,7 +690,8 @@ export function ActividadesClient({
                 <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-2">
                   <input value={draftNuevoProceso.codigo} onChange={(e) => setDraftNuevoProceso({ ...draftNuevoProceso, codigo: e.target.value })} className={cn(inputCls, "w-16")} placeholder="Código" />
                   <input value={draftNuevoProceso.nombre} onChange={(e) => setDraftNuevoProceso({ ...draftNuevoProceso, nombre: e.target.value })} className={cn(inputCls, "flex-1")} placeholder="Nombre del proceso" />
-                  <button onClick={() => { setCreandoProcesoEn(null); setDraftNuevoProceso({ codigo: "", nombre: "" }) }} disabled={isPending} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
+                  <input value={draftNuevoProceso.nombre_en ?? ""} onChange={(e) => setDraftNuevoProceso({ ...draftNuevoProceso, nombre_en: e.target.value || null })} className={cn(inputCls, "flex-1")} placeholder="English name (optional)" />
+                  <button onClick={() => { setCreandoProcesoEn(null); setDraftNuevoProceso({ codigo: "", nombre: "", nombre_en: null }) }} disabled={isPending} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
                   <button onClick={() => guardarNuevoProceso(proy.id)} disabled={isPending} className="text-emerald-600 hover:text-emerald-700">
                     {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                   </button>

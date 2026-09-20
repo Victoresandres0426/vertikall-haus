@@ -45,7 +45,7 @@ async function getProyectosConActividades(): Promise<{
       presupuesto_base, presupuesto_venta, margen_objetivo,
       fecha_inicio_plan, fecha_fin_plan,
       procesos (
-        id, codigo, nombre, orden,
+        id, codigo, nombre, nombre_en, orden,
         actividades (
           id, codigo, nombre, nombre_en, estado, activa,
           avance_porcentaje, es_critica, riesgo_nivel, disciplina,

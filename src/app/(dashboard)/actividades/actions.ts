@@ -141,7 +141,8 @@ export async function actualizarProyectoInfo(
 export async function crearProceso(
   proyectoId: string,
   codigo: string,
-  nombre: string
+  nombre: string,
+  nombreEn?: string | null
 ): Promise<{ error?: string; id?: string }> {
   const supabase = await createClient()
   const acceso = await verificarAcceso(supabase)
@@ -164,6 +165,7 @@ export async function crearProceso(
       proyecto_id: proyectoId,
       codigo: codigo?.trim() || String(siguienteOrden + 1),
       nombre: nombre.trim(),
+      nombre_en: nombreEn?.trim() || null,
       orden: siguienteOrden,
     })
     .select("id")
@@ -181,7 +183,8 @@ export async function crearProceso(
 export async function actualizarProceso(
   procesoId: string,
   codigo: string,
-  nombre: string
+  nombre: string,
+  nombreEn?: string | null
 ): Promise<{ error?: string }> {
   const supabase = await createClient()
   const acceso = await verificarAcceso(supabase)
@@ -191,7 +194,7 @@ export async function actualizarProceso(
 
   const { error } = await supabase
     .from("procesos")
-    .update({ codigo: codigo?.trim() || "", nombre: nombre.trim() })
+    .update({ codigo: codigo?.trim() || "", nombre: nombre.trim(), nombre_en: nombreEn?.trim() || null })
     .eq("id", procesoId)
 
   if (error) {
@@ -520,6 +523,53 @@ export async function traducirActividadesAlIngles(proyectoId: string): Promise<{
   } catch (e) {
     console.error("traducirActividadesAlIngles falló:", e)
     return { error: "No se pudo completar la traducción automática. Intenta de nuevo." }
+  }
+
+  revalidatePath("/actividades")
+  return { traducidas: totalTraducidas }
+}
+
+// Mismo mecanismo que traducirActividadesAlIngles, pero para los
+// nombres de "proceso" (las agrupaciones que se ven en el Cronograma
+// del portal del cliente, ej. "Demolición", "Instalaciones
+// eléctricas") -- también necesitan nombre_en para que el portal
+// respete el idioma del cliente en esa sección.
+export async function traducirProcesosAlIngles(proyectoId: string): Promise<{ error?: string; traducidas?: number }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  const { data: procesos, error: errorLectura } = await supabase
+    .from("procesos")
+    .select("id, codigo, nombre")
+    .eq("proyecto_id", proyectoId)
+    .is("nombre_en", null)
+
+  if (errorLectura) {
+    console.error("traducirProcesosAlIngles lectura error:", errorLectura)
+    return { error: "No se pudo leer los procesos del proyecto." }
+  }
+
+  if (!procesos || procesos.length === 0) {
+    return { traducidas: 0 }
+  }
+
+  let totalTraducidas = 0
+  try {
+    const traducciones = await llamarAnthropicTraduccion(procesos)
+    for (const proc of procesos) {
+      const nombreEn = traducciones[proc.id]
+      if (!nombreEn) continue
+      const { error: errorUpdate } = await supabase
+        .from("procesos")
+        .update({ nombre_en: nombreEn })
+        .eq("id", proc.id)
+        .is("nombre_en", null)
+      if (!errorUpdate) totalTraducidas++
+    }
+  } catch (e) {
+    console.error("traducirProcesosAlIngles falló:", e)
+    return { error: "No se pudo completar la traducción automática de procesos. Intenta de nuevo." }
   }
 
   revalidatePath("/actividades")

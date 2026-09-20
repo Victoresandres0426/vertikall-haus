@@ -26,10 +26,14 @@ type Proyecto = {
 type Actividad = {
   proceso_id: string
   proceso: string
+  // Ausente en avances calculados antes de la migración 097.
+  proceso_en?: string | null
   proceso_orden: number
   actividad_id: string
   codigo: string
   nombre: string
+  // Ausente en avances calculados antes de la migración 097.
+  nombre_en?: string | null
   fecha_inicio_plan: string | null
   fecha_fin_plan: string | null
   fecha_inicio_real: string | null
@@ -40,10 +44,77 @@ type Actividad = {
 }
 
 type Reporte = {
+  // Ausente en reportes calculados antes de la migración 098.
+  id?: string
   fecha: string
   clima: string | null
+  // Cache de traducción (migración 098) -- se rellena al vuelo con IA
+  // la primera vez que el reporte se ve en inglés, ver
+  // traducirReportesFaltantes() más abajo.
+  clima_en?: string | null
   observaciones_generales: string | null
+  observaciones_generales_en?: string | null
   fotos: { url?: string; descripcion?: string }[]
+}
+
+// Traduce con IA (cacheando el resultado en la base) los reportes que
+// todavía no tienen su versión en inglés -- solo se llama cuando el
+// cliente está viendo el portal en inglés. Si falla (sin API key, IA
+// no responde, etc.) se ignora en silencio y el portal cae de vuelta
+// al texto en español para esos reportes -- nunca bloquea la página.
+async function traducirReportesFaltantes(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  reportes: Reporte[]
+): Promise<void> {
+  const faltantes = reportes.filter(
+    (r) => r.id && ((r.observaciones_generales && !r.observaciones_generales_en) || (r.clima && !r.clima_en))
+  )
+  if (faltantes.length === 0) return
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return
+
+  try {
+    const lista = faltantes.map((r) => ({ id: r.id, clima: r.clima, observaciones: r.observaciones_generales }))
+    const respuesta = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-5",
+        max_tokens: 8192,
+        system: `Eres un traductor de reportes diarios de obra de construcción (español -> inglés) para el cliente dueño del proyecto. Recibes un array JSON de objetos {id, clima, observaciones} (clima u observaciones pueden venir null). Devuelve ÚNICAMENTE un JSON válido (sin texto antes ni después, sin markdown), con esta forma exacta: { "traducciones": [ { "id": string, "clima_en": string | null, "observaciones_en": string | null } ] }. Si "clima" o "observaciones" venía null, su traducción también debe ser null. Traduce con el tono profesional y directo que usaría un contratista general en Estados Unidos.`,
+        messages: [{ role: "user", content: JSON.stringify(lista) }],
+      }),
+    })
+    if (!respuesta.ok) return
+
+    const json = await respuesta.json()
+    const bloques: Array<{ type?: string; text?: string }> = Array.isArray(json?.content) ? json.content : []
+    const texto = bloques.find((b) => b.type === "text")?.text ?? ""
+    let parsed: { traducciones?: { id: string; clima_en: string | null; observaciones_en: string | null }[] }
+    try {
+      parsed = JSON.parse(texto)
+    } catch {
+      const match = texto.match(/\{[\s\S]*\}/)
+      if (!match) return
+      parsed = JSON.parse(match[0])
+    }
+
+    for (const t of parsed.traducciones ?? []) {
+      const reporte = faltantes.find((r) => r.id === t.id)
+      if (!reporte) continue
+      reporte.observaciones_generales_en = t.observaciones_en ?? null
+      reporte.clima_en = t.clima_en ?? null
+      // Fire-and-forget: cachea la traducción, no bloquea el render de esta visita.
+      supabase.rpc("cliente_guardar_traduccion_reporte", {
+        p_reporte_id: t.id,
+        p_observaciones_en: t.observaciones_en ?? null,
+        p_clima_en: t.clima_en ?? null,
+      }).then(() => {})
+    }
+  } catch (e) {
+    console.error("traducirReportesFaltantes falló:", e)
+  }
 }
 
 type DesglosePeriodo = {
@@ -334,11 +405,11 @@ export default async function PortalClientePage() {
   }
 
   // Agrupar avance por proceso, en el orden en que ya vienen ordenadas
-  const procesos: { id: string; nombre: string; actividades: Actividad[] }[] = []
+  const procesos: { id: string; nombre: string; nombre_en: string | null; actividades: Actividad[] }[] = []
   for (const a of avance) {
     let grupo = procesos.find((p) => p.id === a.proceso_id)
     if (!grupo) {
-      grupo = { id: a.proceso_id, nombre: a.proceso, actividades: [] }
+      grupo = { id: a.proceso_id, nombre: a.proceso, nombre_en: a.proceso_en ?? null, actividades: [] }
       procesos.push(grupo)
     }
     grupo.actividades.push(a)
@@ -378,6 +449,14 @@ export default async function PortalClientePage() {
   const tf = t[facturaEnIngles ? "en" : "es"]
   const estadoProyectoLabelActivo = facturaEnIngles ? estadoProyectoLabelEn : estadoProyectoLabel
   const estadoActividadLabelActivo = facturaEnIngles ? estadoActividadLabelEn : estadoActividadLabel
+
+  // Reportes de obra: texto libre, se traduce al vuelo (con cache en
+  // BD) solo cuando el cliente está viendo el portal en inglés --
+  // migración 098. Muta "reportes" en memoria, así que el render de
+  // abajo ya sale traducido en esta misma visita.
+  if (facturaEnIngles) {
+    await traducirReportesFaltantes(supabase, reportes)
+  }
 
   return (
     <div className="min-h-screen bg-[#F7F9FC]">
@@ -488,7 +567,7 @@ export default async function PortalClientePage() {
                 return (
                   <details key={proc.id} className="group p-4">
                     <summary className="flex items-center justify-between gap-2 cursor-pointer list-none marker:content-none [&::-webkit-details-marker]:hidden">
-                      <span className="text-sm font-semibold text-slate-800">{proc.nombre}</span>
+                      <span className="text-sm font-semibold text-slate-800">{facturaEnIngles ? (proc.nombre_en || proc.nombre) : proc.nombre}</span>
                       <span className="flex items-center gap-2 text-xs text-slate-400 shrink-0">
                         {avanceProc}% · {proc.actividades.length} {proc.actividades.length !== 1 ? tf.actividades : tf.actividad}
                         <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
@@ -498,7 +577,7 @@ export default async function PortalClientePage() {
                       {proc.actividades.map((a) => (
                         <div key={a.actividad_id}>
                           <div className="flex items-center justify-between gap-2 mb-1">
-                            <span className="text-sm text-slate-700 truncate">{a.nombre}</span>
+                            <span className="text-sm text-slate-700 truncate">{facturaEnIngles ? (a.nombre_en || a.nombre) : a.nombre}</span>
                             <span className="text-xs text-slate-400 shrink-0">
                               {estadoActividadLabelActivo[a.estado] ?? a.estado} · {Math.round(a.avance_porcentaje ?? 0)}%
                             </span>
@@ -532,10 +611,10 @@ export default async function PortalClientePage() {
                 <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-semibold text-slate-800">{formatoFecha(r.fecha, facturaEnIngles)}</p>
-                    {r.clima && <span className="text-xs text-slate-400">{r.clima}</span>}
+                    {r.clima && <span className="text-xs text-slate-400">{facturaEnIngles ? (r.clima_en || r.clima) : r.clima}</span>}
                   </div>
                   {r.observaciones_generales && (
-                    <p className="text-sm text-slate-600 mb-3">{r.observaciones_generales}</p>
+                    <p className="text-sm text-slate-600 mb-3">{facturaEnIngles ? (r.observaciones_generales_en || r.observaciones_generales) : r.observaciones_generales}</p>
                   )}
                   {r.fotos.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
