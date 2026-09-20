@@ -228,6 +228,10 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
     .sort((a, b) => a.nombre.localeCompare(b.nombre))
 
   const validado = reporte.estado_reporte === "validado"
+  // TypeScript no conserva el narrowing de "reporte" (del notFound() de
+  // arriba) dentro de una función anidada -- se captura el id aparte,
+  // ya como string plano, antes de definir el wrapper de abajo.
+  const reporteId = reporte.id
 
   // Wrapper de un solo uso para el <form action={...}> del botón
   // "Validar" -- Next.js exige que el action de un form devuelva
@@ -237,7 +241,7 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
   // action local absorbe ese valor y no devuelve nada.
   async function validarYRedirigir() {
     "use server"
-    await validarReporteDiario(reporte.id)
+    await validarReporteDiario(reporteId)
   }
 
   return (
