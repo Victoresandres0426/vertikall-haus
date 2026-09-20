@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import Image from "next/image"
 import { CalendarDays, MapPin, Camera, Receipt, ListChecks, ChevronDown } from "lucide-react"
 import { CerrarSesionBoton } from "./cerrar-sesion-boton"
+import { IdiomaToggle } from "./idioma-toggle"
 
 type Proyecto = {
   id: string
@@ -390,9 +391,12 @@ export default async function PortalClientePage() {
               <h1 className="text-lg font-bold text-[#0F2040]">{proyecto.nombre}</h1>
             </div>
           </div>
-          <div className="text-right hidden sm:block">
-            <p className="text-sm font-medium text-slate-700">{perfil.nombre_completo}</p>
-            <CerrarSesionBoton />
+          <div className="flex items-center gap-4">
+            <IdiomaToggle idiomaInicial={facturaEnIngles ? "en" : "es"} />
+            <div className="text-right hidden sm:block">
+              <p className="text-sm font-medium text-slate-700">{perfil.nombre_completo}</p>
+              <CerrarSesionBoton />
+            </div>
           </div>
         </div>
       </header>
