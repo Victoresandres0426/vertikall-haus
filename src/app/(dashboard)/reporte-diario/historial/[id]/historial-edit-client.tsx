@@ -180,9 +180,19 @@ export function HistorialEditClient({
       cantidadHoy: v.cantidad_ejecutada_dia,
       porcentajeTotal: v.porcentaje_avance_total,
       incidencias: v.incidencias,
-      // Ya guardado previamente -- se trata como dato manual/definitivo,
-      // no se sobreescribe solo porque coincida con un split.
-      auto: false,
+      // OJO: antes esto arrancaba en `false` ("ya guardado, es dato
+      // definitivo"), pero eso rompía la corrección más natural de un
+      // reporte pasado -- editar el Avance de cada trabajador en
+      // "Asistencia" -- porque el efecto de más abajo que suma esos
+      // splits solo toca renglones con auto=true. Resultado: el usuario
+      // corregía el split de cada trabajador (ej. 50→20 y 50→20 para
+      // sumar 40), pero la tarjeta "Cantidad hoy" de la actividad se
+      // quedaba pegada en el valor viejo (100) y ESO era lo que se
+      // mandaba a guardar. Arranca en true, igual que un reporte nuevo
+      // (reporte-client.tsx) -- se apaga solo en updateAvance en cuanto
+      // alguien edite "Cantidad hoy" o "% acumulado" a mano, así que una
+      // corrección manual directa sigue protegida de ser pisada.
+      auto: true,
     }))
   )
 
@@ -284,15 +294,26 @@ export function HistorialEditClient({
     }
     setAvanceRows((prev) => {
       let cambio = false
+      // Una fila que ya venía guardada (avanceInicial) nunca se elimina
+      // sola aunque por ahora no tenga ningún split que la respalde --
+      // eso pasa con avances de reportes viejos cargados como un total
+      // directo, sin desglosar por trabajador. Solo se descarta un
+      // renglón "auto" que el propio efecto había creado (por splits que
+      // luego se borraron) y que nunca tuvo respaldo en la BD.
       const conservadas = prev.filter((r) => {
         if (!r.auto) return true
-        const sigueVigente = sumas[r.actividadId] !== undefined
+        const persistido = avanceInicial[r.actividadId] !== undefined
+        const sigueVigente = sumas[r.actividadId] !== undefined || persistido
         if (!sigueVigente) cambio = true
         return sigueVigente
       })
       const next = conservadas.map((r) => {
         if (!r.auto) return r
         const suma = sumas[r.actividadId]
+        // Sin splits que la respalden ahora mismo -- se deja el valor tal
+        // cual (no se pisa con "suma" indefinida) hasta que algún split
+        // vuelva a apuntarle a esta actividad.
+        if (suma === undefined) return r
         if (suma === r.cantidadHoy) return r
         cambio = true
         const act = actividadPorId.get(r.actividadId)
