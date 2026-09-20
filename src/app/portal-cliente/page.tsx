@@ -5,6 +5,7 @@ import Image from "next/image"
 import { CalendarDays, MapPin, Camera, Receipt, ListChecks, ChevronDown } from "lucide-react"
 import { CerrarSesionBoton } from "./cerrar-sesion-boton"
 import { IdiomaToggle } from "./idioma-toggle"
+import { GaleriaFotos } from "./galeria-fotos"
 
 // Esta página ya hacía una llamada a la API de Anthropic para traducir
 // reportes (migración 098), y ahora además firma URLs de Storage para
@@ -318,6 +319,7 @@ const t = {
     sinReportes: "Todavía no hay reportes publicados.",
     fotosDelProyecto: "Fotos del proyecto",
     sinFotos: "Todavía no hay fotos publicadas.",
+    volver: "Volver",
     cuentaSinProyecto: "Tu cuenta todavía no tiene un proyecto asignado.",
     contactaContacto: "Contacta a tu contacto en Vertikall Haus.",
   },
@@ -368,6 +370,7 @@ const t = {
     sinReportes: "No reports published yet.",
     fotosDelProyecto: "Project photos",
     sinFotos: "No photos published yet.",
+    volver: "Back",
     cuentaSinProyecto: "Your account doesn't have a project assigned yet.",
     contactaContacto: "Contact your Vertikall Haus representative.",
   },
@@ -699,16 +702,11 @@ export default async function PortalClientePage() {
             <p className="text-sm text-slate-400 bg-white border border-slate-200 rounded-xl p-5">{tf.sinFotos}</p>
           ) : (
             <div className="bg-white border border-slate-200 rounded-2xl p-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {fotos.map((foto) => (
-                  foto.url ? (
-                    <a key={foto.id} href={foto.url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden border border-slate-100">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={foto.url} alt={foto.nombre_archivo} className="w-full h-28 object-cover" />
-                    </a>
-                  ) : null
-                ))}
-              </div>
+              <GaleriaFotos
+                fotos={fotos.filter((f) => f.url).map((f) => ({ url: f.url!, alt: f.nombre_archivo }))}
+                columnas="grid-cols-2 sm:grid-cols-4"
+                labelVolver={tf.volver}
+              />
             </div>
           )}
         </section>
@@ -738,16 +736,11 @@ export default async function PortalClientePage() {
                           <p className="text-xs font-medium text-slate-500 mb-1.5">
                             {grupo.codigo ? `${grupo.codigo} — ` : ""}{facturaEnIngles ? (grupo.nombre_en || grupo.nombre) : grupo.nombre}
                           </p>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {grupo.fotos.map((foto, fi) => (
-                              foto?.url ? (
-                                <a key={fi} href={foto.url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden border border-slate-100">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={foto.url} alt={foto.descripcion ?? ""} className="w-full h-28 object-cover" />
-                                </a>
-                              ) : null
-                            ))}
-                          </div>
+                          <GaleriaFotos
+                            fotos={grupo.fotos.filter((f) => f.url).map((f) => ({ url: f.url!, alt: f.descripcion ?? grupo.nombre }))}
+                            columnas="grid-cols-2 sm:grid-cols-3"
+                            labelVolver={tf.volver}
+                          />
                         </div>
                       ))}
                     </div>
