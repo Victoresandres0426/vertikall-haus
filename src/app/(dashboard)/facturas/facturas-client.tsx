@@ -135,19 +135,31 @@ export function FacturasClient({
   const [showModalProveedor, setShowModalProveedor] = useState(false)
   const [showModalAuto, setShowModalAuto] = useState(false)
 
-  // Los borradores y las ya aprobadas-pero-sin-enviar (estimaciones
-  // automáticas que todavía no llegan al cliente, ver migración 099) no
-  // cuentan como CxC real ni aparecen en la tabla normal -- se muestran
-  // aparte, en su propio panel, hasta que se envían o se descartan.
+  // Los borradores (todavía sin revisar) no cuentan como CxC ni
+  // aparecen en la tabla normal -- se muestran aparte, en su propio
+  // panel, hasta que se aprueban/envían o se descartan. Las ya
+  // "aprobadas" SÍ cuentan como CxC (son un compromiso ya revisado y
+  // aceptado, aunque el cliente todavía no las vea -- ver migración
+  // 099/101), pero siguen sin aparecer en la tabla detallada de abajo
+  // hasta que de verdad se envían (no se le puede marcar "cobrada"
+  // algo que el cliente ni siquiera ha visto todavía).
   const pendientes = facturasCliente.filter((f) => f.estado === "borrador" || f.estado === "aprobada")
+  const facturasParaCxC = facturasCliente.filter((f) => f.estado !== "borrador")
   const facturasClienteResueltas = facturasCliente.filter((f) => f.estado !== "borrador" && f.estado !== "aprobada")
 
   // "CxC (por cobrar)" / "CxP (por pagar)" deben ser el SALDO pendiente
   // (facturado - ya cobrado/pagado), no el total facturado -- si no, una
   // factura ya cobrada al 100% sigue apareciendo como "por cobrar".
-  const totalFacturadoCliente = facturasClienteResueltas.reduce((s, f) => s + f.monto, 0)
-  const totalCobrado = facturasClienteResueltas.reduce((s, f) => s + f.monto_cobrado, 0)
+  const totalFacturadoCliente = facturasParaCxC.reduce((s, f) => s + f.monto, 0)
+  const totalCobrado = facturasParaCxC.reduce((s, f) => s + f.monto_cobrado, 0)
   const totalCxC = Math.max(totalFacturadoCliente - totalCobrado, 0)
+
+  // Para el preview "Facturado acumulado" dentro de cada tarjeta
+  // pendiente (PanelBorradores) SÍ hay que excluir también las
+  // 'aprobada', porque si la tarjeta que se está mostrando es ella
+  // misma una 'aprobada', ya viene incluida en totalFacturadoCliente
+  // de arriba -- sumar f.monto otra vez la contaría dos veces.
+  const totalFacturadoAntesDePendientes = facturasClienteResueltas.reduce((s, f) => s + f.monto, 0)
   const totalFacturadoProveedor = facturasProveedor.reduce((s, f) => s + f.monto, 0)
   const totalPagado = facturasProveedor.reduce((s, f) => s + f.monto_pagado, 0)
   const totalCxP = Math.max(totalFacturadoProveedor - totalPagado, 0)
@@ -157,7 +169,7 @@ export function FacturasClient({
       {pendientes.length > 0 && (
         <PanelBorradores
           borradores={pendientes}
-          totalYaFacturado={totalFacturadoCliente}
+          totalYaFacturado={totalFacturadoAntesDePendientes}
           presupuestoVenta={proyectoActivoPresupuestoVenta ?? null}
         />
       )}
