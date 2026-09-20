@@ -230,12 +230,61 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
         avance_porcentaje,
         fecha_inicio_plan,
         fecha_fin_plan,
-        costo_presupuesto
+        costo_presupuesto,
+        duracion_plan_dias
       )
     `)
     .eq("proyecto_id", pid)
     .eq("activo", true)
     .order("orden", { ascending: true })
+
+  // Avance ponderado: mezcla en partes iguales costo_presupuesto (peso
+  // económico) y duracion_plan_dias (peso en cronograma), para que una
+  // sola actividad cara (ej. compra de materiales) no domine el % sin
+  // representar mucho trabajo físico, ni una actividad larga pero
+  // barata quede subrepresentada. Misma convención en el KPI global
+  // más abajo y en cliente_ver_avance_general() (migración 093).
+  function avanceYPlanPonderados(acts: Array<{
+    avance_porcentaje: number
+    fecha_inicio_plan: string | null
+    fecha_fin_plan: string | null
+    costo_presupuesto: number
+    duracion_plan_dias: number | null
+  }>, ahora: number) {
+    let pesoCosto = 0, realCosto = 0, planCosto = 0
+    let pesoDuracion = 0, realDuracion = 0, planDuracion = 0
+
+    for (const a of acts) {
+      let planPct = 0
+      if (a.fecha_inicio_plan && a.fecha_fin_plan) {
+        const inicio = new Date(a.fecha_inicio_plan).getTime()
+        const fin = new Date(a.fecha_fin_plan).getTime()
+        if (ahora >= fin) planPct = 100
+        else if (ahora > inicio) planPct = ((ahora - inicio) / (fin - inicio)) * 100
+      }
+      const real = a.avance_porcentaje ?? 0
+
+      const pc = a.costo_presupuesto > 0 ? a.costo_presupuesto : 1
+      pesoCosto += pc
+      realCosto += real * pc
+      planCosto += planPct * pc
+
+      const pd = (a.duracion_plan_dias ?? 0) > 0 ? (a.duracion_plan_dias as number) : 1
+      pesoDuracion += pd
+      realDuracion += real * pd
+      planDuracion += planPct * pd
+    }
+
+    const realCostoPct = pesoCosto > 0 ? realCosto / pesoCosto : 0
+    const realDuracionPct = pesoDuracion > 0 ? realDuracion / pesoDuracion : 0
+    const planCostoPct = pesoCosto > 0 ? planCosto / pesoCosto : 0
+    const planDuracionPct = pesoDuracion > 0 ? planDuracion / pesoDuracion : 0
+
+    return {
+      real_pct: (realCostoPct + realDuracionPct) / 2,
+      plan_pct: (planCostoPct + planDuracionPct) / 2,
+    }
+  }
 
   const avancePorProceso: ProcesoConAvance[] = ((procesosData ?? []) as (Proceso & {
     actividades: Array<{
@@ -243,41 +292,19 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
       fecha_inicio_plan: string | null
       fecha_fin_plan: string | null
       costo_presupuesto: number
+      duracion_plan_dias: number | null
     }>
   })[]).map((proc) => {
     const acts = proc.actividades ?? []
     if (acts.length === 0) return { id: proc.id, nombre: proc.nombre, plan_pct: 0, real_pct: 0 }
 
-    // % planificado: promedio simple de avances planificados a fecha de hoy
-    const today = new Date()
-    let totalPeso = 0
-    let planPonderado = 0
-    let realPonderado = 0
-
-    for (const a of acts) {
-      const peso = a.costo_presupuesto > 0 ? a.costo_presupuesto : 1
-      totalPeso += peso
-
-      // Plan: cuánto debería estar hecho a hoy según fechas plan
-      let planPct = 0
-      if (a.fecha_inicio_plan && a.fecha_fin_plan) {
-        const inicio = new Date(a.fecha_inicio_plan).getTime()
-        const fin = new Date(a.fecha_fin_plan).getTime()
-        const ahora = today.getTime()
-        if (ahora >= fin) planPct = 100
-        else if (ahora <= inicio) planPct = 0
-        else planPct = Math.round(((ahora - inicio) / (fin - inicio)) * 100)
-      }
-
-      planPonderado += planPct * peso
-      realPonderado += (a.avance_porcentaje ?? 0) * peso
-    }
+    const { real_pct, plan_pct } = avanceYPlanPonderados(acts, new Date().getTime())
 
     return {
       id: proc.id,
       nombre: proc.nombre,
-      plan_pct: totalPeso > 0 ? Math.round(planPonderado / totalPeso) : 0,
-      real_pct: totalPeso > 0 ? Math.round(realPonderado / totalPeso) : 0,
+      plan_pct: Math.round(plan_pct),
+      real_pct: Math.round(real_pct),
     }
   })
 
@@ -305,53 +332,26 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
     .eq("fecha", hoy)
     .eq("asistencia_diaria.presente", true)
 
-  // Avance global del proyecto: promedio ponderado por costo_presupuesto
-  // de TODAS las actividades del proyecto (antes promediaba el real_pct
-  // YA ponderado de cada proceso, pero sin ponderar entre procesos --
-  // un proceso de 1 actividad pesaba igual que uno de 30, y por eso este
-  // número no coincidía con "Avance físico" de la ficha del proyecto,
-  // que sí pondera todas las actividades juntas). Misma convención que
-  // scoreCronograma/scoreFinanzas en lib/engine/iidp.ts.
+  // Avance global del proyecto: mezcla costo_presupuesto + duracion_plan_dias
+  // (ver avanceYPlanPonderados arriba) de TODAS las actividades del proyecto
+  // (antes promediaba el real_pct YA ponderado de cada proceso, pero sin
+  // ponderar entre procesos -- un proceso de 1 actividad pesaba igual que
+  // uno de 30, y por eso este número no coincidía con "Avance físico" de
+  // la ficha del proyecto, que sí pondera todas las actividades juntas).
+  // Misma convención que scoreCronograma/scoreFinanzas en lib/engine/iidp.ts
+  // y que cliente_ver_avance_general() (migración 093) en el portal cliente.
   const todasActividadesGlobal = ((procesosData ?? []) as (Proceso & {
     actividades: Array<{
       avance_porcentaje: number; costo_presupuesto: number
       fecha_inicio_plan: string | null; fecha_fin_plan: string | null
+      duracion_plan_dias: number | null
     }>
   })[]).flatMap((p) => p.actividades ?? [])
-  const pesoTotalGlobal = todasActividadesGlobal.reduce(
-    (s, a) => s + (a.costo_presupuesto > 0 ? a.costo_presupuesto : 1), 0
-  )
-  const avancePct = pesoTotalGlobal > 0
-    ? Math.round(
-        todasActividadesGlobal.reduce(
-          (s, a) => s + (a.avance_porcentaje ?? 0) * (a.costo_presupuesto > 0 ? a.costo_presupuesto : 1), 0
-        ) / pesoTotalGlobal
-      )
-    : 0
 
-  // Avance planeado global: MISMA ponderación (por costo_presupuesto,
-  // sobre todas las actividades directamente) que avancePct de arriba,
-  // para que "Plan" y "Real" del KPI "Avance físico" sean comparables.
-  // Antes "Plan" salía de promediar plan_pct YA ponderado de cada
-  // proceso, sin ponderar ENTRE procesos (mismo problema que tenía
-  // avancePct) -- por eso el KPI podía mostrar un atraso que no
-  // coincidía con score_cronograma del IIDP, que sí pondera todo junto.
-  const hoyDate = new Date()
-  const planAvancePct = pesoTotalGlobal > 0
-    ? Math.round(
-        todasActividadesGlobal.reduce((s, a) => {
-          let planPct = 0
-          if (a.fecha_inicio_plan && a.fecha_fin_plan) {
-            const inicio = new Date(a.fecha_inicio_plan).getTime()
-            const fin = new Date(a.fecha_fin_plan).getTime()
-            const ahora = hoyDate.getTime()
-            if (ahora >= fin) planPct = 100
-            else if (ahora > inicio) planPct = ((ahora - inicio) / (fin - inicio)) * 100
-          }
-          return s + planPct * (a.costo_presupuesto > 0 ? a.costo_presupuesto : 1)
-        }, 0) / pesoTotalGlobal
-      )
-    : 0
+  const { real_pct: avanceGlobalPct, plan_pct: planGlobalPct } =
+    avanceYPlanPonderados(todasActividadesGlobal, new Date().getTime())
+  const avancePct = Math.round(avanceGlobalPct)
+  const planAvancePct = Math.round(planGlobalPct)
 
   return {
     proyecto: proyecto as Proyecto,

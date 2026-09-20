@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import Image from "next/image"
-import { CalendarDays, MapPin, Camera, Receipt, ListChecks } from "lucide-react"
+import { CalendarDays, MapPin, Camera, Receipt, ListChecks, ChevronDown } from "lucide-react"
 import { CerrarSesionBoton } from "./cerrar-sesion-boton"
 
 type Proyecto = {
@@ -228,9 +228,10 @@ export default async function PortalClientePage() {
   if (!perfil) redirect("/login")
   if (perfil.rol !== "cliente") redirect("/dashboard")
 
-  const [proyectoRes, avanceRes, reportesRes, facturasRes] = await Promise.all([
+  const [proyectoRes, avanceRes, avanceGeneralRes, reportesRes, facturasRes] = await Promise.all([
     supabase.rpc("cliente_ver_proyecto"),
     supabase.rpc("cliente_ver_avance"),
+    supabase.rpc("cliente_ver_avance_general"),
     supabase.rpc("cliente_ver_reportes"),
     supabase.rpc("cliente_ver_facturas"),
   ])
@@ -263,9 +264,18 @@ export default async function PortalClientePage() {
     grupo.actividades.push(a)
   }
 
-  const avancePromedio = avance.length > 0
+  // Avance general: ponderado por costo de cada actividad (mismo
+  // criterio que el dashboard interno y la facturación automática --
+  // ver migración 093). Si la función todavía no existe en este
+  // ambiente, cae de vuelta al promedio simple para no romper la
+  // página.
+  const avanceGeneralData = avanceGeneralRes.data as { avance_real_pct?: number; avance_plan_pct?: number } | null
+  const avancePromedioSimple = avance.length > 0
     ? Math.round(avance.reduce((sum, a) => sum + (a.avance_porcentaje ?? 0), 0) / avance.length)
     : 0
+  const avanceReal = avanceGeneralData?.avance_real_pct != null ? Math.round(avanceGeneralData.avance_real_pct) : avancePromedioSimple
+  const avancePlan = avanceGeneralData?.avance_plan_pct != null ? Math.round(avanceGeneralData.avance_plan_pct) : null
+  const diferenciaPlan = avancePlan != null ? avanceReal - avancePlan : null
 
   const totalFacturado = facturas.reduce((sum, f) => sum + Number(f.monto ?? 0), 0)
   const totalCobrado = facturas.reduce((sum, f) => sum + Number(f.monto_cobrado ?? 0), 0)
@@ -335,7 +345,10 @@ export default async function PortalClientePage() {
             </div>
             <div>
               <p className="text-xs text-slate-400">Avance general</p>
-              <p className="text-sm font-semibold text-slate-800">{avancePromedio}%</p>
+              <p className="text-sm font-semibold text-slate-800">
+                {avanceReal}%
+                {avancePlan != null && <span className="text-xs font-normal text-slate-400"> · plan {avancePlan}%</span>}
+              </p>
             </div>
             <div>
               <p className="text-xs text-slate-400">Monto contratado</p>
@@ -343,8 +356,34 @@ export default async function PortalClientePage() {
             </div>
           </div>
 
-          <div className="mt-4 h-2 rounded-full bg-slate-100 overflow-hidden">
-            <div className="h-full rounded-full bg-[#3B72D8] transition-all" style={{ width: `${avancePromedio}%` }} />
+          <div className="mt-4 space-y-2">
+            <div>
+              <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                <span>Avance real</span><span>{avanceReal}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full rounded-full bg-[#3B72D8] transition-all" style={{ width: `${Math.min(100, Math.max(0, avanceReal))}%` }} />
+              </div>
+            </div>
+            {avancePlan != null && (
+              <div>
+                <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                  <span>Avance según plan (a hoy)</span><span>{avancePlan}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-full rounded-full bg-slate-400 transition-all" style={{ width: `${Math.min(100, Math.max(0, avancePlan))}%` }} />
+                </div>
+              </div>
+            )}
+            {diferenciaPlan != null && (
+              <p className={`text-xs font-medium ${diferenciaPlan >= -3 ? "text-emerald-600" : "text-amber-600"}`}>
+                {diferenciaPlan >= 3
+                  ? `Adelantado al plan por ${Math.round(diferenciaPlan)}%`
+                  : diferenciaPlan >= -3
+                    ? "En línea con el plan"
+                    : `${Math.abs(Math.round(diferenciaPlan))}% detrás del plan`}
+              </p>
+            )}
           </div>
         </section>
 
@@ -357,29 +396,40 @@ export default async function PortalClientePage() {
             <p className="text-sm text-slate-400 bg-white border border-slate-200 rounded-xl p-5">Aún no hay actividades cargadas.</p>
           ) : (
             <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100 overflow-hidden">
-              {procesos.map((proc) => (
-                <div key={proc.id} className="p-4">
-                  <p className="text-sm font-semibold text-slate-800 mb-3">{proc.nombre}</p>
-                  <div className="space-y-3">
-                    {proc.actividades.map((a) => (
-                      <div key={a.actividad_id}>
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <span className="text-sm text-slate-700 truncate">{a.nombre}</span>
-                          <span className="text-xs text-slate-400 shrink-0">
-                            {estadoActividadLabel[a.estado] ?? a.estado} · {Math.round(a.avance_porcentaje ?? 0)}%
-                          </span>
+              {procesos.map((proc) => {
+                const avanceProc = proc.actividades.length > 0
+                  ? Math.round(proc.actividades.reduce((s, a) => s + (a.avance_porcentaje ?? 0), 0) / proc.actividades.length)
+                  : 0
+                return (
+                  <details key={proc.id} className="group p-4">
+                    <summary className="flex items-center justify-between gap-2 cursor-pointer list-none marker:content-none [&::-webkit-details-marker]:hidden">
+                      <span className="text-sm font-semibold text-slate-800">{proc.nombre}</span>
+                      <span className="flex items-center gap-2 text-xs text-slate-400 shrink-0">
+                        {avanceProc}% · {proc.actividades.length} actividad{proc.actividades.length !== 1 ? "es" : ""}
+                        <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                      </span>
+                    </summary>
+                    <div className="space-y-3 mt-4">
+                      {proc.actividades.map((a) => (
+                        <div key={a.actividad_id}>
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="text-sm text-slate-700 truncate">{a.nombre}</span>
+                            <span className="text-xs text-slate-400 shrink-0">
+                              {estadoActividadLabel[a.estado] ?? a.estado} · {Math.round(a.avance_porcentaje ?? 0)}%
+                            </span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${a.estado === "completada" ? "bg-emerald-500" : "bg-[#3B72D8]"}`}
+                              style={{ width: `${Math.min(100, Math.max(0, a.avance_porcentaje ?? 0))}%` }}
+                            />
+                          </div>
                         </div>
-                        <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${a.estado === "completada" ? "bg-emerald-500" : "bg-[#3B72D8]"}`}
-                            style={{ width: `${Math.min(100, Math.max(0, a.avance_porcentaje ?? 0))}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                      ))}
+                    </div>
+                  </details>
+                )
+              })}
             </div>
           )}
         </section>
