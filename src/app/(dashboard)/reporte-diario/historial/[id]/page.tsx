@@ -229,6 +229,17 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
 
   const validado = reporte.estado_reporte === "validado"
 
+  // Wrapper de un solo uso para el <form action={...}> del botón
+  // "Validar" -- Next.js exige que el action de un form devuelva
+  // void/Promise<void>, pero validarReporteDiario devuelve
+  // {error?: string} (para poder mostrar el mensaje si algún día se usa
+  // con useTransition en un client component). Este wrapper server
+  // action local absorbe ese valor y no devuelve nada.
+  async function validarYRedirigir() {
+    "use server"
+    await validarReporteDiario(reporte.id)
+  }
+
   return (
     <div>
       <Header
@@ -240,7 +251,7 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
               <Check className="h-4 w-4" /> Validado -- visible en el portal del cliente
             </span>
           ) : (
-            <form action={validarReporteDiario.bind(null, reporte.id)}>
+            <form action={validarYRedirigir}>
               <button
                 type="submit"
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors"
