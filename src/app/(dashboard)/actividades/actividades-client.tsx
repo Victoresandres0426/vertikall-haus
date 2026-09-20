@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils"
 import {
   actualizarProyectoInfo, crearProceso, actualizarProceso, eliminarProceso,
   crearActividad, actualizarActividad, eliminarActividad,
-  obtenerHistorialAvance,
+  obtenerHistorialAvance, traducirActividadesAlIngles,
   type ProyectoInfoInput, type ActividadInput, type EntradaHistorialAvance,
 } from "./actions"
 
@@ -20,6 +20,7 @@ type Actividad = {
   id: string
   codigo: string
   nombre: string
+  nombre_en: string | null
   estado: string
   activa?: boolean
   avance_porcentaje: number
@@ -72,6 +73,7 @@ export type ProyectoConActividades = {
 const actividadVacia: ActividadInput = {
   codigo: "",
   nombre: "",
+  nombre_en: null,
   disciplina: null,
   costo_material: 0,
   costo_mano_obra: 0,
@@ -154,6 +156,24 @@ export function ActividadesClient({
   const [historialCargando, setHistorialCargando] = useState(false)
   const [historialError, setHistorialError] = useState<string | null>(null)
 
+  // Traducción automática de nombres de actividad al inglés (para la
+  // factura del cliente, ver migración 092) -- se corre por proyecto,
+  // ya que cada proyecto puede tener decenas/cientos de actividades.
+  const [traduciendoProyectoId, setTraduciendoProyectoId] = useState<string | null>(null)
+  const [traduccionMsg, setTraduccionMsg] = useState<string | null>(null)
+
+  const traducirProyecto = (proyectoId: string) => {
+    setTraduciendoProyectoId(proyectoId)
+    setTraduccionMsg(null)
+    startTransition(async () => {
+      const res = await traducirActividadesAlIngles(proyectoId)
+      setTraduciendoProyectoId(null)
+      if (res.error) setTraduccionMsg(res.error)
+      else if (res.traducidas === 0) setTraduccionMsg("Todas las actividades ya tenían nombre en inglés.")
+      else setTraduccionMsg(`Se tradujeron ${res.traducidas} actividad(es). Puedes corregir cualquiera a mano abajo.`)
+    })
+  }
+
   const abrirHistorialAvance = (act: Actividad) => {
     setHistorialAbierto({ nombre: `${act.codigo} — ${act.nombre}`, unidad: act.unidad ?? null })
     setHistorialEntradas(null)
@@ -234,6 +254,7 @@ export function ActividadesClient({
     setDraftActividad({
       codigo: act.codigo,
       nombre: act.nombre,
+      nombre_en: act.nombre_en,
       disciplina: act.disciplina,
       costo_material: act.costo_material ?? 0,
       costo_mano_obra: act.costo_mano_obra ?? 0,
@@ -307,7 +328,22 @@ export function ActividadesClient({
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
               )}
+              {puedeEditar && (
+                <button
+                  onClick={() => traducirProyecto(proy.id)}
+                  disabled={traduciendoProyectoId === proy.id}
+                  className="ml-auto text-xs text-slate-500 hover:text-slate-800 border border-slate-200 rounded-md px-2 py-1 disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+                  title="Rellena con IA el nombre en inglés de las actividades que todavía no lo tienen -- se usa en la factura del cliente cuando el proyecto está en inglés."
+                >
+                  {traduciendoProyectoId === proy.id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                  Traducir nombres al inglés
+                </button>
+              )}
             </div>
+
+            {traduccionMsg && (
+              <p className="text-xs text-slate-500 -mt-2 mb-3">{traduccionMsg}</p>
+            )}
 
             {editandoProyectoId === proy.id && draftProyecto && (
               <div className="bg-white border border-slate-200 rounded-xl p-4 mb-3 grid grid-cols-2 gap-3">
@@ -412,6 +448,9 @@ export function ActividadesClient({
                               </CampoEtiquetado>
                               <CampoEtiquetado label="Nombre de la actividad" className="flex-1 min-w-[180px]">
                                 <input value={draftActividad.nombre} onChange={(e) => setDraftActividad({ ...draftActividad, nombre: e.target.value })} className={cn(inputCls, "w-full")} placeholder="Nombre" />
+                              </CampoEtiquetado>
+                              <CampoEtiquetado label="Nombre en inglés (factura cliente)" className="flex-1 min-w-[180px]">
+                                <input value={draftActividad.nombre_en ?? ""} onChange={(e) => setDraftActividad({ ...draftActividad, nombre_en: e.target.value || null })} className={cn(inputCls, "w-full")} placeholder="English name (optional)" title="Se usa en la factura/correo del cliente cuando el proyecto tiene idioma en inglés. Si se deja vacío, se usa el nombre en español." />
                               </CampoEtiquetado>
                             </div>
                             <div className="flex items-end gap-2 flex-wrap">

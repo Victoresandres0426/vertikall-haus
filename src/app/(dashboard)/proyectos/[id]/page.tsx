@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils"
 import { EquipoProyecto, type TrabajadorEquipo } from "./equipo-proyecto"
 import { AccesoProyecto, type UsuarioAcceso } from "./acceso-proyecto"
 import { ClienteEmail } from "./cliente-email"
+import { IdiomaCliente } from "./idioma-cliente"
 import { TelefonoCliente } from "./telefono-cliente"
 import { CoordenadasObra } from "./coordenadas-obra"
 import { HoraEntrada } from "./hora-entrada"
@@ -27,6 +28,7 @@ import { pesosDesdeConfig } from "@/lib/engine/types"
 type Proyecto = {
   id: string; codigo: string; nombre: string; cliente: string | null
   cliente_email: string | null
+  idioma_cliente: string | null
   cliente_telefono: string | null
   coordenadas: { lat: number; lng: number } | null
   hora_entrada_esperada: string | null
@@ -93,7 +95,7 @@ async function getData(id: string) {
   const { data: proyecto } = await supabase
     .from("proyectos")
     .select(`
-      id, codigo, nombre, cliente, cliente_email, cliente_telefono, coordenadas, hora_entrada_esperada, ubicacion, zona_horaria, estado,
+      id, codigo, nombre, cliente, cliente_email, idioma_cliente, cliente_telefono, coordenadas, hora_entrada_esperada, ubicacion, zona_horaria, estado,
       fecha_inicio_plan, fecha_fin_plan, fecha_inicio_real, fecha_fin_forecast,
       presupuesto_base, presupuesto_venta, margen_objetivo, configuracion
     `)
@@ -470,6 +472,7 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
             {proyecto.cliente && <p className="text-sm text-slate-500 mt-0.5">{proyecto.cliente}</p>}
             <div className="mt-1 space-y-1">
               <ClienteEmail proyectoId={proyecto.id} emailInicial={proyecto.cliente_email} puedeEditar={puedeEditarCliente} />
+              <IdiomaCliente proyectoId={proyecto.id} idiomaInicial={proyecto.idioma_cliente === "en" ? "en" : "es"} puedeEditar={puedeEditarCliente} />
               <TelefonoCliente proyectoId={proyecto.id} telefonoInicial={proyecto.cliente_telefono} puedeEditar={puedeEditarCliente} />
               <CoordenadasObra proyectoId={proyecto.id} coordenadasIniciales={proyecto.coordenadas} puedeEditar={puedeEditarCliente} />
               <HoraEntrada proyectoId={proyecto.id} horaInicial={proyecto.hora_entrada_esperada} puedeEditar={puedeEditarCliente} />

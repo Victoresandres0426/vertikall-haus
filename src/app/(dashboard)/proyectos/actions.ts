@@ -39,6 +39,44 @@ export async function actualizarClienteEmail(proyectoId: string, email: string):
   return {}
 }
 
+// Idioma en el que se manda el correo de estimación y se muestra la
+// sección "Facturas" del portal del cliente (ver migración 092). No
+// traduce el resto del portal (cronograma, reportes) -- eso queda
+// pendiente para otra fase.
+export async function actualizarIdiomaCliente(proyectoId: string, idioma: "es" | "en"): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  const { data: perfil } = await supabase
+    .from("perfiles_usuario")
+    .select("rol")
+    .eq("id", user.id)
+    .single()
+
+  if (!perfil || !ROLES_EDITAN_CLIENTE.includes(perfil.rol)) {
+    return { error: "No tienes permisos para editar el idioma del cliente" }
+  }
+
+  if (idioma !== "es" && idioma !== "en") {
+    return { error: "Idioma inválido" }
+  }
+
+  const { error } = await supabase
+    .from("proyectos")
+    .update({ idioma_cliente: idioma })
+    .eq("id", proyectoId)
+
+  if (error) {
+    console.error("actualizarIdiomaCliente error:", error)
+    return { error: "Error al guardar el idioma." }
+  }
+
+  revalidatePath(`/proyectos/${proyectoId}`)
+  return {}
+}
+
 export async function actualizarCoordenadas(proyectoId: string, lat: number, lng: number): Promise<{ error?: string }> {
   const supabase = await createClient()
 

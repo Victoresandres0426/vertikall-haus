@@ -234,6 +234,11 @@ export async function eliminarProceso(procesoId: string): Promise<{ error?: stri
 export type ActividadInput = {
   codigo: string
   nombre: string
+  // Nombre en inglés -- solo se usa hoy para el desglose de la factura
+  // del cliente cuando el proyecto tiene idioma_cliente='en' (migración
+  // 092). Opcional: si queda vacío, la factura cae de vuelta al nombre
+  // en español.
+  nombre_en: string | null
   disciplina: string | null
   costo_material: number
   costo_mano_obra: number
@@ -267,6 +272,7 @@ export async function crearActividad(
       proceso_id: procesoId,
       codigo: input.codigo?.trim() || "",
       nombre: input.nombre.trim(),
+      nombre_en: input.nombre_en?.trim() || null,
       disciplina: input.disciplina || null,
       costo_material: costoMaterial,
       costo_mano_obra: costoManoObra,
@@ -349,6 +355,7 @@ export async function actualizarActividad(
     .update({
       codigo: input.codigo?.trim() || "",
       nombre: input.nombre.trim(),
+      nombre_en: input.nombre_en?.trim() || null,
       disciplina: input.disciplina || null,
       costo_material: costoMaterial,
       costo_mano_obra: costoManoObra,
@@ -403,4 +410,118 @@ export async function eliminarActividad(actividadId: string): Promise<{ error?: 
 
   revalidatePath("/actividades")
   return {}
+}
+
+// ── Traducción automática de nombres de actividad ────────────────
+// Rellena nombre_en para las actividades del proyecto que todavía no
+// lo tienen -- pensado para proyectos con decenas/cientos de
+// actividades (ej. Radnor con ~198) donde traducir una por una a mano
+// no es práctico. Nunca pisa un nombre_en que alguien ya haya escrito
+// o corregido a mano.
+export type ActividadPorTraducir = { id: string; codigo: string; nombre: string }
+
+async function llamarAnthropicTraduccion(actividades: ActividadPorTraducir[]): Promise<Record<string, string>> {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error("Falta ANTHROPIC_API_KEY")
+
+  const lista = actividades.map((a) => ({ id: a.id, nombre: a.nombre }))
+
+  const respuesta = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: 8192,
+      system: `Eres un traductor especializado en construcción/remodelación residencial. Traduces nombres de actividades de obra del español al inglés, con terminología que usaría un contratista general en Estados Unidos (no una traducción literal palabra por palabra).
+
+Recibes un array JSON de objetos {id, nombre}. Devuelve ÚNICAMENTE un JSON válido (sin texto antes ni después, sin markdown, sin \`\`\`), con esta forma exacta:
+
+{ "traducciones": [ { "id": string, "nombre_en": string } ] }
+
+Debes devolver una traducción para cada "id" recibido. El "id" debe coincidir exactamente con el recibido. Mantén nombres de habitación reconocibles (ej. "cocina" -> "kitchen", "closet master" -> "master closet") y abreviaturas de materiales tal como se usarían en inglés.`,
+      messages: [
+        { role: "user", content: JSON.stringify(lista) },
+      ],
+    }),
+  })
+
+  if (!respuesta.ok) {
+    const textoError = await respuesta.text()
+    console.error("Error de Anthropic API (traducción actividades):", respuesta.status, textoError)
+    throw new Error(`Anthropic respondió ${respuesta.status}`)
+  }
+
+  const json = await respuesta.json()
+  const bloques: Array<{ type?: string; text?: string }> = Array.isArray(json?.content) ? json.content : []
+  const texto = bloques.find((b) => b.type === "text")?.text ?? ""
+
+  let parsed: { traducciones?: { id: string; nombre_en: string }[] }
+  try {
+    parsed = JSON.parse(texto)
+  } catch {
+    const match = texto.match(/\{[\s\S]*\}/)
+    if (!match) throw new Error("Respuesta de traducción no es JSON válido")
+    parsed = JSON.parse(match[0])
+  }
+
+  const mapa: Record<string, string> = {}
+  for (const t of parsed.traducciones ?? []) {
+    if (t.id && t.nombre_en) mapa[t.id] = t.nombre_en
+  }
+  return mapa
+}
+
+export async function traducirActividadesAlIngles(proyectoId: string): Promise<{ error?: string; traducidas?: number }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  const { data: actividades, error: errorLectura } = await supabase
+    .from("actividades")
+    .select("id, codigo, nombre")
+    .eq("proyecto_id", proyectoId)
+    .eq("activa", true)
+    .is("nombre_en", null)
+
+  if (errorLectura) {
+    console.error("traducirActividadesAlIngles lectura error:", errorLectura)
+    return { error: "No se pudo leer las actividades del proyecto." }
+  }
+
+  if (!actividades || actividades.length === 0) {
+    return { traducidas: 0 }
+  }
+
+  // En lotes de 60 para no pasarnos de un tamaño de respuesta razonable
+  // en proyectos muy grandes.
+  const LOTE = 60
+  let totalTraducidas = 0
+
+  try {
+    for (let i = 0; i < actividades.length; i += LOTE) {
+      const lote = actividades.slice(i, i + LOTE)
+      const traducciones = await llamarAnthropicTraduccion(lote)
+
+      for (const act of lote) {
+        const nombreEn = traducciones[act.id]
+        if (!nombreEn) continue
+        const { error: errorUpdate } = await supabase
+          .from("actividades")
+          .update({ nombre_en: nombreEn })
+          .eq("id", act.id)
+          .is("nombre_en", null) // no pisa si alguien ya lo editó a mano mientras tanto
+        if (!errorUpdate) totalTraducidas++
+      }
+    }
+  } catch (e) {
+    console.error("traducirActividadesAlIngles falló:", e)
+    return { error: "No se pudo completar la traducción automática. Intenta de nuevo." }
+  }
+
+  revalidatePath("/actividades")
+  return { traducidas: totalTraducidas }
 }

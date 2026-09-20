@@ -16,6 +16,7 @@ type Proyecto = {
   fecha_inicio_real: string | null
   fecha_fin_forecast: string | null
   presupuesto_venta: number | null
+  idioma_cliente: string | null
   empresa_nombre: string | null
   empresa_logo_url: string | null
 }
@@ -54,6 +55,9 @@ type DesgloseActividad = {
   actividad_id: string
   actividad_codigo: string | null
   actividad_nombre: string
+  // Ausente en facturas generadas antes de la migración 092, o cuando
+  // la actividad todavía no tiene nombre en inglés cargado.
+  actividad_nombre_en?: string | null
   avance_pct: number
   monto_bruto: number
   // Ausentes en facturas generadas antes de esta migración -- por eso
@@ -74,6 +78,9 @@ type Factura = {
   periodo_fin: string | null
   desglose_periodos: DesglosePeriodo[] | null
   desglose_actividades: DesgloseActividad[] | null
+  // Ausentes en facturas generadas antes de la migración 092.
+  avance_delta_pct?: number | null
+  avance_acumulado_pct?: number | null
   fecha_emision: string | null
   fecha_vencimiento: string | null
   estado: string
@@ -103,6 +110,91 @@ const estadoFacturaLabel: Record<string, string> = {
   en_disputa: "En disputa",
 }
 
+// Traducciones para la sección "Facturas" del portal (correo + factura,
+// ver migración 092). El resto del portal (cronograma, reportes) sigue
+// en español -- ver alcance en el comentario de esa migración.
+const estadoFacturaLabelEn: Record<string, string> = {
+  enviada: "Sent",
+  parcialmente_pagada: "Partially paid",
+  pagada: "Paid",
+  vencida: "Overdue",
+  en_disputa: "In dispute",
+}
+
+const t = {
+  es: {
+    facturas: "Facturas",
+    sinFacturas: "Aún no hay facturas emitidas.",
+    anticipo: "Anticipo",
+    avanceObra: "Avance de obra",
+    totalPagado: "Total pagado",
+    saldoPendiente: "Saldo pendiente del contrato",
+    pagado: "pagado",
+    deFacturado: "de",
+    facturado: "facturado",
+    deContratado: "de",
+    contratado: "contratado",
+    sinNumero: "Sin número",
+    vence: "Vence",
+    periodo: "Período",
+    al: "al",
+    cubreMasDeUnPeriodo: "Esta estimación cubre más de un período:",
+    avanceLabel: "avance",
+    detallePorActividad: "Detalle por actividad:",
+    renglon: "Renglón",
+    pctAvance: "% avance",
+    ejecutado: "Ejecutado",
+    amortAnticipo: "Amort. anticipo",
+    aCobrar: "A cobrar",
+    avanceReconocido: "Avance reconocido este período",
+    amortizacionAplicada: "Amortización de anticipo aplicada",
+    retencion: "Retención",
+    totalAPagar: "Total a pagar",
+  },
+  en: {
+    facturas: "Invoices",
+    sinFacturas: "No invoices issued yet.",
+    anticipo: "Deposit",
+    avanceObra: "Work progress",
+    totalPagado: "Total paid",
+    saldoPendiente: "Contract balance due",
+    pagado: "paid",
+    deFacturado: "of",
+    facturado: "invoiced",
+    deContratado: "of",
+    contratado: "contracted",
+    sinNumero: "No number",
+    vence: "Due",
+    periodo: "Period",
+    al: "to",
+    cubreMasDeUnPeriodo: "This estimate covers more than one period:",
+    avanceLabel: "progress",
+    detallePorActividad: "Detail by item:",
+    renglon: "Item",
+    pctAvance: "% progress",
+    ejecutado: "Amount",
+    amortAnticipo: "Deposit amort.",
+    aCobrar: "Due",
+    avanceReconocido: "Progress recognized this period",
+    amortizacionAplicada: "Deposit amortization applied",
+    retencion: "Retention",
+    totalAPagar: "Total due",
+  },
+} as const
+
+// Frase equivalente a la que arma generar_facturas_semanales() en
+// descripcion (español) -- se reconstruye en el idioma del cliente a
+// partir de avance_delta_pct/avance_acumulado_pct (migración 092) en
+// vez de traducir ese texto. Si una factura es de antes de esa
+// migración y no tiene esos números, cae de vuelta a mostrar la
+// descripción tal cual (en español).
+function descripcionFactura(f: Factura, en: boolean): string {
+  if (!en) return f.descripcion ?? ""
+  if (f.avance_delta_pct == null) return f.descripcion ?? ""
+  const acumulado = f.avance_acumulado_pct != null ? ` (${f.avance_acumulado_pct}% accumulated)` : ""
+  return `Automatic progress estimate — ${f.avance_delta_pct}% additional progress${acumulado}`
+}
+
 const estadoFacturaColor: Record<string, string> = {
   enviada: "bg-blue-100 text-blue-700",
   parcialmente_pagada: "bg-amber-100 text-amber-700",
@@ -111,10 +203,10 @@ const estadoFacturaColor: Record<string, string> = {
   en_disputa: "bg-red-100 text-red-700",
 }
 
-function formatoFecha(iso: string | null) {
+function formatoFecha(iso: string | null, en: boolean = false) {
   if (!iso) return "—"
   const d = new Date(iso + "T00:00:00")
-  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })
+  return d.toLocaleDateString(en ? "en-US" : "es-MX", { day: "2-digit", month: "short", year: "numeric" })
 }
 
 function formatoMoneda(n: number | null) {
@@ -188,6 +280,12 @@ export default async function PortalClientePage() {
   const avanceFacturado = facturasAvance.reduce((s, f) => s + Number(f.monto ?? 0), 0)
   const avancePagado = facturasAvance.reduce((s, f) => s + Number(f.monto_cobrado ?? 0), 0)
   const saldoPendienteContrato = Math.max((proyecto.presupuesto_venta ?? 0) - totalCobrado, 0)
+
+  // Alcance inicial (ver migración 092): solo la sección "Facturas" de
+  // este portal respeta el idioma del cliente -- el resto de la página
+  // (cronograma, reportes) sigue en español por ahora.
+  const facturaEnIngles = proyecto.idioma_cliente === "en"
+  const tf = t[facturaEnIngles ? "en" : "es"]
 
   return (
     <div className="min-h-screen bg-[#F7F9FC]">
@@ -325,41 +423,41 @@ export default async function PortalClientePage() {
         {/* Facturas */}
         <section>
           <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-3">
-            <Receipt className="h-4 w-4 text-slate-400" /> Facturas
+            <Receipt className="h-4 w-4 text-slate-400" /> {tf.facturas}
           </h3>
           {facturas.length === 0 ? (
-            <p className="text-sm text-slate-400 bg-white border border-slate-200 rounded-xl p-5">Aún no hay facturas emitidas.</p>
+            <p className="text-sm text-slate-400 bg-white border border-slate-200 rounded-xl p-5">{tf.sinFacturas}</p>
           ) : (
             <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 px-5 py-4 border-b border-slate-100 bg-slate-50">
                 <div>
-                  <p className="text-xs text-slate-400">Anticipo</p>
+                  <p className="text-xs text-slate-400">{tf.anticipo}</p>
                   <p className="text-sm font-semibold text-slate-800">
                     {formatoMoneda(anticipoPagado)}
-                    <span className="text-xs font-normal text-slate-400"> pagado</span>
+                    <span className="text-xs font-normal text-slate-400"> {tf.pagado}</span>
                   </p>
                   {anticipoFacturado > anticipoPagado && (
-                    <p className="text-[11px] text-amber-600">de {formatoMoneda(anticipoFacturado)} facturado</p>
+                    <p className="text-[11px] text-amber-600">{tf.deFacturado} {formatoMoneda(anticipoFacturado)} {tf.facturado}</p>
                   )}
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400">Avance de obra</p>
+                  <p className="text-xs text-slate-400">{tf.avanceObra}</p>
                   <p className="text-sm font-semibold text-slate-800">
                     {formatoMoneda(avancePagado)}
-                    <span className="text-xs font-normal text-slate-400"> pagado</span>
+                    <span className="text-xs font-normal text-slate-400"> {tf.pagado}</span>
                   </p>
                   {avanceFacturado > avancePagado && (
-                    <p className="text-[11px] text-amber-600">de {formatoMoneda(avanceFacturado)} facturado</p>
+                    <p className="text-[11px] text-amber-600">{tf.deFacturado} {formatoMoneda(avanceFacturado)} {tf.facturado}</p>
                   )}
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400">Total pagado</p>
+                  <p className="text-xs text-slate-400">{tf.totalPagado}</p>
                   <p className="text-sm font-semibold text-emerald-600">{formatoMoneda(totalCobrado)}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400">Saldo pendiente del contrato</p>
+                  <p className="text-xs text-slate-400">{tf.saldoPendiente}</p>
                   <p className="text-sm font-semibold text-amber-600">{formatoMoneda(saldoPendienteContrato)}</p>
-                  <p className="text-[11px] text-slate-400">de {formatoMoneda(proyecto.presupuesto_venta)} contratado</p>
+                  <p className="text-[11px] text-slate-400">{tf.deContratado} {formatoMoneda(proyecto.presupuesto_venta)} {tf.contratado}</p>
                 </div>
               </div>
               <div className="divide-y divide-slate-50">
@@ -371,15 +469,15 @@ export default async function PortalClientePage() {
                     <div key={f.id} className="px-5 py-3">
                       <div className="flex items-center gap-3">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-800">{f.numero ?? "Sin número"} {f.hito_asociado ? `· ${f.hito_asociado}` : ""}</p>
+                          <p className="text-sm font-medium text-slate-800">{f.numero ?? tf.sinNumero} {f.hito_asociado ? `· ${f.hito_asociado}` : ""}</p>
                           <p className="text-xs text-slate-400">
-                            {f.descripcion ?? ""} · Vence {formatoFecha(f.fecha_vencimiento)}
-                            {f.periodo_inicio && f.periodo_fin ? ` · Período ${formatoFecha(f.periodo_inicio)} al ${formatoFecha(f.periodo_fin)}` : ""}
+                            {descripcionFactura(f, facturaEnIngles)} · {tf.vence} {formatoFecha(f.fecha_vencimiento, facturaEnIngles)}
+                            {f.periodo_inicio && f.periodo_fin ? ` · ${tf.periodo} ${formatoFecha(f.periodo_inicio, facturaEnIngles)} ${tf.al} ${formatoFecha(f.periodo_fin, facturaEnIngles)}` : ""}
                           </p>
                         </div>
                         <span className="text-sm font-semibold text-slate-800 shrink-0">{formatoMoneda(f.monto)}</span>
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${estadoFacturaColor[f.estado] ?? "bg-slate-100 text-slate-600"}`}>
-                          {estadoFacturaLabel[f.estado] ?? f.estado}
+                          {(facturaEnIngles ? estadoFacturaLabelEn : estadoFacturaLabel)[f.estado] ?? f.estado}
                         </span>
                       </div>
 
@@ -387,10 +485,10 @@ export default async function PortalClientePage() {
                         <div className="mt-2 ml-0 bg-slate-50 border border-slate-100 rounded-lg p-3 space-y-1.5">
                           {tieneDesglose && (
                             <div className="space-y-1 mb-2">
-                              <p className="text-[11px] font-medium text-slate-500">Esta estimación cubre más de un período:</p>
+                              <p className="text-[11px] font-medium text-slate-500">{tf.cubreMasDeUnPeriodo}</p>
                               {f.desglose_periodos!.map((d, i) => (
                                 <div key={i} className="flex items-center justify-between text-xs text-slate-500">
-                                  <span>{formatoFecha(d.periodo_inicio)} al {formatoFecha(d.periodo_fin)} · {d.avance_pct}% avance</span>
+                                  <span>{formatoFecha(d.periodo_inicio, facturaEnIngles)} {tf.al} {formatoFecha(d.periodo_fin, facturaEnIngles)} · {d.avance_pct}% {tf.avanceLabel}</span>
                                   <span>{formatoMoneda(d.monto_bruto)}</span>
                                 </div>
                               ))}
@@ -398,23 +496,24 @@ export default async function PortalClientePage() {
                           )}
                           {tieneDesgloseActividades && (
                             <div className="mb-2 rounded-lg overflow-hidden border border-slate-100">
-                              <p className="text-[11px] font-medium text-slate-500 px-2 pt-2 pb-1 bg-white">Detalle por actividad:</p>
+                              <p className="text-[11px] font-medium text-slate-500 px-2 pt-2 pb-1 bg-white">{tf.detallePorActividad}</p>
                               <table className="w-full text-xs">
                                 <thead className="bg-slate-100">
                                   <tr className="text-slate-400">
-                                    <th className="text-left font-medium px-2 py-1">Renglón</th>
-                                    <th className="text-right font-medium px-2 py-1">% avance</th>
-                                    <th className="text-right font-medium px-2 py-1">Ejecutado</th>
-                                    <th className="text-right font-medium px-2 py-1">Amort. anticipo</th>
-                                    <th className="text-right font-medium px-2 py-1">A cobrar</th>
+                                    <th className="text-left font-medium px-2 py-1">{tf.renglon}</th>
+                                    <th className="text-right font-medium px-2 py-1">{tf.pctAvance}</th>
+                                    <th className="text-right font-medium px-2 py-1">{tf.ejecutado}</th>
+                                    <th className="text-right font-medium px-2 py-1">{tf.amortAnticipo}</th>
+                                    <th className="text-right font-medium px-2 py-1">{tf.aCobrar}</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 bg-white">
                                   {f.desglose_actividades!.map((d) => {
                                     const tieneAmortizacion = d.monto_amortizado !== undefined && d.monto_neto !== undefined
+                                    const nombreMostrado = facturaEnIngles ? (d.actividad_nombre_en || d.actividad_nombre) : d.actividad_nombre
                                     return (
                                       <tr key={d.actividad_id} className="text-slate-500">
-                                        <td className="px-2 py-1">{d.actividad_codigo ? `${d.actividad_codigo} — ` : ""}{d.actividad_nombre}</td>
+                                        <td className="px-2 py-1">{d.actividad_codigo ? `${d.actividad_codigo} — ` : ""}{nombreMostrado}</td>
                                         <td className="text-right px-2 py-1 text-slate-400">{d.avance_pct}%</td>
                                         <td className="text-right px-2 py-1">{formatoMoneda(d.monto_bruto)}</td>
                                         <td className="text-right px-2 py-1 text-amber-600">
@@ -431,23 +530,23 @@ export default async function PortalClientePage() {
                             </div>
                           )}
                           <div className="flex items-center justify-between text-xs text-slate-500">
-                            <span>Avance reconocido este período</span>
+                            <span>{tf.avanceReconocido}</span>
                             <span>{formatoMoneda(bruto)}</span>
                           </div>
                           {f.amortizacion_anticipo > 0 && (
                             <div className="flex items-center justify-between text-xs text-amber-600">
-                              <span>Amortización de anticipo aplicada</span>
+                              <span>{tf.amortizacionAplicada}</span>
                               <span>−{formatoMoneda(f.amortizacion_anticipo)}</span>
                             </div>
                           )}
                           {f.retencion > 0 && (
                             <div className="flex items-center justify-between text-xs text-amber-600">
-                              <span>Retención</span>
+                              <span>{tf.retencion}</span>
                               <span>−{formatoMoneda(f.retencion)}</span>
                             </div>
                           )}
                           <div className="flex items-center justify-between text-xs font-semibold text-slate-700 pt-1 border-t border-slate-200">
-                            <span>Total a pagar</span>
+                            <span>{tf.totalAPagar}</span>
                             <span>{formatoMoneda(f.monto)}</span>
                           </div>
                         </div>
