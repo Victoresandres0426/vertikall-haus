@@ -24,6 +24,7 @@ type ActividadRaw = {
   costo_presupuesto: number
   fecha_inicio_plan: string | null
   fecha_fin_plan: string | null
+  duracion_plan_dias: number | null
 }
 
 export type ProyectoFromDB = {
@@ -77,25 +78,41 @@ function procesarProyecto(p: ProyectoFromDB): Proyecto {
     ["activa", "en_revision"].includes(a.estado)
   )
 
-  // Avance real: promedio ponderado por costo_presupuesto
+  // Avance real: mezcla en partes iguales costo_presupuesto (material +
+  // mano de obra) y duracion_plan_dias -- misma convención que
+  // lib/dashboard/queries.ts y cliente_ver_avance_general() (migración
+  // 093), para que Dashboard, Proyectos y el portal del cliente
+  // muestren siempre el mismo número.
   const acts = p.actividades ?? []
-  let totalPeso = 0, realPonderado = 0, planPonderado = 0
+  let pesoCosto = 0, realCosto = 0, planCosto = 0
+  let pesoDuracion = 0, realDuracion = 0, planDuracion = 0
   const today = Date.now()
   for (const a of acts) {
-    const peso = (a.costo_presupuesto ?? 0) > 0 ? a.costo_presupuesto : 1
-    totalPeso += peso
-    realPonderado += (a.avance_porcentaje ?? 0) * peso
     let planPct = 0
     if (a.fecha_inicio_plan && a.fecha_fin_plan) {
       const ini = new Date(a.fecha_inicio_plan).getTime()
       const fin = new Date(a.fecha_fin_plan).getTime()
       if (today >= fin) planPct = 100
-      else if (today > ini) planPct = Math.round(((today - ini) / (fin - ini)) * 100)
+      else if (today > ini) planPct = ((today - ini) / (fin - ini)) * 100
     }
-    planPonderado += planPct * peso
+    const real = a.avance_porcentaje ?? 0
+
+    const pc = (a.costo_presupuesto ?? 0) > 0 ? a.costo_presupuesto : 1
+    pesoCosto += pc
+    realCosto += real * pc
+    planCosto += planPct * pc
+
+    const pd = (a.duracion_plan_dias ?? 0) > 0 ? (a.duracion_plan_dias as number) : 1
+    pesoDuracion += pd
+    realDuracion += real * pd
+    planDuracion += planPct * pd
   }
-  const avance_real = totalPeso > 0 ? Math.round(realPonderado / totalPeso) : 0
-  const avance_plan = totalPeso > 0 ? Math.round(planPonderado / totalPeso) : 0
+  const realCostoPct = pesoCosto > 0 ? realCosto / pesoCosto : 0
+  const realDuracionPct = pesoDuracion > 0 ? realDuracion / pesoDuracion : 0
+  const planCostoPct = pesoCosto > 0 ? planCosto / pesoCosto : 0
+  const planDuracionPct = pesoDuracion > 0 ? planDuracion / pesoDuracion : 0
+  const avance_real = Math.round((realCostoPct + realDuracionPct) / 2)
+  const avance_plan = Math.round((planCostoPct + planDuracionPct) / 2)
 
   // Costo actual: suma de costo_real de actividades
   const costo_actual = acts.reduce((s, a) => s + (a.costo_real ?? 0), 0)

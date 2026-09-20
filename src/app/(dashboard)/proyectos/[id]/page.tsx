@@ -62,6 +62,7 @@ type Actividad = {
   costo_presupuesto: number; costo_real: number
   fecha_fin_plan: string | null; fecha_fin_forecast: string | null
   es_critica: boolean; disciplina: string | null
+  duracion_plan_dias: number | null
 }
 
 type IIDPSnapshot = {
@@ -120,7 +121,7 @@ async function getData(id: string) {
         actividades (
           id, codigo, nombre, avance_porcentaje, estado,
           costo_presupuesto, costo_real, fecha_fin_plan, fecha_fin_forecast,
-          es_critica, disciplina
+          es_critica, disciplina, duracion_plan_dias
         )
       `)
       .eq("proyecto_id", id)
@@ -421,18 +422,23 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
   const desviacionPct = proyecto.presupuesto_base > 0
     ? ((costoTotal - proyecto.presupuesto_base) / proyecto.presupuesto_base) * 100 : 0
 
-  // Avance global: promedio ponderado por costo_presupuesto de TODAS las
-  // actividades del proyecto (antes era un promedio simple sin ponderar
-  // -- el comentario decía "ponderado" pero no lo era, y por eso no
-  // coincidía con el % que muestra el Dashboard, que sí pondera por
-  // costo dentro de cada proceso). Misma convención que scoreCronograma/
-  // scoreFinanzas en lib/engine/iidp.ts: actividades sin presupuesto
-  // cuentan con peso 1.
+  // Avance global: mezcla en partes iguales costo_presupuesto (material +
+  // mano de obra) y duracion_plan_dias -- misma convención que
+  // lib/dashboard/queries.ts, proyectos-client.tsx y
+  // cliente_ver_avance_general() (migración 093), para que esta ficha,
+  // el Dashboard, la lista de Proyectos y el portal del cliente
+  // muestren siempre el mismo número. Actividades sin costo o sin
+  // duración cuentan con peso 1 en ese criterio.
   const todasActividades = procesos.flatMap((p) => p.actividades)
-  const pesoTotalAvance = todasActividades.reduce((s, a) => s + (a.costo_presupuesto > 0 ? a.costo_presupuesto : 1), 0)
-  const avanceGlobal = pesoTotalAvance > 0
-    ? todasActividades.reduce((s, a) => s + (a.avance_porcentaje ?? 0) * (a.costo_presupuesto > 0 ? a.costo_presupuesto : 1), 0) / pesoTotalAvance
+  const pesoCostoGlobal = todasActividades.reduce((s, a) => s + (a.costo_presupuesto > 0 ? a.costo_presupuesto : 1), 0)
+  const pesoDuracionGlobal = todasActividades.reduce((s, a) => s + ((a.duracion_plan_dias ?? 0) > 0 ? (a.duracion_plan_dias as number) : 1), 0)
+  const avanceGlobalCosto = pesoCostoGlobal > 0
+    ? todasActividades.reduce((s, a) => s + (a.avance_porcentaje ?? 0) * (a.costo_presupuesto > 0 ? a.costo_presupuesto : 1), 0) / pesoCostoGlobal
     : 0
+  const avanceGlobalDuracion = pesoDuracionGlobal > 0
+    ? todasActividades.reduce((s, a) => s + (a.avance_porcentaje ?? 0) * ((a.duracion_plan_dias ?? 0) > 0 ? (a.duracion_plan_dias as number) : 1), 0) / pesoDuracionGlobal
+    : 0
+  const avanceGlobal = (avanceGlobalCosto + avanceGlobalDuracion) / 2
 
   const actividadesCriticas = todasActividades.filter((a) => a.es_critica && a.estado !== "completada")
 
