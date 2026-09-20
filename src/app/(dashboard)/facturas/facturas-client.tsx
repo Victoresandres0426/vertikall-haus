@@ -47,6 +47,11 @@ export type DesgloseActividad = {
   // informativos (sin valor en dinero).
   disciplina?: string
   actividades?: ActividadDelGrupo[]
+  // Rango de avance del período (migración 095). Ausente en facturas
+  // ya enviadas con el formato de la migración 094 -- esas traen solo
+  // "avance_pct" (un único número), que se sigue usando como fallback.
+  avance_desde_pct?: number
+  avance_hasta_pct?: number
 }
 
 export type FacturaCliente = {
@@ -489,7 +494,9 @@ function TarjetaBorrador({
                     <Fragment key={`grupo-${d.disciplina}`}>
                       <tr className="text-slate-800 bg-slate-50/70 font-medium">
                         <td className="px-2 py-1.5">{d.disciplina}</td>
-                        <td className="text-right px-2 py-1.5 text-slate-400">{d.avance_pct}%</td>
+                        <td className="text-right px-2 py-1.5 text-slate-400">
+                          {d.avance_desde_pct !== undefined ? `${d.avance_desde_pct}%-${d.avance_hasta_pct}%` : `${d.avance_pct}%`}
+                        </td>
                         <td className="text-right px-2 py-1.5">{formatExacto(d.monto_bruto)}</td>
                         <td className="text-right px-2 py-1.5 text-amber-600">
                           {tieneAmortizacion && d.monto_amortizado! > 0 ? `−${formatExacto(d.monto_amortizado!)}` : "—"}
