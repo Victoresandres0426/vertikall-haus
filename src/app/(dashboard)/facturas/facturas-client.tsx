@@ -1,7 +1,7 @@
 "use client"
 
 import { Fragment, useState, useTransition } from "react"
-import { Plus, X, Check, CheckCircle2, Receipt, Zap, Pencil, Trash2, Send } from "lucide-react"
+import { Plus, X, Check, CheckCircle2, ChevronDown, Receipt, Zap, Pencil, Trash2, Send } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -143,7 +143,12 @@ export function FacturasClient({
   // 099/101), pero siguen sin aparecer en la tabla detallada de abajo
   // hasta que de verdad se envían (no se le puede marcar "cobrada"
   // algo que el cliente ni siquiera ha visto todavía).
-  const pendientes = facturasCliente.filter((f) => f.estado === "borrador" || f.estado === "aprobada")
+  // Los borradores (sin revisar todavía) se quedan arriba, en el panel
+  // llamativo -- necesitan atención. Las ya "aprobadas" bajan a su
+  // propia lista, colapsada, más abajo: ya no requieren revisión, solo
+  // están esperando el envío automático del lunes (o Enviar a mano).
+  const borradores = facturasCliente.filter((f) => f.estado === "borrador")
+  const aprobadas = facturasCliente.filter((f) => f.estado === "aprobada")
   const facturasParaCxC = facturasCliente.filter((f) => f.estado !== "borrador")
   const facturasClienteResueltas = facturasCliente.filter((f) => f.estado !== "borrador" && f.estado !== "aprobada")
 
@@ -166,9 +171,9 @@ export function FacturasClient({
 
   return (
     <div className="p-6 space-y-6">
-      {pendientes.length > 0 && (
+      {borradores.length > 0 && (
         <PanelBorradores
-          borradores={pendientes}
+          borradores={borradores}
           totalYaFacturado={totalFacturadoAntesDePendientes}
           presupuestoVenta={proyectoActivoPresupuestoVenta ?? null}
         />
@@ -187,6 +192,14 @@ export function FacturasClient({
           </div>
         ))}
       </div>
+
+      {aprobadas.length > 0 && (
+        <PanelAprobadas
+          aprobadas={aprobadas}
+          totalYaFacturado={totalFacturadoAntesDePendientes}
+          presupuestoVenta={proyectoActivoPresupuestoVenta ?? null}
+        />
+      )}
 
       <div className="flex items-center justify-between">
         <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
@@ -381,10 +394,39 @@ function PanelBorradores({
         </h3>
       </div>
       <p className="text-xs text-amber-700">
-        Estas estimaciones automáticas todavía no se le han enviado al cliente ni cuentan en el CxC. Primero Aprueba (revisión interna) y luego Envía cuando quieras que el cliente la vea en su portal (y le llegue el correo, si está configurado) -- son dos pasos separados.
+        Estas estimaciones automáticas todavía no se le han enviado al cliente ni cuentan en el CxC. Revísalas y apruébalas -- una vez aprobadas bajan a la lista de "Aprobadas" más abajo, listas para enviarse solas el próximo lunes.
       </p>
       <div className="space-y-2">
         {borradores.map((f) => (
+          <TarjetaBorrador key={f.id} f={f} totalYaFacturado={totalYaFacturado} presupuestoVenta={presupuestoVenta} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function PanelAprobadas({
+  aprobadas,
+  totalYaFacturado,
+  presupuestoVenta,
+}: {
+  aprobadas: FacturaCliente[]
+  totalYaFacturado: number
+  presupuestoVenta: number | null
+}) {
+  return (
+    <div className="bg-white border border-emerald-200 rounded-xl p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Check className="h-4 w-4 text-emerald-600" />
+        <h3 className="text-sm font-semibold text-emerald-800">
+          {aprobadas.length === 1 ? "1 estimación aprobada · sin enviar" : `${aprobadas.length} estimaciones aprobadas · sin enviar`}
+        </h3>
+      </div>
+      <p className="text-xs text-slate-500">
+        Ya cuentan en el CxC de arriba. Se enviarán solas al cliente el próximo lunes (o usa "Enviar" si necesitas mandar alguna antes, fuera de ciclo). Click en cada una para ver el detalle.
+      </p>
+      <div className="space-y-2">
+        {aprobadas.map((f) => (
           <TarjetaBorrador key={f.id} f={f} totalYaFacturado={totalYaFacturado} presupuestoVenta={presupuestoVenta} />
         ))}
       </div>
@@ -406,6 +448,10 @@ function TarjetaBorrador({
   const [montoEdit, setMontoEdit] = useState(String(f.monto))
   const [descEdit, setDescEdit] = useState(f.descripcion ?? "")
   const [error, setError] = useState("")
+  // Las ya "aprobadas" arrancan colapsadas -- ya no necesitan revisión,
+  // solo se abren si se quiere ver el detalle. Los borradores arrancan
+  // expandidos, como antes.
+  const [colapsada, setColapsada] = useState(f.estado === "aprobada")
 
   const bruto = f.monto + f.amortizacion_anticipo
 
@@ -468,8 +514,11 @@ function TarjetaBorrador({
   }
 
   return (
-    <div className="bg-white border border-amber-200 rounded-lg p-3">
-      <div className="flex items-start justify-between gap-3">
+    <div className={cn("bg-white border rounded-lg p-3", f.estado === "aprobada" ? "border-emerald-200" : "border-amber-200")}>
+      <div
+        className="flex items-start justify-between gap-3 cursor-pointer select-none"
+        onClick={() => setColapsada((c) => !c)}
+      >
         <div className="min-w-0">
           <p className="text-sm font-medium text-slate-800 flex items-center gap-2">
             <span className="font-mono text-[10px] text-slate-400 mr-1">{f.proyectos?.codigo}</span>
@@ -481,14 +530,24 @@ function TarjetaBorrador({
               {f.estado === "aprobada" ? "Aprobada · sin enviar" : "Borrador"}
             </span>
           </p>
-          {f.periodo_inicio && f.periodo_fin && (
-            <p className="text-[11px] text-slate-500 mt-0.5">Período: {f.periodo_inicio} al {f.periodo_fin}</p>
+          {colapsada ? (
+            <p className="text-xs text-slate-500 mt-1">{formatExacto(f.monto)} · click para ver el detalle</p>
+          ) : (
+            <>
+              {f.periodo_inicio && f.periodo_fin && (
+                <p className="text-[11px] text-slate-500 mt-0.5">Período: {f.periodo_inicio} al {f.periodo_fin}</p>
+              )}
+              {!editando && <p className="text-xs text-slate-600 mt-1">{f.descripcion}</p>}
+            </>
           )}
-          {!editando && <p className="text-xs text-slate-600 mt-1">{f.descripcion}</p>}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {!colapsada && <span className="text-sm font-semibold text-slate-800">{formatExacto(f.monto)}</span>}
+          <ChevronDown className={cn("h-4 w-4 text-slate-400 transition-transform", !colapsada && "rotate-180")} />
         </div>
       </div>
 
-      {f.desglose_periodos && f.desglose_periodos.length > 1 && (
+      {!colapsada && f.desglose_periodos && f.desglose_periodos.length > 1 && (
         <div className="mt-2 bg-slate-50 border border-slate-200 rounded-md p-2 space-y-1">
           <p className="text-[10px] font-medium text-slate-500">Esta estimación cubre más de un período:</p>
           {f.desglose_periodos.map((d, i) => (
@@ -500,7 +559,7 @@ function TarjetaBorrador({
         </div>
       )}
 
-      {f.desglose_actividades && f.desglose_actividades.length > 0 && (
+      {!colapsada && f.desglose_actividades && f.desglose_actividades.length > 0 && (
         <div className="mt-2 bg-slate-50 border border-slate-200 rounded-md overflow-hidden">
           <table className="w-full text-[11px]">
             <thead className="bg-slate-100">
@@ -584,62 +643,66 @@ function TarjetaBorrador({
           </table>
         </div>
       )}
-      {(!f.desglose_actividades || f.desglose_actividades.length === 0) && (
+      {!colapsada && (!f.desglose_actividades || f.desglose_actividades.length === 0) && (
         <p className="mt-2 text-[10px] text-slate-400 italic">Sin desglose por actividad (esta estimación se generó antes de que existiera ese detalle).</p>
       )}
 
-      <div className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-500 max-w-[220px] space-y-0.5">
-        <div className="flex items-center justify-between">
-          <span>Contratado</span>
-          <span className="text-slate-700 font-medium">{presupuestoVenta != null ? formatExacto(presupuestoVenta) : "—"}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span>Facturado acumulado</span>
-          <span className="text-slate-700 font-medium">−{formatExacto(facturadoAcumulado)}</span>
-        </div>
-        <div className="flex items-center justify-between border-t border-slate-200 mt-1 pt-1">
-          <span className="font-medium text-slate-600">Por cobrar</span>
-          <span className="text-slate-800 font-semibold">{porCobrar != null ? formatExacto(porCobrar) : "—"}</span>
-        </div>
-      </div>
-
-      {editando ? (
-        <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
-          <div>
-            <label className="block text-[10px] font-medium text-slate-500 mb-1">Descripción</label>
-            <input value={descEdit} onChange={(e) => setDescEdit(e.target.value)} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
-          </div>
-          <div>
-            <label className="block text-[10px] font-medium text-slate-500 mb-1">Monto neto a facturar</label>
-            <input type="number" step="0.01" value={montoEdit} onChange={(e) => setMontoEdit(e.target.value)} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
-            <p className="text-[10px] text-slate-400 mt-1">Si lo bajas (ej. porque incluía algo que no corresponde a este proyecto), la diferencia no se pierde: queda pendiente y la próxima estimación automática la vuelve a incluir.</p>
-          </div>
-          {error && <p className="text-xs text-red-600">{error}</p>}
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" className="flex-1 h-8 text-xs" onClick={() => setEditando(false)} disabled={isPending}>Cancelar</Button>
-            <Button type="button" className="flex-1 h-8 text-xs" isLoading={isPending} onClick={handleGuardarEdicion}>Guardar</Button>
-          </div>
-        </div>
-      ) : (
+      {!colapsada && (
         <>
-          {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
-          <div className="flex gap-3 mt-3">
-            <button onClick={() => setEditando(true)} disabled={isPending} className="text-slate-600 hover:text-slate-900 disabled:opacity-50 inline-flex items-center gap-1 text-xs">
-              <Pencil className="h-3.5 w-3.5" /> Editar
-            </button>
-            <button onClick={handleDescartar} disabled={isPending} className="text-red-600 hover:text-red-800 disabled:opacity-50 inline-flex items-center gap-1 text-xs">
-              <Trash2 className="h-3.5 w-3.5" /> Descartar
-            </button>
-            {f.estado === "aprobada" ? (
-              <button onClick={handleEnviar} disabled={isPending} className="ml-auto text-emerald-700 hover:text-emerald-900 disabled:opacity-50 inline-flex items-center gap-1 text-xs font-medium">
-                <Send className="h-3.5 w-3.5" /> Enviar
-              </button>
-            ) : (
-              <button onClick={handleAprobar} disabled={isPending} className="ml-auto text-emerald-700 hover:text-emerald-900 disabled:opacity-50 inline-flex items-center gap-1 text-xs font-medium">
-                <Check className="h-3.5 w-3.5" /> Aprobar
-              </button>
-            )}
+          <div className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-500 max-w-[220px] space-y-0.5">
+            <div className="flex items-center justify-between">
+              <span>Contratado</span>
+              <span className="text-slate-700 font-medium">{presupuestoVenta != null ? formatExacto(presupuestoVenta) : "—"}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Facturado acumulado</span>
+              <span className="text-slate-700 font-medium">−{formatExacto(facturadoAcumulado)}</span>
+            </div>
+            <div className="flex items-center justify-between border-t border-slate-200 mt-1 pt-1">
+              <span className="font-medium text-slate-600">Por cobrar</span>
+              <span className="text-slate-800 font-semibold">{porCobrar != null ? formatExacto(porCobrar) : "—"}</span>
+            </div>
           </div>
+
+          {editando ? (
+            <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+              <div>
+                <label className="block text-[10px] font-medium text-slate-500 mb-1">Descripción</label>
+                <input value={descEdit} onChange={(e) => setDescEdit(e.target.value)} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-slate-500 mb-1">Monto neto a facturar</label>
+                <input type="number" step="0.01" value={montoEdit} onChange={(e) => setMontoEdit(e.target.value)} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                <p className="text-[10px] text-slate-400 mt-1">Si lo bajas (ej. porque incluía algo que no corresponde a este proyecto), la diferencia no se pierde: queda pendiente y la próxima estimación automática la vuelve a incluir.</p>
+              </div>
+              {error && <p className="text-xs text-red-600">{error}</p>}
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" className="flex-1 h-8 text-xs" onClick={() => setEditando(false)} disabled={isPending}>Cancelar</Button>
+                <Button type="button" className="flex-1 h-8 text-xs" isLoading={isPending} onClick={handleGuardarEdicion}>Guardar</Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+              <div className="flex gap-3 mt-3">
+                <button onClick={() => setEditando(true)} disabled={isPending} className="text-slate-600 hover:text-slate-900 disabled:opacity-50 inline-flex items-center gap-1 text-xs">
+                  <Pencil className="h-3.5 w-3.5" /> Editar
+                </button>
+                <button onClick={handleDescartar} disabled={isPending} className="text-red-600 hover:text-red-800 disabled:opacity-50 inline-flex items-center gap-1 text-xs">
+                  <Trash2 className="h-3.5 w-3.5" /> Descartar
+                </button>
+                {f.estado === "aprobada" ? (
+                  <button onClick={handleEnviar} disabled={isPending} className="ml-auto text-emerald-700 hover:text-emerald-900 disabled:opacity-50 inline-flex items-center gap-1 text-xs font-medium">
+                    <Send className="h-3.5 w-3.5" /> Enviar
+                  </button>
+                ) : (
+                  <button onClick={handleAprobar} disabled={isPending} className="ml-auto text-emerald-700 hover:text-emerald-900 disabled:opacity-50 inline-flex items-center gap-1 text-xs font-medium">
+                    <Check className="h-3.5 w-3.5" /> Aprobar
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
