@@ -548,10 +548,19 @@ async function aplicarAnalisisAFactura(
         .neq("id", facturaId)
 
       const duplicado = (otras ?? []).find((f) => {
-        if (Math.abs((f.total ?? 0) - totalFinal) >= 0.01) return false
+        const diffTotal = Math.abs((f.total ?? 0) - totalFinal)
         const mismaRef = refFinal.length > 0 && normalizarRef(f.referencia) === refFinal
         const mismoLugar = (f.lugar ?? "").trim().toLowerCase() === lugarFinal.toLowerCase()
-        return mismaRef || mismoLugar
+        // El número de referencia es una señal fuerte (es el folio impreso
+        // del ticket) -- se tolera hasta $0.05 de diferencia en el total,
+        // porque la IA a veces redondea distinto un centavo de tax entre
+        // una foto y otra del mismo recibo. Si solo coincide el lugar
+        // (señal más débil, muchas compras del mismo día en la misma
+        // tienda), se exige el total prácticamente exacto para no generar
+        // falsos positivos.
+        if (mismaRef) return diffTotal < 0.05
+        if (mismoLugar) return diffTotal < 0.01
+        return false
       })
 
       if (duplicado) {
