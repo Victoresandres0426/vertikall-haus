@@ -2,11 +2,12 @@
 
 import { useState, useTransition, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, X, Save, ArrowLeft, AlertTriangle, Gauge } from "lucide-react"
+import { Plus, X, Save, ArrowLeft, AlertTriangle, Gauge, Camera, Loader2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input, Textarea } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { createClient } from "@/lib/supabase/client"
 import { actualizarReporteDiario } from "../../actions"
 
 export type TrabajadorHist = { id: string; nombre_completo: string; rol_obra: string | null }
@@ -16,7 +17,10 @@ export type ActividadHist = {
 }
 export type SplitInicial = { actividadId: string; rol: string; horas: number; avance: number; costo: number | null; modoPago: string | null }
 export type AsistenciaInicial = { presente: boolean; horas_regulares: number; horas_extra: number }
-export type AvanceInicial = { cantidad_ejecutada_dia: number; porcentaje_avance_total: number | null; incidencias: string }
+// url viene vacío ("") si no se pudo firmar (ej. bucket todavía no
+// creado) -- el UI simplemente no muestra esa miniatura en ese caso.
+export type FotoAvanceInicial = { path: string; url: string }
+export type AvanceInicial = { cantidad_ejecutada_dia: number; porcentaje_avance_total: number | null; incidencias: string; fotos: FotoAvanceInicial[] }
 // Rendimiento real vs. plan de este día -- ver lib/engine/rendimiento.ts.
 // pct puede ser null (nadie tiene horas registradas todavía) o superar
 // 100 (se produjo más rápido de lo que el plan asumía).
@@ -52,7 +56,12 @@ type WorkerState = {
 // apaga (false) en cuanto alguien la agrega a mano con "+ Agregar avance
 // de otra actividad" o edita el número directamente en su tarjeta, para
 // no pisarle esa corrección.
-type AvanceRow = { actividadId: string; cantidadHoy: number; porcentajeTotal: number | null; incidencias: string; auto: boolean }
+// Foto de un renglón de avance -- "path" ya subido a Storage (bucket
+// 'reporte-fotos'). previewUrl es lo que se muestra: la URL firmada
+// (si ya venía guardada) o un blob local (si se acaba de subir en esta
+// sesión de edición, antes de recargar la página).
+type FotoRow = { path: string; previewUrl: string }
+type AvanceRow = { actividadId: string; cantidadHoy: number; porcentajeTotal: number | null; incidencias: string; auto: boolean; fotos: FotoRow[] }
 
 // Texto de una opción del <select> de actividades -- incluye el % de
 // avance reportado hasta ahora para poder identificar de un vistazo
@@ -193,8 +202,38 @@ export function HistorialEditClient({
       // alguien edite "Cantidad hoy" o "% acumulado" a mano, así que una
       // corrección manual directa sigue protegida de ser pisada.
       auto: true,
+      fotos: v.fotos.map((f) => ({ path: f.path, previewUrl: f.url })),
     }))
   )
+
+  const [subiendoFotos, setSubiendoFotos] = useState<Record<string, boolean>>({})
+
+  // Sube fotos nuevas a Storage (bucket 'reporte-fotos', migración 104)
+  // y las agrega al renglón de avance de esa actividad -- se guardan de
+  // verdad recién al hacer clic en "Guardar cambios" (handleGuardar
+  // manda TODAS las fotos del renglón, viejas + nuevas).
+  const handleSubirFotos = async (actividadId: string, files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setSubiendoFotos((prev) => ({ ...prev, [actividadId]: true }))
+    const supabase = createClient()
+    for (const file of Array.from(files)) {
+      const nombreLimpio = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")
+      const path = `${proyectoId}/${actividadId}/${fecha}_${Date.now()}_${nombreLimpio}`
+      const { error } = await supabase.storage.from("reporte-fotos").upload(path, file)
+      if (error) continue
+      const previewUrl = URL.createObjectURL(file)
+      setAvanceRows((prev) =>
+        prev.map((r) => (r.actividadId === actividadId ? { ...r, fotos: [...r.fotos, { path, previewUrl }] } : r))
+      )
+    }
+    setSubiendoFotos((prev) => ({ ...prev, [actividadId]: false }))
+  }
+
+  const quitarFoto = (actividadId: string, index: number) => {
+    setAvanceRows((prev) =>
+      prev.map((r) => (r.actividadId === actividadId ? { ...r, fotos: r.fotos.filter((_, i) => i !== index) } : r))
+    )
+  }
 
   const actividadPorId = new Map(actividades.map((a) => [a.id, a]))
 
@@ -261,7 +300,7 @@ export function HistorialEditClient({
 
   const agregarAvance = (actividadId: string) => {
     if (!actividadId) return
-    setAvanceRows((prev) => [...prev, { actividadId, cantidadHoy: 0, porcentajeTotal: actividadPorId.get(actividadId)?.avance_porcentaje ?? 0, incidencias: "", auto: false }])
+    setAvanceRows((prev) => [...prev, { actividadId, cantidadHoy: 0, porcentajeTotal: actividadPorId.get(actividadId)?.avance_porcentaje ?? 0, incidencias: "", auto: false, fotos: [] }])
   }
 
   const quitarAvance = (actividadId: string) => {
@@ -390,6 +429,11 @@ export function HistorialEditClient({
       cantidad_ejecutada_dia: r.cantidadHoy,
       porcentaje_avance_total: r.porcentajeTotal ?? 0,
       incidencias: r.incidencias || undefined,
+      // Se manda SIEMPRE el set completo (viejas + nuevas) -- la función
+      // SQL reemplaza fotos con lo que llegue acá para esta actividad
+      // (migración 105), así que si se omitiera se perderían las que ya
+      // estaban guardadas.
+      fotos: r.fotos.map((f) => ({ storage_path: f.path })),
     }))
 
     const horasPorActividad = workers.flatMap((w) =>
@@ -752,6 +796,52 @@ export function HistorialEditClient({
                   onChange={(e) => updateAvance(r.actividadId, "incidencias", e.target.value)}
                   placeholder="Incidencias o bloqueos..."
                 />
+
+                {/* Fotos vinculadas a esta actividad dentro de este reporte
+                    (avance_diario.fotos) -- mismo patrón que reporte-client.tsx,
+                    pero aquí también se pueden ver las que ya estaban guardadas. */}
+                <div className="pt-1">
+                  <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#3B72D8] cursor-pointer hover:underline">
+                    {subiendoFotos[r.actividadId] ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Camera className="h-3.5 w-3.5" />
+                    )}
+                    {subiendoFotos[r.actividadId] ? "Subiendo..." : "Agregar foto de avance"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        handleSubirFotos(r.actividadId, e.target.files)
+                        e.target.value = ""
+                      }}
+                    />
+                  </label>
+                  {r.fotos.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                      {r.fotos.map((f, fi) => (
+                        <div key={fi} className="relative h-12 w-12 rounded-lg overflow-hidden border border-slate-200 shrink-0">
+                          {f.previewUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={f.previewUrl} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="h-full w-full bg-slate-100" />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => quitarFoto(r.actividadId, fi)}
+                            className="absolute top-0 right-0 bg-black/60 text-white rounded-bl px-1 text-[9px] leading-tight"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )
           })}

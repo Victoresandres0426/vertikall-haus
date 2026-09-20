@@ -1055,27 +1055,17 @@ export function ReporteClient({
                       />
 
                       {/* Fotos de avance -- quedan vinculadas a ESTA actividad
-                          (avance_diario.fotos), no como galería suelta. */}
-                      <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                        {a.fotos.map((f, fi) => (
-                          <div key={fi} className="relative h-12 w-12 rounded-lg overflow-hidden border border-slate-200 shrink-0">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={f.previewUrl} alt={f.nombre} className="h-full w-full object-cover" />
-                            <button
-                              type="button"
-                              onClick={() => quitarFoto(a.id, fi)}
-                              className="absolute top-0 right-0 bg-black/60 text-white rounded-bl px-1 text-[9px] leading-tight"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ))}
-                        <label className="h-12 w-12 flex items-center justify-center rounded-lg border border-dashed border-slate-300 text-slate-400 cursor-pointer hover:border-slate-400 hover:text-slate-600 shrink-0">
+                          (avance_diario.fotos), no como galería suelta.
+                          Botón con texto (no solo ícono) para que no pase
+                          desapercibido. */}
+                      <div className="mt-2.5 pt-2.5 border-t border-slate-100">
+                        <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#3B72D8] cursor-pointer hover:underline">
                           {subiendoFotos[a.id] ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           ) : (
-                            <Camera className="h-4 w-4" />
+                            <Camera className="h-3.5 w-3.5" />
                           )}
+                          {subiendoFotos[a.id] ? "Subiendo..." : "Agregar foto de avance"}
                           <input
                             type="file"
                             accept="image/*"
@@ -1089,9 +1079,21 @@ export function ReporteClient({
                           />
                         </label>
                         {a.fotos.length > 0 && (
-                          <span className="text-[10px] text-slate-400">
-                            {a.fotos.length} foto{a.fotos.length !== 1 ? "s" : ""} de avance
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                            {a.fotos.map((f, fi) => (
+                              <div key={fi} className="relative h-12 w-12 rounded-lg overflow-hidden border border-slate-200 shrink-0">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={f.previewUrl} alt={f.nombre} className="h-full w-full object-cover" />
+                                <button
+                                  type="button"
+                                  onClick={() => quitarFoto(a.id, fi)}
+                                  className="absolute top-0 right-0 bg-black/60 text-white rounded-bl px-1 text-[9px] leading-tight"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
                     </div>

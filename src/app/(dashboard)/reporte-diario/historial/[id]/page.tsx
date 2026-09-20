@@ -76,7 +76,7 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
       .eq("reporte_id", id),
     supabase
       .from("avance_diario")
-      .select("actividad_id, cantidad_ejecutada_dia, porcentaje_avance_total, incidencias")
+      .select("actividad_id, cantidad_ejecutada_dia, porcentaje_avance_total, incidencias, fotos")
       .eq("reporte_id", id),
     supabase
       .from("asistencia_actividad_diaria")
@@ -145,12 +145,28 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
   }
 
   const avanceInicial: Record<string, AvanceInicial> = {}
-  for (const a of (avanceRaw ?? []) as { actividad_id: string; cantidad_ejecutada_dia: number; porcentaje_avance_total: number | null; incidencias: string | null }[]) {
+  for (const a of (avanceRaw ?? []) as { actividad_id: string; cantidad_ejecutada_dia: number; porcentaje_avance_total: number | null; incidencias: string | null; fotos: { storage_path?: string; descripcion?: string }[] | null }[]) {
     avanceInicial[a.actividad_id] = {
       cantidad_ejecutada_dia: Number(a.cantidad_ejecutada_dia ?? 0),
       porcentaje_avance_total: a.porcentaje_avance_total != null ? Number(a.porcentaje_avance_total) : null,
       incidencias: a.incidencias ?? "",
+      fotos: (a.fotos ?? []).filter((f) => f.storage_path).map((f) => ({ path: f.storage_path as string, url: "" })),
     }
+  }
+
+  // Fotos ya subidas a este reporte (bucket privado 'reporte-fotos') --
+  // se firman las URLs acá en el servidor, igual patrón que el portal
+  // del cliente, para poder mostrarlas en el formulario de edición.
+  const rutasFotos = Object.values(avanceInicial).flatMap((a) => a.fotos.map((f) => f.path))
+  if (rutasFotos.length > 0) {
+    await Promise.all(
+      Object.values(avanceInicial).flatMap((a) =>
+        a.fotos.map(async (f) => {
+          const { data: firmada } = await supabase.storage.from("reporte-fotos").createSignedUrl(f.path, 3600)
+          if (firmada?.signedUrl) f.url = firmada.signedUrl
+        })
+      )
+    )
   }
 
   const splitsPorTrabajador: Record<string, SplitInicial[]> = {}
