@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { FileText, TrendingUp, TrendingDown, Layers, DollarSign, Plus, X } from "lucide-react"
+import { FileText, TrendingUp, TrendingDown, Layers, DollarSign, Plus, X, Pencil, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { crearPresupuesto, crearPartida } from "./actions"
+import { crearPresupuesto, crearPartida, actualizarPartida } from "./actions"
 
 type Partida = {
   id: string
@@ -192,31 +192,9 @@ export function PresupuestoClient({
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-50">
-                    {(expandidos[pres.id] ? pres.partidas : pres.partidas.slice(0, 10)).map((partida) => {
-                      const desviacion = (partida.monto_ejercido ?? 0) - (partida.monto_presupuestado ?? 0)
-                      return (
-                        <div key={partida.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 text-sm">
-                          <div className="flex-1 min-w-0">
-                            {partida.codigo && (
-                              <span className="font-mono text-xs text-slate-400 mr-2">{partida.codigo}</span>
-                            )}
-                            <span className="text-slate-800 truncate">{partida.descripcion}</span>
-                          </div>
-                          <span className={cn("text-xs px-1.5 py-0.5 rounded shrink-0", tipoColor[partida.tipo_recurso] ?? "bg-slate-100 text-slate-600")}>
-                            {tipoLabel[partida.tipo_recurso] ?? partida.tipo_recurso}
-                          </span>
-                          <div className="text-right shrink-0 space-x-4 flex">
-                            <span className="text-slate-500 text-xs">{formatMXN(partida.monto_presupuestado)}</span>
-                            <span className={cn("font-medium text-xs flex items-center gap-0.5",
-                              desviacion > 0 ? "text-red-600" : desviacion < 0 ? "text-emerald-600" : "text-slate-500"
-                            )}>
-                              {desviacion > 0 ? <TrendingUp className="h-3 w-3" /> : desviacion < 0 ? <TrendingDown className="h-3 w-3" /> : null}
-                              {desviacion !== 0 ? formatMXN(Math.abs(desviacion)) : "—"}
-                            </span>
-                          </div>
-                        </div>
-                      )
-                    })}
+                    {(expandidos[pres.id] ? pres.partidas : pres.partidas.slice(0, 10)).map((partida) => (
+                      <FilaPartida key={partida.id} partida={partida} puedeEditar={puedeCrear} />
+                    ))}
                     {pres.partidas.length > 10 && (
                       <button
                         type="button"
@@ -245,6 +223,117 @@ export function PresupuestoClient({
           onClose={() => setPresupuestoParaPartida(null)}
         />
       )}
+    </div>
+  )
+}
+
+function FilaPartida({ partida, puedeEditar }: { partida: Partida; puedeEditar: boolean }) {
+  const [editando, setEditando] = useState(false)
+  const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState("")
+  const [cantidad, setCantidad] = useState(partida.cantidad != null ? String(partida.cantidad) : "")
+  const [unidad, setUnidad] = useState(partida.unidad ?? "")
+  const [precioUnitario, setPrecioUnitario] = useState(partida.precio_unitario != null ? String(partida.precio_unitario) : "")
+  const [montoPresupuestado, setMontoPresupuestado] = useState(String(partida.monto_presupuestado ?? 0))
+
+  const desviacion = (partida.monto_ejercido ?? 0) - (partida.monto_presupuestado ?? 0)
+
+  if (!editando) {
+    return (
+      <div className="group flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 text-sm">
+        <div className="flex-1 min-w-0">
+          {partida.codigo && (
+            <span className="font-mono text-xs text-slate-400 mr-2">{partida.codigo}</span>
+          )}
+          <span className="text-slate-800 truncate">{partida.descripcion}</span>
+        </div>
+        <span className={cn("text-xs px-1.5 py-0.5 rounded shrink-0", tipoColor[partida.tipo_recurso] ?? "bg-slate-100 text-slate-600")}>
+          {tipoLabel[partida.tipo_recurso] ?? partida.tipo_recurso}
+        </span>
+        <div className="text-right shrink-0 space-x-4 flex items-center">
+          <span className="text-slate-500 text-xs">{formatMXN(partida.monto_presupuestado)}</span>
+          <span className={cn("font-medium text-xs flex items-center gap-0.5",
+            desviacion > 0 ? "text-red-600" : desviacion < 0 ? "text-emerald-600" : "text-slate-500"
+          )}>
+            {desviacion > 0 ? <TrendingUp className="h-3 w-3" /> : desviacion < 0 ? <TrendingDown className="h-3 w-3" /> : null}
+            {desviacion !== 0 ? formatMXN(Math.abs(desviacion)) : "—"}
+          </span>
+          {puedeEditar && (
+            <button
+              type="button"
+              onClick={() => setEditando(true)}
+              className="text-slate-300 hover:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Editar cantidad, precio o presupuesto"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const guardar = () => {
+    setError("")
+    const formData = new FormData()
+    formData.set("cantidad", cantidad)
+    formData.set("unidad", unidad)
+    formData.set("precio_unitario", precioUnitario)
+    formData.set("monto_presupuestado", montoPresupuestado)
+    startTransition(async () => {
+      const result = await actualizarPartida(partida.id, formData)
+      if (result.error) setError(result.error)
+      else window.location.reload()
+    })
+  }
+
+  return (
+    <div className="px-4 py-3 bg-slate-50/70 text-sm space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="min-w-0">
+          {partida.codigo && (
+            <span className="font-mono text-xs text-slate-400 mr-2">{partida.codigo}</span>
+          )}
+          <span className="text-slate-800">{partida.descripcion}</span>
+        </div>
+        <span className={cn("text-xs px-1.5 py-0.5 rounded shrink-0", tipoColor[partida.tipo_recurso] ?? "bg-slate-100 text-slate-600")}>
+          {tipoLabel[partida.tipo_recurso] ?? partida.tipo_recurso}
+        </span>
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        <div>
+          <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Cantidad</label>
+          <input value={cantidad} onChange={(e) => setCantidad(e.target.value)} type="number" step="0.001"
+            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Unidad</label>
+          <input value={unidad} onChange={(e) => setUnidad(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Precio unit.</label>
+          <input value={precioUnitario} onChange={(e) => setPrecioUnitario(e.target.value)} type="number" step="0.01"
+            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Presupuesto ($)</label>
+          <input value={montoPresupuestado} onChange={(e) => setMontoPresupuestado(e.target.value)} type="number" step="0.01"
+            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-slate-900" />
+        </div>
+      </div>
+      <p className="text-[11px] text-slate-400">
+        Ejercido: {formatMXN(partida.monto_ejercido ?? 0)} (se sincroniza solo desde los costos reales, no se edita aquí)
+      </p>
+      {error && <div className="rounded-lg bg-red-50 border border-red-200 p-2 text-xs text-red-600">{error}</div>}
+      <div className="flex gap-2 justify-end pt-1">
+        <Button type="button" size="sm" variant="outline" onClick={() => setEditando(false)} disabled={isPending}>
+          Cancelar
+        </Button>
+        <Button type="button" size="sm" onClick={guardar} isLoading={isPending}>
+          <Check className="h-3.5 w-3.5 mr-1" /> Guardar
+        </Button>
+      </div>
     </div>
   )
 }

@@ -115,3 +115,46 @@ export async function crearPartida(formData: FormData): Promise<{ error?: string
   revalidatePath("/presupuesto")
   return {}
 }
+
+export async function actualizarPartida(partidaId: string, formData: FormData): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  if (!partidaId) return { error: "Partida no especificada" }
+
+  const cantidadRaw = formData.get("cantidad") as string
+  const cantidad = cantidadRaw ? parseFloat(cantidadRaw) : null
+  const precioRaw = formData.get("precio_unitario") as string
+  const precio_unitario = precioRaw ? parseFloat(precioRaw) : null
+  const montoRaw = formData.get("monto_presupuestado") as string
+  let monto_presupuestado = montoRaw ? parseFloat(montoRaw) : 0
+
+  // Si no se dio monto directo pero sí cantidad y precio, se calcula
+  if ((!montoRaw || isNaN(monto_presupuestado)) && cantidad != null && precio_unitario != null && !isNaN(cantidad) && !isNaN(precio_unitario)) {
+    monto_presupuestado = cantidad * precio_unitario
+  }
+  if (isNaN(monto_presupuestado)) monto_presupuestado = 0
+
+  const { error } = await supabase
+    .from("partidas_presupuesto")
+    .update({
+      cantidad: cantidad != null && !isNaN(cantidad) ? cantidad : null,
+      unidad: (formData.get("unidad") as string) || null,
+      precio_unitario: precio_unitario != null && !isNaN(precio_unitario) ? precio_unitario : null,
+      // monto_total se mantiene por compatibilidad; monto_presupuestado
+      // es el campo que usa la interfaz y la facturación automática.
+      monto_total: monto_presupuestado,
+      monto_presupuestado,
+    })
+    .eq("id", partidaId)
+
+  if (error) {
+    console.error("actualizarPartida error:", error)
+    return { error: "Error al actualizar la partida." }
+  }
+
+  // presupuestos.total se recalcula solo (trigger en partidas_presupuesto)
+  revalidatePath("/presupuesto")
+  return {}
+}
