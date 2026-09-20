@@ -3,15 +3,17 @@
 import { useState, useTransition, type ReactNode } from "react"
 import {
   CheckCircle, Play, Ban, Circle, AlertTriangle,
-  Pencil, Trash2, Plus, Check, X, Loader2,
+  Pencil, Trash2, Plus, Check, X, Loader2, History,
 } from "lucide-react"
+import Link from "next/link"
 import { Badge, AlertaBadge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import {
   actualizarProyectoInfo, crearProceso, actualizarProceso, eliminarProceso,
   crearActividad, actualizarActividad, eliminarActividad,
-  type ProyectoInfoInput, type ActividadInput,
+  obtenerHistorialAvance,
+  type ProyectoInfoInput, type ActividadInput, type EntradaHistorialAvance,
 } from "./actions"
 
 type Actividad = {
@@ -144,6 +146,25 @@ export function ActividadesClient({
   const [draftActividad, setDraftActividad] = useState<ActividadInput | null>(null)
   const [creandoActividadEn, setCreandoActividadEn] = useState<{ proyectoId: string; procesoId: string } | null>(null)
   const [draftNuevaActividad, setDraftNuevaActividad] = useState<ActividadInput>(actividadVacia)
+
+  // Historial de avance día por día (modal) -- ver comentario en
+  // obtenerHistorialAvance (actions.ts) sobre por qué se agregó.
+  const [historialAbierto, setHistorialAbierto] = useState<{ nombre: string; unidad: string | null } | null>(null)
+  const [historialEntradas, setHistorialEntradas] = useState<EntradaHistorialAvance[] | null>(null)
+  const [historialCargando, setHistorialCargando] = useState(false)
+  const [historialError, setHistorialError] = useState<string | null>(null)
+
+  const abrirHistorialAvance = (act: Actividad) => {
+    setHistorialAbierto({ nombre: `${act.codigo} — ${act.nombre}`, unidad: act.unidad ?? null })
+    setHistorialEntradas(null)
+    setHistorialError(null)
+    setHistorialCargando(true)
+    obtenerHistorialAvance(act.id).then((res) => {
+      setHistorialCargando(false)
+      if (res.error) setHistorialError(res.error)
+      else setHistorialEntradas(res.entradas ?? [])
+    })
+  }
 
   const iniciarEdicionProyecto = (p: ProyectoConActividades) => {
     setError(null)
@@ -470,6 +491,15 @@ export function ActividadesClient({
                                     Cant: {act.cantidad_ejecutada != null ? `${act.cantidad_ejecutada} / ` : ""}{act.cantidad_objetivo} {act.unidad ?? ""}
                                   </span>
                                 )}
+                                {(act.cantidad_ejecutada ?? 0) > 0 && (
+                                  <button
+                                    onClick={() => abrirHistorialAvance(act)}
+                                    className="text-xs text-slate-400 hover:text-slate-700 inline-flex items-center gap-0.5"
+                                    title="Ver qué se reportó cada día para esta actividad"
+                                  >
+                                    <History className="h-3 w-3" /> historial
+                                  </button>
+                                )}
                                 <span
                                   className={cn("text-xs", excedeCosto ? "text-red-600 font-semibold" : "text-slate-400")}
                                   title="Costo real / costo presupuestado (material + mano de obra)"
@@ -623,6 +653,61 @@ export function ActividadesClient({
             </div>
           </div>
         ))
+      )}
+
+      {historialAbierto && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setHistorialAbierto(null) }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[80vh] overflow-y-auto">
+            <button
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600"
+              onClick={() => setHistorialAbierto(null)}
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <h3 className="text-sm font-semibold text-slate-900 mb-1">Historial de avance</h3>
+            <p className="text-xs text-slate-400 mb-4">{historialAbierto.nombre}</p>
+
+            {historialCargando && <p className="text-sm text-slate-400">Cargando…</p>}
+            {historialError && <p className="text-sm text-red-600">{historialError}</p>}
+            {historialEntradas && historialEntradas.length === 0 && (
+              <p className="text-sm text-slate-400">No hay días reportados para esta actividad.</p>
+            )}
+            {historialEntradas && historialEntradas.length > 0 && (
+              <div className="space-y-1.5">
+                {historialEntradas.map((h, i) => (
+                  <div key={i} className="flex items-center justify-between text-sm border-b border-slate-100 pb-1.5">
+                    <div>
+                      <span className="text-slate-700">{h.fecha}</span>
+                      {h.incidencias && (
+                        <p className="text-xs text-amber-600 max-w-[220px] truncate" title={h.incidencias}>{h.incidencias}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-medium text-slate-900">
+                        {h.cantidad_ejecutada_dia} {historialAbierto.unidad ?? ""}
+                      </span>
+                      <Link
+                        href={`/reporte-diario/historial/${h.reporte_id}`}
+                        className="text-xs text-slate-400 hover:text-slate-700 underline"
+                      >
+                        editar
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between text-sm pt-1.5 font-semibold text-slate-800">
+                  <span>Total acumulado</span>
+                  <span>
+                    {historialEntradas.reduce((s, h) => s + (h.cantidad_ejecutada_dia || 0), 0)} {historialAbierto.unidad ?? ""}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

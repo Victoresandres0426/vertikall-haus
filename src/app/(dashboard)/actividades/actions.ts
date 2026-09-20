@@ -39,6 +39,51 @@ async function verificarAcceso(supabase: Awaited<ReturnType<typeof createClient>
   return { ok: true as const }
 }
 
+// ── Historial de avance día por día ─────────────────────────────
+// Hoy no hay forma de ver, para una actividad, qué se reportó cada día
+// sin ir reporte por reporte en el Historial -- esto junta todo de una
+// vez (avance_diario + la fecha de su reporte) para poder ver de un
+// vistazo si algo se está duplicando o si falta corregir un día, y
+// saltar directo a editar ese reporte si hace falta.
+export type EntradaHistorialAvance = {
+  reporte_id: string
+  fecha: string
+  cantidad_ejecutada_dia: number
+  incidencias: string | null
+}
+
+export async function obtenerHistorialAvance(actividadId: string): Promise<{ error?: string; entradas?: EntradaHistorialAvance[] }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  const { data, error } = await supabase
+    .from("avance_diario")
+    .select("reporte_id, cantidad_ejecutada_dia, incidencias, reportes_diarios ( fecha )")
+    .eq("actividad_id", actividadId)
+
+  if (error) {
+    console.error("obtenerHistorialAvance:", error)
+    return { error: "No se pudo cargar el historial de avance." }
+  }
+
+  const entradas = ((data ?? []) as unknown as {
+    reporte_id: string
+    cantidad_ejecutada_dia: number
+    incidencias: string | null
+    reportes_diarios: { fecha: string } | null
+  }[])
+    .map((r) => ({
+      reporte_id: r.reporte_id,
+      fecha: r.reportes_diarios?.fecha ?? "",
+      cantidad_ejecutada_dia: r.cantidad_ejecutada_dia,
+      incidencias: r.incidencias,
+    }))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha))
+
+  return { entradas }
+}
+
 // ── Proyecto ─────────────────────────────────────────────────
 
 export type ProyectoInfoInput = {
