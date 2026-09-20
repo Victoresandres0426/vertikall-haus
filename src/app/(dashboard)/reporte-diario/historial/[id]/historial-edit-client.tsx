@@ -375,7 +375,7 @@ export function HistorialEditClient({
         const objetivo = act?.cantidad_objetivo ?? 0
         const base = baseSinEsteReporte(actividadId)
         const pct = objetivo > 0 ? Math.round(((base + suma) / objetivo) * 100) : (act?.avance_porcentaje ?? 0)
-        next.push({ actividadId, cantidadHoy: suma, porcentajeTotal: pct, incidencias: "", auto: true })
+        next.push({ actividadId, cantidadHoy: suma, porcentajeTotal: pct, incidencias: "", auto: true, fotos: [] })
       }
       return cambio ? next : prev
     })
