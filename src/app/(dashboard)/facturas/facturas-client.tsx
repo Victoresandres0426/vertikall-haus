@@ -434,6 +434,104 @@ function PanelAprobadas({
   )
 }
 
+// Tabla de desglose por actividad/disciplina, con totales al pie --
+// compartida entre las tarjetas de borrador/aprobada y el detalle
+// expandible de facturas ya enviadas (antes esto solo existía para
+// las primeras, así que una vez enviada la factura no había forma de
+// ver de nuevo el desglose).
+function TablaDesglose({ f }: { f: FacturaCliente }) {
+  if (!f.desglose_actividades || f.desglose_actividades.length === 0) {
+    return <p className="mt-2 text-[10px] text-slate-400 italic">Sin desglose por actividad (esta estimación se generó antes de que existiera ese detalle).</p>
+  }
+
+  const bruto = f.monto + f.amortizacion_anticipo
+  const totalEjecutado = f.desglose_actividades.reduce((s, d) => s + d.monto_bruto, 0) || bruto
+  const totalAmortizado = f.desglose_actividades.reduce((s, d) => s + (d.monto_amortizado ?? 0), 0) || f.amortizacion_anticipo
+  const totalACobrarTabla = f.desglose_actividades.reduce((s, d) => s + (d.monto_neto ?? d.monto_bruto), 0) || f.monto
+
+  return (
+    <div className="mt-2 bg-slate-50 border border-slate-200 rounded-md overflow-hidden">
+      <table className="w-full text-[11px]">
+        <thead className="bg-slate-100">
+          <tr className="text-slate-500">
+            <th className="text-left font-medium px-2 py-1.5">Renglón</th>
+            <th className="text-right font-medium px-2 py-1.5">% avance</th>
+            <th className="text-right font-medium px-2 py-1.5">Ejecutado</th>
+            <th className="text-right font-medium px-2 py-1.5">Amort. anticipo</th>
+            <th className="text-right font-medium px-2 py-1.5">A cobrar</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-200">
+          {f.desglose_actividades.map((d) => {
+            const tieneAmortizacion = d.monto_amortizado !== undefined && d.monto_neto !== undefined
+
+            if (d.actividades) {
+              return (
+                <Fragment key={`grupo-${d.disciplina}`}>
+                  <tr className="text-slate-800 bg-slate-50/70 font-medium">
+                    <td className="px-2 py-1.5">{d.disciplina}</td>
+                    <td className="text-right px-2 py-1.5 text-slate-400">
+                      {d.avance_desde_pct !== undefined ? `${d.avance_desde_pct}%-${d.avance_hasta_pct}%` : `${d.avance_pct}%`}
+                    </td>
+                    <td className="text-right px-2 py-1.5">{formatExacto(d.monto_bruto)}</td>
+                    <td className="text-right px-2 py-1.5 text-amber-600">
+                      {tieneAmortizacion && d.monto_amortizado! > 0 ? `−${formatExacto(d.monto_amortizado!)}` : "—"}
+                    </td>
+                    <td className="text-right px-2 py-1.5 font-medium text-slate-800">
+                      {formatExacto(tieneAmortizacion ? d.monto_neto! : d.monto_bruto)}
+                    </td>
+                  </tr>
+                  {d.actividades.map((sub) => (
+                    <tr key={sub.actividad_id} className="text-slate-400">
+                      <td className="pl-5 pr-2 py-1">
+                        {sub.codigo ? `${sub.codigo} — ` : ""}{sub.nombre}
+                      </td>
+                      <td className="text-right px-2 py-1" colSpan={4}>{sub.avance_actual_pct}% avance actual</td>
+                    </tr>
+                  ))}
+                </Fragment>
+              )
+            }
+
+            return (
+              <tr key={d.actividad_id} className="text-slate-600">
+                <td className="px-2 py-1.5">
+                  {d.actividad_codigo ? `${d.actividad_codigo} — ` : ""}{d.actividad_nombre}
+                </td>
+                <td className="text-right px-2 py-1.5 text-slate-400">{d.avance_pct}%</td>
+                <td className="text-right px-2 py-1.5">{formatExacto(d.monto_bruto)}</td>
+                <td className="text-right px-2 py-1.5 text-amber-600">
+                  {tieneAmortizacion && d.monto_amortizado! > 0 ? `−${formatExacto(d.monto_amortizado!)}` : "—"}
+                </td>
+                <td className="text-right px-2 py-1.5 font-medium text-slate-800">
+                  {formatExacto(tieneAmortizacion ? d.monto_neto! : d.monto_bruto)}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+        <tfoot>
+          <tr className="bg-slate-100 font-semibold text-slate-800 border-t border-slate-200">
+            <td className="px-2 py-1.5" colSpan={2}>Total</td>
+            <td className="text-right px-2 py-1.5">
+              <span className="block text-[9px] font-normal text-slate-400">Ejecutado</span>
+              {formatExacto(totalEjecutado)}
+            </td>
+            <td className="text-right px-2 py-1.5 text-amber-700">
+              <span className="block text-[9px] font-normal text-slate-400">Amort. anticipo</span>
+              {totalAmortizado > 0 ? `−${formatExacto(totalAmortizado)}` : "—"}
+            </td>
+            <td className="text-right px-2 py-1.5">
+              <span className="block text-[9px] font-normal text-slate-400">A cobrar</span>
+              {formatExacto(totalACobrarTabla)}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  )
+}
+
 function TarjetaBorrador({
   f,
   totalYaFacturado,
@@ -452,21 +550,6 @@ function TarjetaBorrador({
   // solo se abren si se quiere ver el detalle. Los borradores arrancan
   // expandidos, como antes.
   const [colapsada, setColapsada] = useState(f.estado === "aprobada")
-
-  const bruto = f.monto + f.amortizacion_anticipo
-
-  // Totales por columna -- de las líneas del desglose si existen (más
-  // exacto), si no de los campos de arriba de la factura (estimaciones
-  // viejas sin desglose).
-  const totalEjecutado = f.desglose_actividades?.length
-    ? f.desglose_actividades.reduce((s, d) => s + d.monto_bruto, 0)
-    : bruto
-  const totalAmortizado = f.desglose_actividades?.length
-    ? f.desglose_actividades.reduce((s, d) => s + (d.monto_amortizado ?? 0), 0)
-    : f.amortizacion_anticipo
-  const totalACobrarTabla = f.desglose_actividades?.length
-    ? f.desglose_actividades.reduce((s, d) => s + (d.monto_neto ?? d.monto_bruto), 0)
-    : f.monto
 
   // Resumen de facturación del contrato completo (no solo esta factura).
   const facturadoAcumulado = totalYaFacturado + f.monto
@@ -559,93 +642,7 @@ function TarjetaBorrador({
         </div>
       )}
 
-      {!colapsada && f.desglose_actividades && f.desglose_actividades.length > 0 && (
-        <div className="mt-2 bg-slate-50 border border-slate-200 rounded-md overflow-hidden">
-          <table className="w-full text-[11px]">
-            <thead className="bg-slate-100">
-              <tr className="text-slate-500">
-                <th className="text-left font-medium px-2 py-1.5">Renglón</th>
-                <th className="text-right font-medium px-2 py-1.5">% avance</th>
-                <th className="text-right font-medium px-2 py-1.5">Ejecutado</th>
-                <th className="text-right font-medium px-2 py-1.5">Amort. anticipo</th>
-                <th className="text-right font-medium px-2 py-1.5">A cobrar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {f.desglose_actividades.map((d) => {
-                const tieneAmortizacion = d.monto_amortizado !== undefined && d.monto_neto !== undefined
-
-                if (d.actividades) {
-                  // Renglón agrupado por disciplina (migración 094): fila
-                  // de encabezado con $ + sub-filas informativas por
-                  // actividad, sin valor en dinero.
-                  return (
-                    <Fragment key={`grupo-${d.disciplina}`}>
-                      <tr className="text-slate-800 bg-slate-50/70 font-medium">
-                        <td className="px-2 py-1.5">{d.disciplina}</td>
-                        <td className="text-right px-2 py-1.5 text-slate-400">
-                          {d.avance_desde_pct !== undefined ? `${d.avance_desde_pct}%-${d.avance_hasta_pct}%` : `${d.avance_pct}%`}
-                        </td>
-                        <td className="text-right px-2 py-1.5">{formatExacto(d.monto_bruto)}</td>
-                        <td className="text-right px-2 py-1.5 text-amber-600">
-                          {tieneAmortizacion && d.monto_amortizado! > 0 ? `−${formatExacto(d.monto_amortizado!)}` : "—"}
-                        </td>
-                        <td className="text-right px-2 py-1.5 font-medium text-slate-800">
-                          {formatExacto(tieneAmortizacion ? d.monto_neto! : d.monto_bruto)}
-                        </td>
-                      </tr>
-                      {d.actividades.map((sub) => (
-                        <tr key={sub.actividad_id} className="text-slate-400">
-                          <td className="pl-5 pr-2 py-1">
-                            {sub.codigo ? `${sub.codigo} — ` : ""}{sub.nombre}
-                          </td>
-                          <td className="text-right px-2 py-1" colSpan={4}>{sub.avance_actual_pct}% avance actual</td>
-                        </tr>
-                      ))}
-                    </Fragment>
-                  )
-                }
-
-                return (
-                  <tr key={d.actividad_id} className="text-slate-600">
-                    <td className="px-2 py-1.5">
-                      {d.actividad_codigo ? `${d.actividad_codigo} — ` : ""}{d.actividad_nombre}
-                    </td>
-                    <td className="text-right px-2 py-1.5 text-slate-400">{d.avance_pct}%</td>
-                    <td className="text-right px-2 py-1.5">{formatExacto(d.monto_bruto)}</td>
-                    <td className="text-right px-2 py-1.5 text-amber-600">
-                      {tieneAmortizacion && d.monto_amortizado! > 0 ? `−${formatExacto(d.monto_amortizado!)}` : "—"}
-                    </td>
-                    <td className="text-right px-2 py-1.5 font-medium text-slate-800">
-                      {formatExacto(tieneAmortizacion ? d.monto_neto! : d.monto_bruto)}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-100 font-semibold text-slate-800 border-t border-slate-200">
-                <td className="px-2 py-1.5" colSpan={2}>Total</td>
-                <td className="text-right px-2 py-1.5">
-                  <span className="block text-[9px] font-normal text-slate-400">Ejecutado</span>
-                  {formatExacto(totalEjecutado)}
-                </td>
-                <td className="text-right px-2 py-1.5 text-amber-700">
-                  <span className="block text-[9px] font-normal text-slate-400">Amort. anticipo</span>
-                  {totalAmortizado > 0 ? `−${formatExacto(totalAmortizado)}` : "—"}
-                </td>
-                <td className="text-right px-2 py-1.5">
-                  <span className="block text-[9px] font-normal text-slate-400">A cobrar</span>
-                  {formatExacto(totalACobrarTabla)}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-      {!colapsada && (!f.desglose_actividades || f.desglose_actividades.length === 0) && (
-        <p className="mt-2 text-[10px] text-slate-400 italic">Sin desglose por actividad (esta estimación se generó antes de que existiera ese detalle).</p>
-      )}
+      {!colapsada && <TablaDesglose f={f} />}
 
       {!colapsada && (
         <>
@@ -711,9 +708,11 @@ function TarjetaBorrador({
 
 function FilaCliente({ f }: { f: FacturaCliente }) {
   const [isPending, startTransition] = useTransition()
+  const [expandida, setExpandida] = useState(false)
   const pendiente = f.monto - f.monto_cobrado
 
-  const handleCobrar = () => {
+  const handleCobrar = (e: React.MouseEvent) => {
+    e.stopPropagation()
     const input = window.prompt(`Monto cobrado (pendiente: ${formatMXN(pendiente)})`, String(pendiente))
     if (!input) return
     const monto = parseFloat(input)
@@ -725,35 +724,51 @@ function FilaCliente({ f }: { f: FacturaCliente }) {
   }
 
   return (
-    <tr className="hover:bg-slate-50">
-      <td className="px-4 py-2.5">
-        <span className="font-mono text-[10px] text-slate-400 mr-1">{f.proyectos?.codigo}</span>
-        <span className="text-slate-700">{f.proyectos?.nombre}</span>
-      </td>
-      <td className="px-3 py-2.5 text-slate-600">
-        {f.descripcion ?? f.numero ?? "—"}
-        {f.amortizacion_anticipo > 0 && (
-          <span className="block text-[10px] text-amber-600 mt-0.5">
-            −{formatMXN(f.amortizacion_anticipo)} amortización de anticipo
+    <>
+      <tr className="hover:bg-slate-50 cursor-pointer" onClick={() => setExpandida((v) => !v)}>
+        <td className="px-4 py-2.5">
+          <span className="font-mono text-[10px] text-slate-400 mr-1">{f.proyectos?.codigo}</span>
+          <span className="text-slate-700">{f.proyectos?.nombre}</span>
+        </td>
+        <td className="px-3 py-2.5 text-slate-600">
+          <span className="inline-flex items-center gap-1">
+            <ChevronDown className={cn("h-3.5 w-3.5 text-slate-400 transition-transform shrink-0", expandida && "rotate-180")} />
+            {f.descripcion ?? f.numero ?? "—"}
           </span>
-        )}
-      </td>
-      <td className="px-3 py-2.5 text-slate-500">{f.fecha_vencimiento ?? "—"}</td>
-      <td className="px-3 py-2.5 text-right text-slate-700">{formatMXN(f.monto)}</td>
-      <td className="px-3 py-2.5 text-right text-emerald-600">{formatMXN(f.monto_cobrado)}</td>
-      <td className="px-3 py-2.5">
-        <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium", estadoColor[f.estado] ?? "bg-slate-100 text-slate-600")}>
-          {f.estado}
-        </span>
-      </td>
-      <td className="px-3 py-2.5 text-right">
-        {f.estado !== "pagada" && (
-          <button onClick={handleCobrar} disabled={isPending} className="text-blue-600 hover:text-blue-800 disabled:opacity-50 inline-flex items-center gap-1">
-            <CheckCircle2 className="h-3.5 w-3.5" /> Marcar cobrada
-          </button>
-        )}
-      </td>
-    </tr>
+          {f.amortizacion_anticipo > 0 && (
+            <span className="block text-[10px] text-amber-600 mt-0.5 pl-5">
+              −{formatMXN(f.amortizacion_anticipo)} amortización de anticipo
+            </span>
+          )}
+        </td>
+        <td className="px-3 py-2.5 text-slate-500">{f.fecha_vencimiento ?? "—"}</td>
+        <td className="px-3 py-2.5 text-right text-slate-700">{formatMXN(f.monto)}</td>
+        <td className="px-3 py-2.5 text-right text-emerald-600">{formatMXN(f.monto_cobrado)}</td>
+        <td className="px-3 py-2.5">
+          <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium", estadoColor[f.estado] ?? "bg-slate-100 text-slate-600")}>
+            {f.estado}
+          </span>
+        </td>
+        <td className="px-3 py-2.5 text-right">
+          {f.estado !== "pagada" && (
+            <button onClick={handleCobrar} disabled={isPending} className="text-blue-600 hover:text-blue-800 disabled:opacity-50 inline-flex items-center gap-1">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Marcar cobrada
+            </button>
+          )}
+        </td>
+      </tr>
+      {expandida && (
+        <tr className="bg-slate-50/50">
+          <td colSpan={7} className="px-4 py-3">
+            {f.numero && <p className="text-[11px] text-slate-500 mb-1">Número: <span className="font-medium text-slate-700">{f.numero}</span></p>}
+            {f.periodo_inicio && f.periodo_fin && (
+              <p className="text-[11px] text-slate-500 mb-2">Período: {f.periodo_inicio} al {f.periodo_fin}</p>
+            )}
+            <TablaDesglose f={f} />
+          </td>
+        </tr>
+      )}
+    </>
   )
 }
 
