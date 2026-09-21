@@ -869,7 +869,7 @@ export function ReporteClient({
                                       className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
                                     >
                                       {opcionesSelect.map((a) => (
-                                        <option key={a.id} value={a.id}>{a.nombre}</option>
+                                        <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
                                       ))}
                                       {!expandido && resto.length > 0 && (
                                         <option value="__mas__">+ Ver más actividades ({resto.length})</option>
