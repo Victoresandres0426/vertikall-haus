@@ -154,6 +154,33 @@ async function getData(id: string) {
       .eq("proyecto_id", id),
   ])
 
+  // Presupuesto por tipo de recurso (baseline actual) -- para poder
+  // comparar cada tipo (Materiales, Mano de obra, etc.) contra lo
+  // realmente gastado, no solo mostrar el gasto real aislado. También
+  // sirve para listar tipos presupuestados que todavía no tienen
+  // ningún costo real (ej. Subcontrato en $0 gastado) -- antes esos
+  // tipos ni aparecían en el desglose.
+  let presupuestoPorTipo: CostoReal[] = []
+  try {
+    const { data: presRow } = await supabase
+      .from("presupuestos")
+      .select("id")
+      .eq("proyecto_id", id)
+      .eq("es_baseline_actual", true)
+      .limit(1)
+      .maybeSingle()
+
+    if (presRow?.id) {
+      const { data: partidas } = await supabase
+        .from("partidas_presupuesto")
+        .select("tipo_recurso, monto_total")
+        .eq("presupuesto_id", presRow.id)
+
+      presupuestoPorTipo = ((partidas ?? []) as { tipo_recurso: string; monto_total: number }[])
+        .map((p) => ({ tipo_recurso: p.tipo_recurso, monto: p.monto_total ?? 0 }))
+    }
+  } catch { /* sin presupuesto baseline todavía */ }
+
   // Queries opcionales — requieren migraciones 007/008; si no existen, no rompen la página
   let qrToken: string | null = null
   try {
@@ -342,6 +369,7 @@ async function getData(id: string) {
     alertas: (alertasRes.data ?? []) as unknown as Alerta[],
     changeOrders: (coRes.data ?? []) as unknown as ChangeOrder[],
     costos: (costosRes.data ?? []) as unknown as CostoReal[],
+    presupuestoPorTipo,
     qrToken,
     asistenciaHoy: asistenciaHoyData,
     esDueno,
@@ -412,7 +440,7 @@ function TendIcon({ t }: { t: string | null }) {
 
 export default async function ProyectoDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { proyecto, archivos, usuarioId, procesos, iidp, alertas, changeOrders, costos, qrToken, asistenciaHoy, esDueno, equipoAuth, equipoDisponibles, puedeGestionarEquipo, puedeEditarCliente, usuariosAsignados, usuariosDisponibles, puedeGestionarAcceso } = await getData(id)
+  const { proyecto, archivos, usuarioId, procesos, iidp, alertas, changeOrders, costos, presupuestoPorTipo, qrToken, asistenciaHoy, esDueno, equipoAuth, equipoDisponibles, puedeGestionarEquipo, puedeEditarCliente, usuariosAsignados, usuariosDisponibles, puedeGestionarAcceso } = await getData(id)
 
   const ultimoIIDP = iidp[0] ?? null
 
@@ -446,11 +474,19 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
   const coAprobados = changeOrders.filter((co) => ["aprobado", "facturado", "cobrado"].includes(co.estado))
   const coImpacto = coAprobados.reduce((s, co) => s + (co.impacto_costo ?? 0), 0)
 
-  // Costos por tipo
+  // Costos reales por tipo, y su contraparte presupuestada -- se unen
+  // las claves de ambos (no solo las de costos reales) para que un tipo
+  // presupuestado sin gasto real todavía (ej. Subcontrato) también
+  // aparezca en el desglose, en vez de desaparecer silenciosamente.
   const costosPorTipo = costos.reduce((acc: Record<string, number>, c) => {
     acc[c.tipo_recurso] = (acc[c.tipo_recurso] ?? 0) + c.monto
     return acc
   }, {})
+  const presupuestoPorTipoMap = presupuestoPorTipo.reduce((acc: Record<string, number>, c) => {
+    acc[c.tipo_recurso] = (acc[c.tipo_recurso] ?? 0) + c.monto
+    return acc
+  }, {})
+  const tiposDesglose = Array.from(new Set([...Object.keys(costosPorTipo), ...Object.keys(presupuestoPorTipoMap)]))
 
   const tipoLabel: Record<string, string> = {
     mano_obra: "Mano de obra", material: "Materiales",
@@ -583,22 +619,32 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
             ))}
           </div>
 
-          {/* Desglose por tipo */}
-          {Object.keys(costosPorTipo).length > 0 && (
+          {/* Desglose por tipo -- real vs. presupuestado, no solo el real
+              aislado, y se listan también los tipos que tienen
+              presupuesto pero todavía $0 de gasto real. */}
+          {tiposDesglose.length > 0 && (
             <div className="pt-3 border-t border-slate-100">
-              <p className="text-xs text-slate-400 mb-2">Desglose por tipo de recurso</p>
+              <p className="text-xs text-slate-400 mb-2">Desglose por tipo de recurso (real / presupuestado)</p>
               <div className="space-y-1.5">
-                {Object.entries(costosPorTipo)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([tipo, monto]) => {
-                    const pct = costoTotal > 0 ? (monto / costoTotal) * 100 : 0
+                {tiposDesglose
+                  .map((tipo) => ({
+                    tipo,
+                    real: costosPorTipo[tipo] ?? 0,
+                    presupuesto: presupuestoPorTipoMap[tipo] ?? 0,
+                  }))
+                  .sort((a, b) => b.real - a.real)
+                  .map(({ tipo, real, presupuesto }) => {
+                    const pct = presupuesto > 0 ? Math.min((real / presupuesto) * 100, 100) : real > 0 ? 100 : 0
+                    const excede = presupuesto > 0 && real > presupuesto
                     return (
                       <div key={tipo} className="flex items-center gap-2">
                         <span className="text-xs text-slate-500 w-28 shrink-0">{tipoLabel[tipo] ?? tipo}</span>
                         <div className="flex-1 bg-slate-100 rounded-full h-1.5">
-                          <div className="bg-slate-500 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+                          <div className={cn("h-1.5 rounded-full", excede ? "bg-red-500" : "bg-slate-500")} style={{ width: `${pct}%` }} />
                         </div>
-                        <span className="text-xs font-medium text-slate-600 w-16 text-right">{formatMXN(monto)}</span>
+                        <span className={cn("text-xs font-medium w-28 text-right", excede ? "text-red-600 font-semibold" : "text-slate-600")}>
+                          {formatMXN(real)} / {presupuesto > 0 ? formatMXN(presupuesto) : "sin presup."}
+                        </span>
                       </div>
                     )
                   })}
