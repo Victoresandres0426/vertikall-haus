@@ -15,12 +15,19 @@ function formatoCorto(iso: string, en: boolean) {
 // de "hoy") -- pedido explicito del dueno: que se pueda leer el
 // numero justo donde estamos parados ahora, no solo intuirlo del
 // tamano de la barra.
+// Nota de tipos: recharts tipa "x"/"y"/"value" en el label render-prop
+// como string | number (pueden venir en % para otros charts), así que
+// anotar el parámetro como number aquí rompe el chequeo de tipos de
+// TypeScript al pasar esta función al prop "label". Por eso el
+// parámetro se recibe sin anotar y se convierte adentro con Number().
 function crearEtiquetaUltimoPunto(totalPuntos: number, color: string, dy: number) {
-  return (props: { x?: number; y?: number; index?: number; value?: number }) => {
+  return (props: any) => {
     const { x, y, index, value } = props
     if (index !== totalPuntos - 1 || x == null || y == null || value == null) return null
+    const nx = Number(x)
+    const ny = Number(y)
     return (
-      <text x={x} y={y + dy} textAnchor="middle" fontSize={12} fontWeight={700} fill={color}>
+      <text x={nx} y={ny + dy} textAnchor="middle" fontSize={12} fontWeight={700} fill={color}>
         {value}%
       </text>
     )
