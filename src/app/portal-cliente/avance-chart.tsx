@@ -30,7 +30,7 @@ export function AvanceChart({ datos, en, label }: { datos: PuntoAvance[]; en: bo
             <XAxis dataKey="fechaCorta" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
             <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={30} />
             <Tooltip
-              formatter={(value: number) => [`${value}%`, en ? "Progress" : "Avance"]}
+              formatter={(value) => [`${value}%`, en ? "Progress" : "Avance"]}
               contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }}
             />
             <Area type="monotone" dataKey="avance_pct" stroke="#3B72D8" fill="url(#gradAvancePortal)" strokeWidth={2} dot={false} />

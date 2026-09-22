@@ -42,9 +42,9 @@ export function PagosChart({ facturas, en, label }: { facturas: Factura[]; en: b
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="mes" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={45}
-              tickFormatter={(v) => `$${Math.round(v / 1000)}k`} />
+              tickFormatter={(v) => `$${Math.round(Number(v) / 1000)}k`} />
             <Tooltip
-              formatter={(value: number) => value.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}
+              formatter={(value) => Number(value).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}
               contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }}
             />
             <Bar dataKey="facturado" fill="#93b4ea" radius={[4, 4, 0, 0]} />
