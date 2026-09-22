@@ -121,7 +121,7 @@ export default function RecuperarContrasenaPage() {
             <>
               <h2 className="text-xl font-semibold text-slate-900 mb-1">Recuperar contraseña</h2>
               <p className="text-sm text-slate-500 mb-6">
-                Escribe tu correo y te enviamos un código de 6 dígitos para crear una contraseña nueva.
+                Escribe tu correo y te enviamos un código de recuperación para crear una contraseña nueva.
               </p>
 
               <form onSubmit={handleEnviarCodigo} className="space-y-4">
@@ -168,7 +168,7 @@ export default function RecuperarContrasenaPage() {
               <h2 className="text-xl font-semibold text-slate-900 mb-1">Escribe el código</h2>
               <p className="text-sm text-slate-500 mb-6">
                 Si <span className="font-medium text-slate-700">{email}</span> tiene una cuenta,
-                le enviamos un código de 6 dígitos. Escríbelo aquí junto con tu contraseña nueva.
+                le enviamos un código de recuperación. Pégalo aquí completo, junto con tu contraseña nueva.
               </p>
 
               <form onSubmit={handleConfirmar} className="space-y-4">
@@ -176,12 +176,15 @@ export default function RecuperarContrasenaPage() {
                   <input
                     type="text"
                     inputMode="numeric"
-                    placeholder="Código de 6 dígitos"
+                    placeholder="Código de recuperación"
                     value={codigo}
                     onChange={(e) => setCodigo(e.target.value)}
                     required
-                    maxLength={6}
-                    className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none tracking-[0.3em] text-center font-mono"
+                    // Sin maxLength a propósito: si Supabase genera un código
+                    // más largo de lo esperado, un límite fijo aquí lo trunca
+                    // en silencio y la verificación falla siempre, sin importar
+                    // que el código pegado sea el correcto. Ya nos pasó.
+                    className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none tracking-[0.15em] text-center font-mono"
                   />
                 </div>
 
