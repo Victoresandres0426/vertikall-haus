@@ -2,6 +2,7 @@ import { Fragment } from "react"
 import { ChevronDown } from "lucide-react"
 import { PortalHeader } from "../portal-header"
 import { SinProyecto } from "../sin-proyecto"
+import { PagosChart } from "../pagos-chart"
 import {
   cargarSesionCliente,
   obtenerProyectoCliente,
@@ -49,6 +50,8 @@ export default async function FacturasClientePage() {
       />
 
       <main className="max-w-4xl mx-auto px-6 py-8">
+        <PagosChart facturas={facturas} en={facturaEnIngles} label={facturaEnIngles ? "Payments over time" : "Pagos en el tiempo"} />
+
         {facturas.length === 0 ? (
           <p className="text-sm text-slate-400 bg-white border border-slate-200 rounded-xl p-5">{tf.sinFacturas}</p>
         ) : (

@@ -1,6 +1,7 @@
 import { ChevronDown, ListChecks } from "lucide-react"
 import { PortalHeader } from "../portal-header"
 import { SinProyecto } from "../sin-proyecto"
+import { AvanceChart } from "../avance-chart"
 import {
   cargarSesionCliente,
   obtenerProyectoCliente,
@@ -23,6 +24,14 @@ export default async function CronogramaClientePage() {
 
   const { data } = await supabase.rpc("cliente_ver_avance")
   const avance = (data ?? []) as Actividad[]
+
+  let historico: { fecha: string; avance_pct: number }[] = []
+  try {
+    const { data: historicoData } = await supabase.rpc("cliente_ver_avance_historico")
+    historico = (historicoData ?? []) as { fecha: string; avance_pct: number }[]
+  } catch (e) {
+    console.error("cliente_ver_avance_historico falló (¿falta correr la migración 108?):", e)
+  }
 
   const procesos: { id: string; nombre: string; nombre_en: string | null; actividades: Actividad[] }[] = []
   for (const a of avance) {
@@ -47,6 +56,8 @@ export default async function CronogramaClientePage() {
       />
 
       <main className="max-w-4xl mx-auto px-6 py-8">
+        <AvanceChart datos={historico} en={facturaEnIngles} label={facturaEnIngles ? "Progress over time" : "Avance en el tiempo"} />
+
         {procesos.length === 0 ? (
           <p className="text-sm text-slate-400 bg-white border border-slate-200 rounded-xl p-5">{tf.sinActividades}</p>
         ) : (
