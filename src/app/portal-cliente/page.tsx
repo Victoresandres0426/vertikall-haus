@@ -842,23 +842,37 @@ export default async function PortalClientePage() {
                   const bruto = f.monto + (f.amortizacion_anticipo ?? 0) + (f.retencion ?? 0)
                   const tieneDesglose = (f.desglose_periodos?.length ?? 0) > 1
                   const tieneDesgloseActividades = (f.desglose_actividades?.length ?? 0) > 0
+                  const tieneDetalle = f.amortizacion_anticipo > 0 || f.retencion > 0 || tieneDesglose || tieneDesgloseActividades
+                  // <details> cerrado por defecto, igual que Cronograma y
+                  // Reportes de obra -- antes este bloque era un <div> sin
+                  // ningún control, así que si la factura tenía desglose
+                  // aparecía SIEMPRE abierta y no había forma de cerrarla.
+                  const Contenedor = tieneDetalle ? "details" : "div"
                   return (
-                    <div key={f.id} className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-800">{f.numero ?? tf.sinNumero} {f.hito_asociado ? `· ${f.hito_asociado}` : ""}</p>
-                          <p className="text-xs text-slate-400">
-                            {descripcionFactura(f, facturaEnIngles)} · {tf.vence} {formatoFecha(f.fecha_vencimiento, facturaEnIngles)}
-                            {f.periodo_inicio && f.periodo_fin ? ` · ${tf.periodo} ${formatoFecha(f.periodo_inicio, facturaEnIngles)} ${tf.al} ${formatoFecha(f.periodo_fin, facturaEnIngles)}` : ""}
-                          </p>
-                        </div>
-                        <span className="text-sm font-semibold text-slate-800 shrink-0">{formatoMoneda(f.monto)}</span>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${estadoFacturaColor[f.estado] ?? "bg-slate-100 text-slate-600"}`}>
-                          {(facturaEnIngles ? estadoFacturaLabelEn : estadoFacturaLabel)[f.estado] ?? f.estado}
-                        </span>
-                      </div>
+                    <Contenedor key={f.id} className="px-5 py-3 group">
+                      {(() => {
+                        const encabezado = (
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-slate-800">{f.numero ?? tf.sinNumero} {f.hito_asociado ? `· ${f.hito_asociado}` : ""}</p>
+                              <p className="text-xs text-slate-400">
+                                {descripcionFactura(f, facturaEnIngles)} · {tf.vence} {formatoFecha(f.fecha_vencimiento, facturaEnIngles)}
+                                {f.periodo_inicio && f.periodo_fin ? ` · ${tf.periodo} ${formatoFecha(f.periodo_inicio, facturaEnIngles)} ${tf.al} ${formatoFecha(f.periodo_fin, facturaEnIngles)}` : ""}
+                              </p>
+                            </div>
+                            <span className="text-sm font-semibold text-slate-800 shrink-0">{formatoMoneda(f.monto)}</span>
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${estadoFacturaColor[f.estado] ?? "bg-slate-100 text-slate-600"}`}>
+                              {(facturaEnIngles ? estadoFacturaLabelEn : estadoFacturaLabel)[f.estado] ?? f.estado}
+                            </span>
+                            {tieneDetalle && <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180 shrink-0" />}
+                          </div>
+                        )
+                        return tieneDetalle ? (
+                          <summary className="cursor-pointer list-none marker:content-none [&::-webkit-details-marker]:hidden">{encabezado}</summary>
+                        ) : encabezado
+                      })()}
 
-                      {(f.amortizacion_anticipo > 0 || f.retencion > 0 || tieneDesglose || tieneDesgloseActividades) && (
+                      {tieneDetalle && (
                         <div className="mt-2 ml-0 bg-slate-50 border border-slate-100 rounded-lg p-3 space-y-1.5">
                           {tieneDesglose && (
                             <div className="space-y-1 mb-2">
@@ -960,7 +974,7 @@ export default async function PortalClientePage() {
                           </div>
                         </div>
                       )}
-                    </div>
+                    </Contenedor>
                   )
                 })}
               </div>
