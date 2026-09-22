@@ -8,7 +8,6 @@ import { createClient } from "@/lib/supabase/client"
 
 export default function LoginPage() {
   const router = useRouter()
-  const supabase = createClient()
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -21,6 +20,22 @@ export default function LoginPage() {
     e.preventDefault()
     setIsLoading(true)
     setError("")
+
+    // El cliente se crea aquí (no arriba, al montar la página) para que
+    // tome el valor ACTUAL de "recordar" en el momento del submit -- así
+    // decide si las cookies de sesión llevan maxAge (persisten aunque se
+    // cierre el navegador/app) o no (cookies de sesión, se borran al
+    // cerrar). Antes este checkbox existía pero no estaba conectado a
+    // nada -- por eso no cambiaba nada marcarlo o no.
+    const supabase = createClient(recordar)
+
+    // Esta cookie es la que lee el middleware en cada request para saber
+    // si debe seguir refrescando la sesión como persistente o como
+    // cookie de sesión -- sin esto, la preferencia se perdería en la
+    // primera navegación después de iniciar sesión.
+    document.cookie = recordar
+      ? `vh_recordar=1; path=/; max-age=${60 * 60 * 24 * 365}`
+      : `vh_recordar=0; path=/`
 
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email,
