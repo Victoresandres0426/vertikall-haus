@@ -22,6 +22,7 @@ import { EstadoProyecto } from "./estado-proyecto"
 import { SeccionDesplegable } from "./seccion-desplegable"
 import { scoreProductividad } from "@/lib/engine/iidp"
 import { pesosDesdeConfig } from "@/lib/engine/types"
+import { AvanceChart, type PuntoAvance } from "@/app/portal-cliente/avance-chart"
 
 // ── Tipos ────────────────────────────────────────────────────
 
@@ -291,6 +292,14 @@ async function getData(id: string) {
       }))
   }
 
+  // Historial de avance en el tiempo, para la gráfica (requiere migración
+  // 110; si no existe todavía, simplemente no se muestra la gráfica).
+  let historico: PuntoAvance[] = []
+  try {
+    const { data: historicoData } = await supabase.rpc("proyecto_avance_historico", { p_proyecto_id: id })
+    historico = (historicoData ?? []) as PuntoAvance[]
+  } catch { /* migración 110 no aplicada aún */ }
+
   // Archivos del proyecto (requiere migración 037; si no existe, no rompe la página)
   let archivos: ArchivoProyecto[] = []
   try {
@@ -362,6 +371,7 @@ async function getData(id: string) {
 
   return {
     proyecto: proyecto as Proyecto,
+    historico,
     archivos,
     usuarioId: user.id,
     procesos: (procesosRes.data ?? []) as unknown as Proceso[],
@@ -440,7 +450,7 @@ function TendIcon({ t }: { t: string | null }) {
 
 export default async function ProyectoDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { proyecto, archivos, usuarioId, procesos, iidp, alertas, changeOrders, costos, presupuestoPorTipo, qrToken, asistenciaHoy, esDueno, equipoAuth, equipoDisponibles, puedeGestionarEquipo, puedeEditarCliente, usuariosAsignados, usuariosDisponibles, puedeGestionarAcceso } = await getData(id)
+  const { proyecto, historico, archivos, usuarioId, procesos, iidp, alertas, changeOrders, costos, presupuestoPorTipo, qrToken, asistenciaHoy, esDueno, equipoAuth, equipoDisponibles, puedeGestionarEquipo, puedeEditarCliente, usuariosAsignados, usuariosDisponibles, puedeGestionarAcceso } = await getData(id)
 
   const ultimoIIDP = iidp[0] ?? null
 
@@ -568,6 +578,9 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
             </div>
           ))}
         </div>
+
+        {/* ── Avance en el tiempo ── */}
+        <AvanceChart datos={historico} en={false} label="Avance en el tiempo" />
 
         {/* ── Fechas y ubicación ── */}
         <div className="bg-white border border-slate-200 rounded-xl p-5">
