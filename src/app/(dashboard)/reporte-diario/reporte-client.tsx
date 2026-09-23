@@ -33,6 +33,12 @@ export type ActividadDB = {
   fecha_inicio_plan: string | null
   fecha_fin_plan: string | null
   costo_mano_obra?: number | null
+  // División/proceso al que pertenece (ej. "01 — Demolición") -- viene de
+  // procesos.codigo/nombre, para poder agrupar el selector de actividades
+  // igual que en la página de Actividades y no confundir nombres parecidos
+  // de divisiones distintas.
+  proceso_codigo?: string | null
+  proceso_nombre?: string | null
 }
 
 export type TrabajadorDB = {
@@ -55,6 +61,7 @@ export type ProyectoSimple = {
   codigo: string
   nombre: string
   zona_horaria?: string | null
+  coordenadas?: { lat: number; lng: number } | null
 }
 
 type AsistenciaState = "presente" | "ausente" | "medio_dia"
@@ -153,6 +160,68 @@ function separarPorCalendario<T extends ActividadDB>(actividades: T[], hoyISO: s
   return { principales, resto }
 }
 
+// Agrupa una lista de actividades por división/proceso (mismo criterio
+// que la página de Actividades) para que el <select> se vea como
+// "01 — Demolición: 01.01 Remover puerta..." en vez de una lista plana
+// donde actividades de nombre parecido pero de disciplinas distintas
+// quedan mezcladas. El orden ya viene resuelto desde el servidor
+// (procesos.orden, luego código); acá solo se agrupa sin reordenar.
+function agruparPorDivision<T extends ActividadDB>(actividades: T[]): { etiqueta: string; items: T[] }[] {
+  const grupos: { etiqueta: string; items: T[] }[] = []
+  const indicePorEtiqueta = new Map<string, number>()
+  for (const a of actividades) {
+    const etiqueta = a.proceso_codigo && a.proceso_nombre
+      ? `${a.proceso_codigo} — ${a.proceso_nombre}`
+      : "Sin división"
+    let idx = indicePorEtiqueta.get(etiqueta)
+    if (idx === undefined) {
+      idx = grupos.length
+      indicePorEtiqueta.set(etiqueta, idx)
+      grupos.push({ etiqueta, items: [] })
+    }
+    grupos[idx].items.push(a)
+  }
+  return grupos
+}
+
+// ── Clima automático ────────────────────────────────────────────
+// Traduce el código WMO que devuelve Open-Meteo (gratis, sin API key)
+// a una descripción corta en español -- no es un listado exhaustivo,
+// cubre los casos que realmente se ven en una obra.
+function descripcionClimaWMO(codigo: number): string {
+  const mapa: Record<number, string> = {
+    0: "Despejado",
+    1: "Mayormente despejado",
+    2: "Parcialmente nublado",
+    3: "Nublado",
+    45: "Neblina",
+    48: "Neblina con escarcha",
+    51: "Llovizna ligera",
+    53: "Llovizna moderada",
+    55: "Llovizna intensa",
+    56: "Llovizna helada",
+    57: "Llovizna helada intensa",
+    61: "Lluvia ligera",
+    63: "Lluvia moderada",
+    65: "Lluvia fuerte",
+    66: "Lluvia helada",
+    67: "Lluvia helada intensa",
+    71: "Nieve ligera",
+    73: "Nieve moderada",
+    75: "Nieve fuerte",
+    77: "Granizo fino",
+    80: "Chubascos ligeros",
+    81: "Chubascos moderados",
+    82: "Chubascos fuertes",
+    85: "Chubascos de nieve ligeros",
+    86: "Chubascos de nieve fuertes",
+    95: "Tormenta eléctrica",
+    96: "Tormenta con granizo",
+    99: "Tormenta con granizo fuerte",
+  }
+  return mapa[codigo] ?? "—"
+}
+
 // ──────────────────────────────────────────────
 // Componente
 // ──────────────────────────────────────────────
@@ -181,10 +250,45 @@ export function ReporteClient({
   const [fecha, setFecha] = useState(fechaHoyISO())
   const esHoy = fecha === fechaHoyISO()
   const [clima, setClima] = useState("Soleado")
+  // Mientras siga en true, el clima se sigue actualizando solo al
+  // detectarlo por ubicación -- en cuanto el capataz toca el campo a
+  // mano, se apaga y su texto ya no se pisa.
+  const [climaAuto, setClimaAuto] = useState(true)
+  const [climaCargando, setClimaCargando] = useState(false)
   const [observaciones, setObservaciones] = useState("")
   const [enviado, setEnviado] = useState(false)
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  // Detecta el clima de hoy automáticamente usando las coordenadas ya
+  // guardadas en la ficha del proyecto -- Open-Meteo es gratis, no pide
+  // API key y responde CORS desde el navegador, así que se llama
+  // directo desde el cliente sin pasar por el servidor. Si el proyecto
+  // no tiene coordenadas cargadas, o la detección falla por cualquier
+  // motivo, el campo simplemente se queda con el valor por defecto y
+  // editable a mano -- nunca bloquea el reporte.
+  useEffect(() => {
+    if (!climaAuto) return
+    const coords = proyectos.find((p) => p.id === proyectoId)?.coordenadas
+    if (!coords) return
+    let cancelado = false
+    setClimaCargando(true)
+    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lng}&current=weather_code,temperature_2m&timezone=auto`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelado) return
+        const codigo = data?.current?.weather_code
+        const temp = data?.current?.temperature_2m
+        if (typeof codigo === "number") {
+          const desc = descripcionClimaWMO(codigo)
+          setClima(temp != null ? `${desc}, ${Math.round(temp)}°C` : desc)
+        }
+      })
+      .catch(() => { /* sin internet o servicio caído -- se queda el valor manual */ })
+      .finally(() => { if (!cancelado) setClimaCargando(false) })
+    return () => { cancelado = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proyectoId, climaAuto])
 
   // Por defecto el selector de actividad de cada split y la lista de
   // avance solo muestran lo que "toca" según el cronograma (en_progreso
@@ -702,15 +806,33 @@ export function ReporteClient({
             <Card>
               <CardContent className="pt-4">
                 <div className="flex items-center gap-3">
-                  <CloudSun className="h-5 w-5 text-amber-500 shrink-0" />
+                  {climaCargando ? (
+                    <Loader2 className="h-5 w-5 text-amber-500 shrink-0 animate-spin" />
+                  ) : (
+                    <CloudSun className="h-5 w-5 text-amber-500 shrink-0" />
+                  )}
                   <Input
                     label=""
                     placeholder="¿Cómo estuvo el clima hoy?"
                     value={clima}
-                    onChange={(e) => setClima(e.target.value)}
+                    onChange={(e) => { setClima(e.target.value); setClimaAuto(false) }}
                     className="flex-1"
                   />
+                  {!climaAuto && (
+                    <button
+                      type="button"
+                      onClick={() => setClimaAuto(true)}
+                      className="text-xs text-blue-600 hover:underline shrink-0"
+                    >
+                      Detectar de nuevo
+                    </button>
+                  )}
                 </div>
+                {climaAuto && (
+                  <p className="text-[11px] text-slate-400 mt-1.5 pl-8">
+                    Detectado automáticamente según la ubicación del proyecto -- puedes editarlo si hace falta.
+                  </p>
+                )}
               </CardContent>
             </Card>
 
@@ -868,8 +990,12 @@ export function ReporteClient({
                                       }}
                                       className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
                                     >
-                                      {opcionesSelect.map((a) => (
-                                        <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                                      {agruparPorDivision(opcionesSelect).map((grupo) => (
+                                        <optgroup key={grupo.etiqueta} label={grupo.etiqueta}>
+                                          {grupo.items.map((a) => (
+                                            <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                                          ))}
+                                        </optgroup>
                                       ))}
                                       {!expandido && resto.length > 0 && (
                                         <option value="__mas__">+ Ver más actividades ({resto.length})</option>

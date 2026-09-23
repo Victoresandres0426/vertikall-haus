@@ -37,7 +37,7 @@ async function getData(): Promise<{
   // Obtener proyectos activos
   const { data: proyectosRaw } = await supabase
     .from("proyectos")
-    .select("id, codigo, nombre, zona_horaria")
+    .select("id, codigo, nombre, zona_horaria, coordenadas")
     .eq("activo", true)
     .order("created_at", { ascending: false })
 
@@ -61,16 +61,36 @@ async function getData(): Promise<{
         id, codigo, nombre, unidad,
         avance_porcentaje, cantidad_objetivo, cantidad_ejecutada, estado,
         fecha_inicio_plan, fecha_fin_plan, costo_mano_obra,
-        proyecto_id
+        proyecto_id, proceso_id,
+        procesos ( codigo, nombre, orden )
       `)
       .in("proyecto_id", proyectoIds)
       .not("estado", "in", '("completada","cancelada")')
       .order("codigo")
 
-    for (const act of actsRaw ?? []) {
-      const pid = (act as { proyecto_id: string } & ActividadDB).proyecto_id
+    // Se ordena en memoria por división (proceso.orden) y no en la
+    // consulta -- Supabase no soporta bien "order by" sobre una columna
+    // de una tabla relacionada anidada. Así el selector de actividades
+    // del Reporte Diario queda agrupado en el mismo orden que la página
+    // de Actividades, en vez de solo alfabético por código.
+    const actsOrdenadas = ((actsRaw ?? []) as unknown as (ActividadDB & {
+      proyecto_id: string
+      procesos: { codigo: string; nombre: string; orden: number } | null
+    })[]).sort((a, b) => {
+      const oa = a.procesos?.orden ?? 999
+      const ob = b.procesos?.orden ?? 999
+      if (oa !== ob) return oa - ob
+      return a.codigo.localeCompare(b.codigo)
+    })
+
+    for (const act of actsOrdenadas) {
+      const { proyecto_id: pid, procesos, ...resto } = act
       if (!actividadesPorProyecto[pid]) actividadesPorProyecto[pid] = []
-      actividadesPorProyecto[pid].push(act as ActividadDB)
+      actividadesPorProyecto[pid].push({
+        ...resto,
+        proceso_codigo: procesos?.codigo ?? null,
+        proceso_nombre: procesos?.nombre ?? null,
+      } as ActividadDB)
     }
   }
 
