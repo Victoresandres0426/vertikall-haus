@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   CheckCircle, Clock, Send, CloudSun, HardHat, Users,
   ChevronDown, Plus, X, History, CalendarClock, AlertTriangle,
-  Camera, Loader2,
+  Camera, Loader2, Info, RotateCcw,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Header } from "@/components/layout/header"
@@ -222,6 +222,52 @@ function descripcionClimaWMO(codigo: number): string {
   return mapa[codigo] ?? "—"
 }
 
+// ── Borrador local del reporte en progreso ──────────────────────
+// Si el capataz sale de esta página (ej. a revisar Actividades o
+// Materiales) antes de enviar, el componente se desmonta y todo el
+// estado en memoria se perdería -- se guarda una copia en localStorage
+// en cada cambio relevante, y se restaura sola al volver a entrar. Se
+// limpia al enviar el reporte con éxito (ver handleEnviar) o si el
+// capataz elige descartarla a mano.
+const BORRADOR_KEY = "vh_reporte_diario_borrador_v1"
+// Un borrador más viejo que esto ya no se restaura solo -- evita que
+// reaparezca un reporte de hace semanas en un dispositivo compartido.
+const BORRADOR_MAX_HORAS = 72
+
+type BorradorReporte = {
+  proyectoId: string
+  fecha: string
+  clima: string
+  climaAuto: boolean
+  observaciones: string
+  paso: number
+  trabajadores: { id: string; asistencia: AsistenciaState; horas: number; extra: number; splits: SplitActividad[] }[]
+  actividades: { id: string; cantidad_hoy: number; incidencias: string; auto: boolean; fotos: { path: string; nombre: string }[] }[]
+  guardadoEn: string
+}
+
+function guardarBorrador(b: BorradorReporte) {
+  try { localStorage.setItem(BORRADOR_KEY, JSON.stringify(b)) } catch { /* localStorage lleno o bloqueado -- no es crítico */ }
+}
+
+function cargarBorrador(): BorradorReporte | null {
+  try {
+    const raw = localStorage.getItem(BORRADOR_KEY)
+    if (!raw) return null
+    const b = JSON.parse(raw) as BorradorReporte
+    const edadHoras = (Date.now() - new Date(b.guardadoEn).getTime()) / 3_600_000
+    if (!isFinite(edadHoras) || edadHoras > BORRADOR_MAX_HORAS) {
+      localStorage.removeItem(BORRADOR_KEY)
+      return null
+    }
+    return b
+  } catch { return null }
+}
+
+function borrarBorrador() {
+  try { localStorage.removeItem(BORRADOR_KEY) } catch { /* nada que limpiar */ }
+}
+
 // ──────────────────────────────────────────────
 // Componente
 // ──────────────────────────────────────────────
@@ -343,6 +389,117 @@ export function ReporteClient({
       fotos: [],
     }))
   )
+
+  // ── Restaurar borrador (si el capataz había salido de esta página) ──
+  const [borradorRestaurado, setBorradorRestaurado] = useState(false)
+  // El autoguardado no arranca hasta que se resuelva si hay o no un
+  // borrador que restaurar -- si no, el primer autoguardado (con el
+  // estado inicial vacío) alcanzaría a pisar el borrador real antes de
+  // que termine de leerse.
+  const [listoParaGuardar, setListoParaGuardar] = useState(false)
+
+  useEffect(() => {
+    const borrador = cargarBorrador()
+    if (!borrador || !proyectos.some((p) => p.id === borrador.proyectoId)) {
+      setListoParaGuardar(true)
+      return
+    }
+
+    setProyectoId(borrador.proyectoId)
+    setFecha(borrador.fecha)
+    setClima(borrador.clima)
+    setClimaAuto(borrador.climaAuto)
+    setObservaciones(borrador.observaciones)
+    setPaso(borrador.paso)
+
+    const baseTrabajadores = trabajadoresPorProyecto[borrador.proyectoId] ?? []
+    setTrabajadores(
+      baseTrabajadores.map((t) => {
+        const guardado = borrador.trabajadores.find((x) => x.id === t.id)
+        if (guardado) return { ...t, asistencia: guardado.asistencia, horas: guardado.horas, extra: guardado.extra, splits: guardado.splits }
+        const horas = horasIniciales(t)
+        return { ...t, asistencia: "presente" as AsistenciaState, horas, extra: 0, splits: splitInicial(t, horas, actividadesPorProyecto[borrador.proyectoId] ?? []) }
+      })
+    )
+
+    const baseActividades = actividadesPorProyecto[borrador.proyectoId] ?? []
+    setActividades(
+      baseActividades.map((a) => {
+        const guardado = borrador.actividades.find((x) => x.id === a.id)
+        if (!guardado) return { ...a, cantidad_hoy: 0, incidencias: "", auto: true, fotos: [] }
+        return { ...a, cantidad_hoy: guardado.cantidad_hoy, incidencias: guardado.incidencias, auto: guardado.auto, fotos: [] }
+      })
+    )
+
+    setBorradorRestaurado(true)
+    setListoParaGuardar(true)
+
+    // Las fotos ya subidas siguen en Storage (identificadas por su
+    // ruta) -- se vuelve a firmar la URL para la miniatura, ya que
+    // cualquier URL firmada o blob: local de la sesión anterior no
+    // sobrevive la navegación. Si falla, la foto sigue contando como
+    // subida al enviar, solo no se ve la miniatura.
+    void (async () => {
+      const supabase = createClient()
+      for (const da of borrador.actividades) {
+        if (!da.fotos || da.fotos.length === 0) continue
+        const conUrl: FotoLocal[] = []
+        for (const f of da.fotos) {
+          const { data } = await supabase.storage.from("reporte-fotos").createSignedUrl(f.path, 3600)
+          conUrl.push({ path: f.path, nombre: f.nombre, previewUrl: data?.signedUrl ?? "" })
+        }
+        setActividades((prev) => prev.map((a) => (a.id === da.id ? { ...a, fotos: conUrl } : a)))
+      }
+    })()
+    // Solo al montar -- restaurar una sola vez.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Autoguardado: en cada cambio relevante se guarda una copia en
+  // localStorage, para que si el capataz navega a otra pantalla antes
+  // de enviar, al volver encuentre todo tal como lo dejó. Se limpia
+  // solo al enviar con éxito (ver handleEnviar) o al descartar a mano.
+  useEffect(() => {
+    if (!listoParaGuardar || enviado) return
+    guardarBorrador({
+      proyectoId,
+      fecha,
+      clima,
+      climaAuto,
+      observaciones,
+      paso,
+      trabajadores: trabajadores.map((t) => ({ id: t.id, asistencia: t.asistencia, horas: t.horas, extra: t.extra, splits: t.splits })),
+      actividades: actividades.map((a) => ({
+        id: a.id, cantidad_hoy: a.cantidad_hoy, incidencias: a.incidencias, auto: a.auto,
+        fotos: a.fotos.map((f) => ({ path: f.path, nombre: f.nombre })),
+      })),
+      guardadoEn: new Date().toISOString(),
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listoParaGuardar, enviado, proyectoId, fecha, clima, climaAuto, observaciones, paso, trabajadores, actividades])
+
+  // Descarta el borrador guardado y vuelve al estado en blanco -- para
+  // cuando el capataz prefiere empezar un reporte nuevo en vez de seguir
+  // con el que se restauró.
+  const descartarBorrador = () => {
+    borrarBorrador()
+    setBorradorRestaurado(false)
+    const primerProyecto = proyectos[0]?.id ?? ""
+    setProyectoId(primerProyecto)
+    setFecha(fechaHoyISO())
+    setClima("Soleado")
+    setClimaAuto(true)
+    setObservaciones("")
+    setPaso(1)
+    const actividadesProyecto = actividadesPorProyecto[primerProyecto] ?? []
+    setActividades(actividadesProyecto.map((a) => ({ ...a, cantidad_hoy: 0, incidencias: "", auto: true, fotos: [] })))
+    setTrabajadores(
+      (trabajadoresPorProyecto[primerProyecto] ?? []).map((t) => {
+        const horas = horasIniciales(t)
+        return { ...t, asistencia: "presente" as AsistenciaState, horas, extra: 0, splits: splitInicial(t, horas, actividadesProyecto) }
+      })
+    )
+  }
 
   // Sube fotos de avance de una actividad al bucket 'reporte-fotos'
   // (migración 104), vinculadas a esta actividad y este proyecto. El
@@ -593,6 +750,7 @@ export function ReporteClient({
         if (result.error) {
           setErrorEnvio(result.error)
         } else {
+          borrarBorrador()
           setEnviado(true)
         }
       } catch (err) {
@@ -730,6 +888,23 @@ export function ReporteClient({
       />
 
       <div className="p-6 max-w-3xl mx-auto space-y-5">
+        {borradorRestaurado && (
+          <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
+            <Info className="h-4 w-4 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold">Se restauró el reporte que tenías sin enviar.</p>
+              <p className="mt-0.5">Puedes seguir donde lo dejaste, o descartarlo y empezar uno nuevo.</p>
+            </div>
+            <button
+              type="button"
+              onClick={descartarBorrador}
+              className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-900 font-medium shrink-0"
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> Descartar
+            </button>
+          </div>
+        )}
+
         {/* Selector de proyecto */}
         {proyectos.length > 1 && (
           <div className="relative">
