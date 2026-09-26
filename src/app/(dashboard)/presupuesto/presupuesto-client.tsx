@@ -69,6 +69,11 @@ export function PresupuestoClient({
   const [showModalVersion, setShowModalVersion] = useState(false)
   const [presupuestoParaPartida, setPresupuestoParaPartida] = useState<Presupuesto | null>(null)
   const [expandidos, setExpandidos] = useState<Record<string, boolean>>({})
+  // Filtro rápido para responder "¿en qué actividad ya gasté dinero?" --
+  // esconde las partidas en $0 ejercido y ordena de mayor a menor gasto
+  // real, en vez de tener que buscarlas a ojo en la lista completa
+  // (que por defecto sigue en el orden del presupuesto/Excel).
+  const [soloConGasto, setSoloConGasto] = useState<Record<string, boolean>>({})
 
   const totalPresupuestado = presupuestos.reduce((s, p) => s + (p.monto_total ?? 0), 0)
   const totalPartidas = presupuestos.reduce((s, p) => s + p.partidas.length, 0)
@@ -190,24 +195,52 @@ export function PresupuestoClient({
                   <div className="px-4 py-6 text-center text-xs text-slate-400">
                     Sin partidas todavía. Usa &quot;Partida&quot; para agregar la primera.
                   </div>
-                ) : (
-                  <div className="divide-y divide-slate-50">
-                    {(expandidos[pres.id] ? pres.partidas : pres.partidas.slice(0, 10)).map((partida) => (
-                      <FilaPartida key={partida.id} partida={partida} puedeEditar={puedeCrear} />
-                    ))}
-                    {pres.partidas.length > 10 && (
+                ) : (() => {
+                  const filtroActivo = !!soloConGasto[pres.id]
+                  const partidasBase = filtroActivo
+                    ? pres.partidas
+                        .filter((p) => (p.monto_ejercido ?? 0) > 0)
+                        .sort((a, b) => (b.monto_ejercido ?? 0) - (a.monto_ejercido ?? 0))
+                    : pres.partidas
+                  return (
+                  <div>
+                    <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/50">
                       <button
                         type="button"
-                        onClick={() => setExpandidos((prev) => ({ ...prev, [pres.id]: !prev[pres.id] }))}
-                        className="w-full px-4 py-2 text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-50 text-center font-medium"
+                        onClick={() => setSoloConGasto((prev) => ({ ...prev, [pres.id]: !prev[pres.id] }))}
+                        className={cn(
+                          "text-xs font-medium px-2.5 py-1 rounded-lg transition-colors",
+                          filtroActivo ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                        )}
                       >
-                        {expandidos[pres.id]
-                          ? "Ver menos"
-                          : `+${pres.partidas.length - 10} partidas más — ver todas`}
+                        {filtroActivo ? "✓ " : ""}Solo actividades con gasto real (ordenado de mayor a menor)
                       </button>
+                    </div>
+                    {partidasBase.length === 0 ? (
+                      <div className="px-4 py-6 text-center text-xs text-slate-400">
+                        Todavía no hay gasto real registrado en ninguna partida.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-50">
+                        {(expandidos[pres.id] || filtroActivo ? partidasBase : partidasBase.slice(0, 10)).map((partida) => (
+                          <FilaPartida key={partida.id} partida={partida} puedeEditar={puedeCrear} />
+                        ))}
+                        {!filtroActivo && partidasBase.length > 10 && (
+                          <button
+                            type="button"
+                            onClick={() => setExpandidos((prev) => ({ ...prev, [pres.id]: !prev[pres.id] }))}
+                            className="w-full px-4 py-2 text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-50 text-center font-medium"
+                          >
+                            {expandidos[pres.id]
+                              ? "Ver menos"
+                              : `+${partidasBase.length - 10} partidas más — ver todas`}
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
+                  )
+                })()}
               </div>
             )
           })}
@@ -251,10 +284,18 @@ function FilaPartida({ partida, puedeEditar }: { partida: Partida; puedeEditar: 
           {tipoLabel[partida.tipo_recurso] ?? partida.tipo_recurso}
         </span>
         <div className="text-right shrink-0 space-x-4 flex items-center">
-          <span className="text-slate-500 text-xs">{formatMXN(partida.monto_presupuestado)}</span>
+          <div className="text-right leading-tight">
+            <p className="text-slate-500 text-xs">Presup: {formatMXN(partida.monto_presupuestado)}</p>
+            <p className={cn(
+              "text-xs font-semibold",
+              (partida.monto_ejercido ?? 0) > 0 ? "text-blue-600" : "text-slate-300"
+            )}>
+              Gastado: {formatMXN(partida.monto_ejercido ?? 0)}
+            </p>
+          </div>
           <span className={cn("font-medium text-xs flex items-center gap-0.5",
             desviacion > 0 ? "text-red-600" : desviacion < 0 ? "text-emerald-600" : "text-slate-500"
-          )}>
+          )} title={desviacion > 0 ? "Gastado por encima de lo presupuestado" : desviacion < 0 ? "Todavía queda presupuesto sin ejercer" : "Sin variación"}>
             {desviacion > 0 ? <TrendingUp className="h-3 w-3" /> : desviacion < 0 ? <TrendingDown className="h-3 w-3" /> : null}
             {desviacion !== 0 ? formatMXN(Math.abs(desviacion)) : "—"}
           </span>
