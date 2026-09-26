@@ -66,7 +66,7 @@ async function getData() {
         .not("factura_id", "is", null),
       supabase
         .from("actividades")
-        .select("id, codigo, nombre")
+        .select("id, codigo, nombre, proceso_id, procesos ( codigo, nombre, orden )")
         .eq("proyecto_id", proyectoActivo.id)
         .eq("activa", true)
         .order("codigo"),
@@ -110,7 +110,28 @@ async function getData() {
       lineas: (lineasPorFactura.get(f.id) ?? []) as FacturaGasto["lineas"],
       foto_url: fotosFirmadas.get(f.id) ?? null,
     }))
-    actividadesOpciones = (actividadesRaw ?? []) as ActividadOpcion[]
+    // Se ordena en memoria por división (proceso.orden) -- Supabase no
+    // soporta bien "order by" sobre una columna de una tabla relacionada
+    // anidada. Así el selector de "asignar a actividad" en Gastos queda
+    // agrupado igual que en la página de Actividades, en vez de una
+    // lista plana donde actividades de nombre parecido en divisiones
+    // distintas se prestan a confusión.
+    actividadesOpciones = ((actividadesRaw ?? []) as unknown as (ActividadOpcion & {
+      procesos: { codigo: string; nombre: string; orden: number } | null
+    })[])
+      .sort((a, b) => {
+        const oa = a.procesos?.orden ?? 999
+        const ob = b.procesos?.orden ?? 999
+        if (oa !== ob) return oa - ob
+        return a.codigo.localeCompare(b.codigo)
+      })
+      .map((a) => ({
+        id: a.id,
+        codigo: a.codigo,
+        nombre: a.nombre,
+        proceso_codigo: a.procesos?.codigo ?? null,
+        proceso_nombre: a.procesos?.nombre ?? null,
+      }))
   }
 
   return {

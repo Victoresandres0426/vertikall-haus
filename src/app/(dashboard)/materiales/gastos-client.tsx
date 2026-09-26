@@ -19,7 +19,37 @@ import {
   type FacturaActualizada,
 } from "./gastos-actions"
 
-export type ActividadOpcion = { id: string; codigo: string; nombre: string }
+export type ActividadOpcion = {
+  id: string
+  codigo: string
+  nombre: string
+  // División/proceso al que pertenece -- para agrupar el selector igual
+  // que en la página de Actividades (ver agruparPorDivision más abajo).
+  proceso_codigo?: string | null
+  proceso_nombre?: string | null
+}
+
+// Agrupa las actividades por división/proceso para el <select> de
+// "asignar a actividad" -- mismo criterio que Reporte Diario, para que
+// una actividad con nombre parecido en otra división no se preste a
+// confusión (ej. "Retirar encimera — cocina" vs. "— baño master").
+function agruparPorDivision(actividades: ActividadOpcion[]): { etiqueta: string; items: ActividadOpcion[] }[] {
+  const grupos: { etiqueta: string; items: ActividadOpcion[] }[] = []
+  const indicePorEtiqueta = new Map<string, number>()
+  for (const a of actividades) {
+    const etiqueta = a.proceso_codigo && a.proceso_nombre
+      ? `${a.proceso_codigo} — ${a.proceso_nombre}`
+      : "Sin división"
+    let idx = indicePorEtiqueta.get(etiqueta)
+    if (idx === undefined) {
+      idx = grupos.length
+      indicePorEtiqueta.set(etiqueta, idx)
+      grupos.push({ etiqueta, items: [] })
+    }
+    grupos[idx].items.push(a)
+  }
+  return grupos
+}
 
 // Partidas del presupuesto SIN actividad_id -- costos indirectos/generales
 // del proyecto completo (supervisión, seguro, contingencia, gastos
@@ -669,8 +699,12 @@ export function GastosClient({
                                               )}
                                             >
                                               <option value="">Sin actividad</option>
-                                              {actividadesOpciones.map((a) => (
-                                                <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                                              {agruparPorDivision(actividadesOpciones).map((grupo) => (
+                                                <optgroup key={grupo.etiqueta} label={grupo.etiqueta}>
+                                                  {grupo.items.map((a) => (
+                                                    <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                                                  ))}
+                                                </optgroup>
                                               ))}
                                             </select>
                                             {/* Solo tiene sentido elegir una partida general cuando NO hay
@@ -1033,8 +1067,12 @@ function ModalRegistrarGasto({
                 <label className="block text-[10px] text-slate-400 mb-0.5">Actividad (opcional)</label>
                 <select value={l.actividadId} onChange={(e) => actualizarLinea(idx, "actividadId", e.target.value)} className={cn(inputCls, "bg-white")}>
                   <option value="">Sin asignar</option>
-                  {actividadesOpciones.map((a) => (
-                    <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                  {agruparPorDivision(actividadesOpciones).map((grupo) => (
+                    <optgroup key={grupo.etiqueta} label={grupo.etiqueta}>
+                      {grupo.items.map((a) => (
+                        <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               </div>
