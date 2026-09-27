@@ -52,7 +52,7 @@ export type Foto = {
 
 export type ArchivoProyecto = {
   id: string
-  categoria: "planos" | "otros"
+  categoria: "planos" | "documentos_colaborador"
   nombre_archivo: string
   storage_path: string
   tamano_bytes: number | null

@@ -12,7 +12,7 @@ function formatoTamano(bytes: number | null) {
 export function ListaArchivos({ archivos, en }: { archivos: ArchivoProyecto[]; en: boolean }) {
   const categoriaLabel: Record<string, string> = {
     planos: en ? "Plans" : "Planos",
-    otros: en ? "Other" : "Otros",
+    documentos_colaborador: en ? "Specs / other" : "Specs / otros",
   }
 
   return (

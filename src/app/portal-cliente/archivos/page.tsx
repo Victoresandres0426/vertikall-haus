@@ -1,11 +1,19 @@
+import { redirect } from "next/navigation"
 import { PortalHeader } from "../portal-header"
 import { SinProyecto } from "../sin-proyecto"
 import { SubirArchivoForm } from "./subir-archivo-form"
 import { ListaArchivos } from "./lista-archivos"
 import { cargarSesionCliente, obtenerProyectoCliente, type ArchivoProyecto, t } from "../_shared"
 
+// Sección exclusiva del colaborador externo (diseñador/arquitecto) --
+// el cliente no debe ver planos ni documentos del proyecto, así que
+// ni siquiera se le muestra la tarjeta en el home del portal (ver
+// page.tsx), pero por si entra directo a la URL se bloquea aquí
+// también (además de que el RPC ya lo rechaza a nivel de base).
 export default async function ArchivosClientePage() {
   const { supabase, perfil, esColaborador } = await cargarSesionCliente()
+  if (!esColaborador) redirect("/portal-cliente")
+
   const proyecto = await obtenerProyectoCliente(supabase)
 
   const facturaEnIngles = proyecto?.idioma_cliente === "en"
@@ -17,10 +25,10 @@ export default async function ArchivosClientePage() {
 
   let archivos: ArchivoProyecto[] = []
   try {
-    const { data } = await supabase.rpc("cliente_ver_archivos")
+    const { data } = await supabase.rpc("colaborador_ver_archivos")
     archivos = (data ?? []) as ArchivoProyecto[]
   } catch (e) {
-    console.error("cliente_ver_archivos falló (¿falta correr la migración 118?):", e)
+    console.error("colaborador_ver_archivos falló (¿falta correr la migración 119?):", e)
   }
 
   if (archivos.length > 0) {

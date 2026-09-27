@@ -47,15 +47,17 @@ export default async function PortalClientePage() {
   const estadoProyectoLabelActivo = facturaEnIngles ? estadoProyectoLabelEn : estadoProyectoLabel
 
   // El colaborador externo (diseñador/arquitecto) ve todo lo mismo que
-  // el cliente EXCEPTO Facturas, y además tiene la sección nueva de
-  // Archivos/planos (que el cliente también puede ver, solo que sin
-  // poder subir -- ver /portal-cliente/archivos).
+  // el cliente EXCEPTO Facturas, y además tiene una sección exclusiva
+  // de Archivos/planos -- el cliente NO la ve (el dueño pidió que
+  // planos y documentos del proyecto queden fuera del portal del
+  // cliente, solo para el equipo de diseño/arquitectura).
   const secciones = [
     { href: "/portal-cliente/cronograma", icono: ListChecks, titulo: tf.cronogramaYAvance, sub: tf.verCronograma },
     { href: "/portal-cliente/fotos", icono: Camera, titulo: tf.fotosDelProyecto, sub: tf.verFotos },
     { href: "/portal-cliente/reportes", icono: ClipboardList, titulo: tf.fotosYReportes, sub: tf.verReportes },
-    { href: "/portal-cliente/archivos", icono: FolderOpen, titulo: tf.archivos, sub: tf.verArchivos },
-    ...(esColaborador ? [] : [{ href: "/portal-cliente/facturas", icono: Receipt, titulo: tf.facturas, sub: tf.verFacturas }]),
+    ...(esColaborador
+      ? [{ href: "/portal-cliente/archivos", icono: FolderOpen, titulo: tf.archivos, sub: tf.verArchivos }]
+      : [{ href: "/portal-cliente/facturas", icono: Receipt, titulo: tf.facturas, sub: tf.verFacturas }]),
   ]
 
   return (

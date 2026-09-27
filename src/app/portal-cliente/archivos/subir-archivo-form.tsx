@@ -15,7 +15,7 @@ import { createClient } from "@/lib/supabase/client"
 export function SubirArchivoForm({ proyectoId, en }: { proyectoId: string; en: boolean }) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [categoria, setCategoria] = useState<"planos" | "otros">("planos")
+  const [categoria, setCategoria] = useState<"planos" | "documentos_colaborador">("planos")
   const [subiendo, setSubiendo] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -63,12 +63,12 @@ export function SubirArchivoForm({ proyectoId, en }: { proyectoId: string; en: b
       <div className="flex flex-wrap items-center gap-3">
         <select
           value={categoria}
-          onChange={(e) => setCategoria(e.target.value as "planos" | "otros")}
+          onChange={(e) => setCategoria(e.target.value as "planos" | "documentos_colaborador")}
           disabled={subiendo}
           className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#3B72D8]"
         >
           <option value="planos">{en ? "Plans" : "Planos"}</option>
-          <option value="otros">{en ? "Other documents" : "Otros documentos"}</option>
+          <option value="documentos_colaborador">{en ? "Specs / other documents" : "Specs / otros documentos"}</option>
         </select>
 
         <input
