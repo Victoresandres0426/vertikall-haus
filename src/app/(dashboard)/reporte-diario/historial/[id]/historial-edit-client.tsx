@@ -19,7 +19,7 @@ export type ActividadHist = {
   proceso_codigo?: string | null
   proceso_nombre?: string | null
 }
-export type SplitInicial = { actividadId: string; rol: string; horas: number; avance: number; costo: number | null; modoPago: string | null }
+export type SplitInicial = { actividadId: string; rol: string; horas: number; avance: number; costo: number | null; modoPago: string | null; costoManual: number | null }
 export type AsistenciaInicial = { presente: boolean; horas_regulares: number; horas_extra: number }
 // url viene vacío ("") si no se pudo firmar (ej. bucket todavía no
 // creado) -- el UI simplemente no muestra esa miniatura en ese caso.
@@ -43,7 +43,12 @@ type AsistenciaState = "presente" | "medio_dia" | "ausente"
 // de nómina -- destajo con reserva del 10%, o por hora). No se recalculan
 // en vivo mientras editas horas/avance -- eso pasa recién al "Guardar
 // cambios", que vuelve a correr registrar_asistencia_actividad().
-type SplitState = { actividadId: string; rol: string; horas: number; avance: number; horasAuto: boolean; costoGuardado: number | null; modoPagoGuardado: string | null }
+// costoManual: monto negociado a mano para este renglón (migración 113)
+// -- null significa "usa el cálculo automático de siempre" (destajo u
+// hora). Cuando tiene un número, ESE es el monto que se guarda tal cual,
+// sin importar lo que diga la fórmula -- el avance/horas reportados no
+// se tocan, solo el pago.
+type SplitState = { actividadId: string; rol: string; horas: number; avance: number; horasAuto: boolean; costoGuardado: number | null; modoPagoGuardado: string | null; costoManual: number | null }
 
 type WorkerState = {
   id: string
@@ -211,7 +216,7 @@ export function HistorialEditClient({
         // llenó a mano (se pagó todo a destajo por cantidad) -- se marca
         // como "auto" para que en vez de mostrar 0 se vea un reparto real
         // de las horas del día. Si ya tenía horas puestas, se respeta tal cual.
-        splits: (splitsPorTrabajador[t.id] ?? []).map((s) => ({ actividadId: s.actividadId, rol: s.rol, horas: s.horas, avance: s.avance, horasAuto: s.horas === 0, costoGuardado: s.costo, modoPagoGuardado: s.modoPago })),
+        splits: (splitsPorTrabajador[t.id] ?? []).map((s) => ({ actividadId: s.actividadId, rol: s.rol, horas: s.horas, avance: s.avance, horasAuto: s.horas === 0, costoGuardado: s.costo, modoPagoGuardado: s.modoPago, costoManual: s.costoManual })),
       }
     })
   )
@@ -270,6 +275,18 @@ export function HistorialEditClient({
 
   const actividadPorId = new Map(actividades.map((a) => [a.id, a]))
 
+  // Actividades que YA tenían al menos un split de algún trabajador desde
+  // que se abrió esta edición -- si más abajo se borran TODOS esos
+  // splits, el renglón de "Avance por actividad" correspondiente debe
+  // desaparecer solo, porque su origen real era la suma de esos splits
+  // (no un total puesto a mano). Sin esto, quitarle la actividad a un
+  // trabajador en "Asistencia" dejaba el avance de esa actividad
+  // "fantasma" cargado con la cantidad vieja -- que es justo lo que se
+  // volvía a guardar al hacer clic en "Guardar cambios".
+  const actividadesConSplitOriginal = new Set(
+    Object.values(splitsPorTrabajador).flat().map((s) => s.actividadId)
+  )
+
   // act.cantidad_ejecutada (de la tabla actividades) ya viene ACUMULADA
   // incluyendo lo que este mismo reporte había guardado antes de abrir
   // esta edición (migración 064). Para recalcular en vivo el % al
@@ -292,6 +309,7 @@ export function HistorialEditClient({
   // sin fórmula de destajo disponible) se usa el último valor guardado,
   // porque ahí no hay manera de estimarlo sin guardar primero.
   const montoSplit = (s: SplitState): number => {
+    if (s.costoManual !== null) return s.costoManual
     const tarifaUnitaria = tarifaManoObraPorActividad[s.actividadId]
     if (tarifaUnitaria !== undefined) return s.avance > 0 ? s.avance * tarifaUnitaria * FACTOR_RESERVA_DESTAJO : 0
     return s.costoGuardado ?? 0
@@ -314,7 +332,7 @@ export function HistorialEditClient({
     setWorkers((prev) => prev.map((w) => {
       if (w.id !== workerId) return w
       const primeraActividad = actividades[0]?.id ?? ""
-      return { ...w, splits: [...w.splits, { actividadId: primeraActividad, rol: w.rol_obra ?? "", horas: 0, avance: 0, horasAuto: true, costoGuardado: null, modoPagoGuardado: null }] }
+      return { ...w, splits: [...w.splits, { actividadId: primeraActividad, rol: w.rol_obra ?? "", horas: 0, avance: 0, horasAuto: true, costoGuardado: null, modoPagoGuardado: null, costoManual: null }] }
     }))
   }
 
@@ -327,6 +345,16 @@ export function HistorialEditClient({
       if (w.id !== workerId) return w
       // Si edita "Horas" a mano, ese renglón deja de repartirse solo.
       const splits = w.splits.map((s, i) => (i === idx ? { ...s, [field]: value, horasAuto: field === "horas" ? false : s.horasAuto } : s))
+      return { ...w, splits }
+    }))
+  }
+
+  // Fija o quita el monto negociado a mano de un renglón (migración 113).
+  // null = volver al cálculo automático (destajo/hora).
+  const setCostoManual = (workerId: string, idx: number, value: number | null) => {
+    setWorkers((prev) => prev.map((w) => {
+      if (w.id !== workerId) return w
+      const splits = w.splits.map((s, i) => (i === idx ? { ...s, costoManual: value } : s))
       return { ...w, splits }
     }))
   }
@@ -366,16 +394,23 @@ export function HistorialEditClient({
     }
     setAvanceRows((prev) => {
       let cambio = false
-      // Una fila que ya venía guardada (avanceInicial) nunca se elimina
-      // sola aunque por ahora no tenga ningún split que la respalde --
-      // eso pasa con avances de reportes viejos cargados como un total
-      // directo, sin desglosar por trabajador. Solo se descarta un
-      // renglón "auto" que el propio efecto había creado (por splits que
-      // luego se borraron) y que nunca tuvo respaldo en la BD.
+      // Una fila que ya venía guardada (avanceInicial) normalmente no se
+      // elimina sola aunque por ahora no tenga ningún split que la
+      // respalde -- eso pasa con avances de reportes viejos cargados
+      // como un total directo, sin desglosar por trabajador, y no hay
+      // forma de recuperar ese dato de otra fuente si desaparece. PERO
+      // si esta actividad SÍ tenía al menos un split de un trabajador
+      // desde que se abrió esta edición (actividadesConSplitOriginal),
+      // su origen real era la suma de esos splits -- si el usuario los
+      // borra todos (le quita la actividad a los trabajadores en
+      // "Asistencia"), el renglón debe desaparecer solo, no quedarse
+      // "fantasma" con la cantidad vieja que se volvería a guardar tal
+      // cual.
       const conservadas = prev.filter((r) => {
         if (!r.auto) return true
         const persistido = avanceInicial[r.actividadId] !== undefined
-        const sigueVigente = sumas[r.actividadId] !== undefined || persistido
+        const teniaSplitOriginal = actividadesConSplitOriginal.has(r.actividadId)
+        const sigueVigente = sumas[r.actividadId] !== undefined || (persistido && !teniaSplitOriginal)
         if (!sigueVigente) cambio = true
         return sigueVigente
       })
@@ -478,6 +513,7 @@ export function HistorialEditClient({
           rol_aplicado: s.rol || null,
           horas: s.horas,
           avance_cantidad: s.avance || undefined,
+          costo_manual: s.costoManual ?? undefined,
         }))
     )
 
@@ -719,35 +755,75 @@ export function HistorialEditClient({
                             />
                           </CampoEtiquetado>
                           <CampoEtiquetado label="Dinero generado">
-                            {montoEnVivo !== null ? (
-                              <div
-                                title={
-                                  montoEnVivo > 0
-                                    ? "Estimado en vivo -- se recalcula mientras cambias el avance. Se confirma (con centavos exactos) al Guardar cambios."
-                                    : "Esta actividad se paga a destajo -- sin avance todavía no genera nada. Sube el avance para ver cuánto generaría."
-                                }
-                                className={cn(
-                                  "w-24 rounded-lg px-2 py-1.5 text-xs font-medium border",
-                                  montoEnVivo > 0 ? "text-emerald-700 bg-emerald-50 border-emerald-100" : "text-slate-400 bg-white border-dashed border-slate-300"
-                                )}
-                              >
-                                ≈ ${montoEnVivo.toLocaleString("es-MX", { maximumFractionDigits: 0 })}
+                            {s.costoManual !== null ? (
+                              // Monto negociado a mano (migración 113) -- reemplaza
+                              // el cálculo automático sin tocar avance/horas.
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  value={s.costoManual}
+                                  onChange={(e) => setCostoManual(w.id, idx, Number(e.target.value))}
+                                  title="Monto fijado a mano -- ya no se calcula automáticamente"
+                                  className="w-20 border border-amber-300 bg-amber-50 rounded-lg px-2 py-1.5 text-xs font-medium text-amber-800"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setCostoManual(w.id, idx, null)}
+                                  title="Quitar el monto manual y volver al cálculo automático"
+                                  className="text-[10px] text-slate-400 hover:text-slate-600 underline whitespace-nowrap"
+                                >
+                                  automático
+                                </button>
+                              </div>
+                            ) : montoEnVivo !== null ? (
+                              <div className="flex items-center gap-1">
+                                <div
+                                  title={
+                                    montoEnVivo > 0
+                                      ? "Estimado en vivo -- se recalcula mientras cambias el avance. Se confirma (con centavos exactos) al Guardar cambios."
+                                      : "Esta actividad se paga a destajo -- sin avance todavía no genera nada. Sube el avance para ver cuánto generaría."
+                                  }
+                                  className={cn(
+                                    "w-24 rounded-lg px-2 py-1.5 text-xs font-medium border",
+                                    montoEnVivo > 0 ? "text-emerald-700 bg-emerald-50 border-emerald-100" : "text-slate-400 bg-white border-dashed border-slate-300"
+                                  )}
+                                >
+                                  ≈ ${montoEnVivo.toLocaleString("es-MX", { maximumFractionDigits: 0 })}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setCostoManual(w.id, idx, Math.round(montoEnVivo))}
+                                  title="Fijar un monto negociado a mano para este renglón, distinto al que calcula el sistema"
+                                  className="text-[10px] text-slate-400 hover:text-slate-600 underline whitespace-nowrap"
+                                >
+                                  fijar monto
+                                </button>
                               </div>
                             ) : (
-                              <div
-                                title={
-                                  s.costoGuardado === null
-                                    ? "Todavía no se ha guardado -- se calcula al hacer clic en \"Guardar cambios\""
-                                    : "Último valor guardado -- si cambias horas/avance, se recalcula al guardar"
-                                }
-                                className={cn(
-                                  "w-24 rounded-lg px-2 py-1.5 text-xs font-medium",
-                                  s.costoGuardado === null ? "text-slate-400 bg-white border border-dashed border-slate-300" : "text-emerald-700 bg-emerald-50 border border-emerald-100"
-                                )}
-                              >
-                                {s.costoGuardado === null
-                                  ? "— (sin guardar)"
-                                  : `$${s.costoGuardado.toLocaleString("es-MX", { maximumFractionDigits: 0 })}${s.modoPagoGuardado === "destajo" ? " (destajo)" : s.modoPagoGuardado === "hora" ? " (por hora)" : ""}`}
+                              <div className="flex items-center gap-1">
+                                <div
+                                  title={
+                                    s.costoGuardado === null
+                                      ? "Todavía no se ha guardado -- se calcula al hacer clic en \"Guardar cambios\""
+                                      : "Último valor guardado -- si cambias horas/avance, se recalcula al guardar"
+                                  }
+                                  className={cn(
+                                    "w-24 rounded-lg px-2 py-1.5 text-xs font-medium",
+                                    s.costoGuardado === null ? "text-slate-400 bg-white border border-dashed border-slate-300" : "text-emerald-700 bg-emerald-50 border border-emerald-100"
+                                  )}
+                                >
+                                  {s.costoGuardado === null
+                                    ? "— (sin guardar)"
+                                    : `$${s.costoGuardado.toLocaleString("es-MX", { maximumFractionDigits: 0 })}${s.modoPagoGuardado === "destajo" ? " (destajo)" : s.modoPagoGuardado === "hora" ? " (por hora)" : ""}`}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setCostoManual(w.id, idx, Math.round(s.costoGuardado ?? 0))}
+                                  title="Fijar un monto negociado a mano para este renglón, distinto al que calcula el sistema"
+                                  className="text-[10px] text-slate-400 hover:text-slate-600 underline whitespace-nowrap"
+                                >
+                                  fijar monto
+                                </button>
                               </div>
                             )}
                           </CampoEtiquetado>

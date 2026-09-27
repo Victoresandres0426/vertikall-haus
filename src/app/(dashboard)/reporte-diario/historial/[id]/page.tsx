@@ -80,7 +80,7 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
       .eq("reporte_id", id),
     supabase
       .from("asistencia_actividad_diaria")
-      .select("trabajador_id, actividad_id, rol_aplicado, horas, avance_cantidad, costo, modo_pago")
+      .select("trabajador_id, actividad_id, rol_aplicado, horas, avance_cantidad, costo, modo_pago, costo_manual")
       .eq("reporte_id", id),
   ])
 
@@ -196,7 +196,7 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
   }
 
   const splitsPorTrabajador: Record<string, SplitInicial[]> = {}
-  for (const s of (splitsRaw ?? []) as { trabajador_id: string; actividad_id: string; rol_aplicado: string | null; horas: number; avance_cantidad: number | null; costo: number | null; modo_pago: string | null }[]) {
+  for (const s of (splitsRaw ?? []) as { trabajador_id: string; actividad_id: string; rol_aplicado: string | null; horas: number; avance_cantidad: number | null; costo: number | null; modo_pago: string | null; costo_manual: number | null }[]) {
     if (!splitsPorTrabajador[s.trabajador_id]) splitsPorTrabajador[s.trabajador_id] = []
     splitsPorTrabajador[s.trabajador_id].push({
       actividadId: s.actividad_id,
@@ -205,6 +205,7 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
       avance: s.avance_cantidad != null ? Number(s.avance_cantidad) : 0,
       costo: s.costo != null ? Number(s.costo) : null,
       modoPago: s.modo_pago ?? null,
+      costoManual: s.costo_manual != null ? Number(s.costo_manual) : null,
     })
   }
 

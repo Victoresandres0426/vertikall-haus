@@ -30,6 +30,11 @@ export type EntradaHorasActividad = {
   rol_aplicado: string | null
   horas: number
   avance_cantidad?: number
+  // Monto negociado a mano para este renglón (migración 113) -- si viene,
+  // reemplaza el cálculo automático (avance × tarifa × 90%, u horas ×
+  // tarifa/hora) sin tocar el avance/horas reportados. undefined/null =
+  // usar el cálculo automático de siempre.
+  costo_manual?: number
 }
 
 export async function crearReporteDiario(input: {
