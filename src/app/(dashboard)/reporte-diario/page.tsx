@@ -68,28 +68,43 @@ async function getData(): Promise<{
       .not("estado", "in", '("completada","cancelada")')
       .order("codigo")
 
+    type ActRaw = ActividadDB & {
+      proyecto_id: string
+      // Supabase normalmente resuelve esta relación como un objeto
+      // único, pero según la ambigüedad de la FK a veces la devuelve
+      // como arreglo -- se contemplan ambas formas para no reventar el
+      // agrupado si eso pasa.
+      procesos: { codigo: string; nombre: string; orden: number } | { codigo: string; nombre: string; orden: number }[] | null
+    }
+
     // Se ordena en memoria por división (proceso.orden) y no en la
     // consulta -- Supabase no soporta bien "order by" sobre una columna
-    // de una tabla relacionada anidada. Así el selector de actividades
-    // del Reporte Diario queda agrupado en el mismo orden que la página
-    // de Actividades, en vez de solo alfabético por código.
-    const actsOrdenadas = ((actsRaw ?? []) as unknown as (ActividadDB & {
-      proyecto_id: string
-      procesos: { codigo: string; nombre: string; orden: number } | null
-    })[]).sort((a, b) => {
-      const oa = a.procesos?.orden ?? 999
-      const ob = b.procesos?.orden ?? 999
-      if (oa !== ob) return oa - ob
-      return a.codigo.localeCompare(b.codigo)
-    })
+    // de una tabla relacionada anidada. Envuelto en try/catch: esto es
+    // solo para agrupar visualmente el selector -- si algo inesperado
+    // en la forma de los datos lo rompe, no debe tumbar toda la página
+    // de Reporte Diario, solo se cae de vuelta al orden plano por código.
+    let actsOrdenadas: ActRaw[]
+    try {
+      actsOrdenadas = ((actsRaw ?? []) as unknown as ActRaw[]).sort((a, b) => {
+        const procA = Array.isArray(a.procesos) ? a.procesos[0] : a.procesos
+        const procB = Array.isArray(b.procesos) ? b.procesos[0] : b.procesos
+        const oa = procA?.orden ?? 999
+        const ob = procB?.orden ?? 999
+        if (oa !== ob) return oa - ob
+        return (a.codigo ?? "").localeCompare(b.codigo ?? "")
+      })
+    } catch {
+      actsOrdenadas = (actsRaw ?? []) as unknown as ActRaw[]
+    }
 
     for (const act of actsOrdenadas) {
       const { proyecto_id: pid, procesos, ...resto } = act
+      const proc = Array.isArray(procesos) ? procesos[0] : procesos
       if (!actividadesPorProyecto[pid]) actividadesPorProyecto[pid] = []
       actividadesPorProyecto[pid].push({
         ...resto,
-        proceso_codigo: procesos?.codigo ?? null,
-        proceso_nombre: procesos?.nombre ?? null,
+        proceso_codigo: proc?.codigo ?? null,
+        proceso_nombre: proc?.nombre ?? null,
       } as ActividadDB)
     }
   }

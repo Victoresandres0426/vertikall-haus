@@ -116,22 +116,35 @@ async function getData() {
     // agrupado igual que en la página de Actividades, en vez de una
     // lista plana donde actividades de nombre parecido en divisiones
     // distintas se prestan a confusión.
-    actividadesOpciones = ((actividadesRaw ?? []) as unknown as (ActividadOpcion & {
-      procesos: { codigo: string; nombre: string; orden: number } | null
-    })[])
-      .sort((a, b) => {
-        const oa = a.procesos?.orden ?? 999
-        const ob = b.procesos?.orden ?? 999
-        if (oa !== ob) return oa - ob
-        return a.codigo.localeCompare(b.codigo)
-      })
-      .map((a) => ({
-        id: a.id,
-        codigo: a.codigo,
-        nombre: a.nombre,
-        proceso_codigo: a.procesos?.codigo ?? null,
-        proceso_nombre: a.procesos?.nombre ?? null,
-      }))
+    type ActOpcionRaw = ActividadOpcion & {
+      procesos: { codigo: string; nombre: string; orden: number } | { codigo: string; nombre: string; orden: number }[] | null
+    }
+    try {
+      actividadesOpciones = ((actividadesRaw ?? []) as unknown as ActOpcionRaw[])
+        .sort((a, b) => {
+          const procA = Array.isArray(a.procesos) ? a.procesos[0] : a.procesos
+          const procB = Array.isArray(b.procesos) ? b.procesos[0] : b.procesos
+          const oa = procA?.orden ?? 999
+          const ob = procB?.orden ?? 999
+          if (oa !== ob) return oa - ob
+          return (a.codigo ?? "").localeCompare(b.codigo ?? "")
+        })
+        .map((a) => {
+          const proc = Array.isArray(a.procesos) ? a.procesos[0] : a.procesos
+          return {
+            id: a.id,
+            codigo: a.codigo,
+            nombre: a.nombre,
+            proceso_codigo: proc?.codigo ?? null,
+            proceso_nombre: proc?.nombre ?? null,
+          }
+        })
+    } catch {
+      // Si algo inesperado en la forma de los datos rompe el agrupado,
+      // no debe tumbar la página de Materiales -- se cae de vuelta a la
+      // lista plana sin división.
+      actividadesOpciones = (actividadesRaw ?? []) as unknown as ActividadOpcion[]
+    }
   }
 
   return {
