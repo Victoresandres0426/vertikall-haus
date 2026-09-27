@@ -8,6 +8,28 @@ import { ETIQUETA_TIPO_DEPENDENCIA, type ActividadEditable, type DependenciaEdit
 
 const TIPOS: TipoDependencia[] = ["fin_a_inicio", "inicio_a_inicio", "fin_a_fin", "inicio_a_fin"]
 
+// Agrupa las actividades disponibles por división/proceso -- mismo
+// criterio que Reporte Diario, Gastos e Historial, para no confundir
+// actividades de nombre parecido en divisiones distintas al elegir una
+// predecesora.
+function agruparPorDivision(actividades: ActividadEditable[]): { etiqueta: string; items: ActividadEditable[] }[] {
+  const grupos: { etiqueta: string; items: ActividadEditable[] }[] = []
+  const indicePorEtiqueta = new Map<string, number>()
+  for (const a of actividades) {
+    const etiqueta = a.proceso_codigo && a.proceso_nombre
+      ? `${a.proceso_codigo} — ${a.proceso_nombre}`
+      : "Sin división"
+    let idx = indicePorEtiqueta.get(etiqueta)
+    if (idx === undefined) {
+      idx = grupos.length
+      indicePorEtiqueta.set(etiqueta, idx)
+      grupos.push({ etiqueta, items: [] })
+    }
+    grupos[idx].items.push(a)
+  }
+  return grupos
+}
+
 // Modal de dependencias de UNA actividad -- se abre desde el ícono de
 // enlace en su fila del Gantt editable. Muestra de qué depende
 // (predecesoras, editables/borrables aquí, y con un formulario para
@@ -137,8 +159,12 @@ export function DependenciasModal({
                     onChange={(e) => setNuevoPredecesorId(e.target.value)}
                     className="border border-slate-200 rounded px-2 py-1 text-xs"
                   >
-                    {disponibles.map((a) => (
-                      <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                    {agruparPorDivision(disponibles).map((grupo) => (
+                      <optgroup key={grupo.etiqueta} label={grupo.etiqueta}>
+                        {grupo.items.map((a) => (
+                          <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                 </label>

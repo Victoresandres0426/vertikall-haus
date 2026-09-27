@@ -14,6 +14,10 @@ export type TrabajadorHist = { id: string; nombre_completo: string; rol_obra: st
 export type ActividadHist = {
   id: string; codigo: string; nombre: string; unidad: string | null
   cantidad_objetivo: number | null; cantidad_ejecutada: number | null; avance_porcentaje: number
+  // División/proceso al que pertenece -- para agrupar el selector igual
+  // que en Reporte Diario y Gastos (ver agruparPorDivision más abajo).
+  proceso_codigo?: string | null
+  proceso_nombre?: string | null
 }
 export type SplitInicial = { actividadId: string; rol: string; horas: number; avance: number; costo: number | null; modoPago: string | null }
 export type AsistenciaInicial = { presente: boolean; horas_regulares: number; horas_extra: number }
@@ -69,6 +73,27 @@ type AvanceRow = { actividadId: string; cantidadHoy: number; porcentajeTotal: nu
 function labelActividad(a: ActividadHist): string {
   const pct = a.avance_porcentaje ?? 0
   return `${a.codigo} — ${a.nombre} (${pct}%)`
+}
+
+// Agrupa las actividades por división/proceso -- mismo criterio que
+// Reporte Diario y Gastos, para que una actividad con nombre parecido
+// en otra división no se preste a confusión al elegirla en el selector.
+function agruparPorDivision(actividades: ActividadHist[]): { etiqueta: string; items: ActividadHist[] }[] {
+  const grupos: { etiqueta: string; items: ActividadHist[] }[] = []
+  const indicePorEtiqueta = new Map<string, number>()
+  for (const a of actividades) {
+    const etiqueta = a.proceso_codigo && a.proceso_nombre
+      ? `${a.proceso_codigo} — ${a.proceso_nombre}`
+      : "Sin división"
+    let idx = indicePorEtiqueta.get(etiqueta)
+    if (idx === undefined) {
+      idx = grupos.length
+      indicePorEtiqueta.set(etiqueta, idx)
+      grupos.push({ etiqueta, items: [] })
+    }
+    grupos[idx].items.push(a)
+  }
+  return grupos
 }
 
 // Envuelve un input con una etiqueta pequeña y siempre visible arriba
@@ -650,8 +675,12 @@ export function HistorialEditClient({
                               onChange={(e) => updateSplit(w.id, idx, "actividadId", e.target.value)}
                               className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
                             >
-                              {actividades.map((a) => (
-                                <option key={a.id} value={a.id}>{labelActividad(a)}</option>
+                              {agruparPorDivision(actividades).map((grupo) => (
+                                <optgroup key={grupo.etiqueta} label={grupo.etiqueta}>
+                                  {grupo.items.map((a) => (
+                                    <option key={a.id} value={a.id}>{labelActividad(a)}</option>
+                                  ))}
+                                </optgroup>
                               ))}
                             </select>
                           </CampoEtiquetado>
@@ -871,8 +900,12 @@ export function HistorialEditClient({
               className="w-full border border-dashed border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-500 bg-white"
             >
               <option value="">+ Agregar avance de otra actividad...</option>
-              {actividadesDisponiblesParaAvance.map((a) => (
-                <option key={a.id} value={a.id}>{labelActividad(a)}</option>
+              {agruparPorDivision(actividadesDisponiblesParaAvance).map((grupo) => (
+                <optgroup key={grupo.etiqueta} label={grupo.etiqueta}>
+                  {grupo.items.map((a) => (
+                    <option key={a.id} value={a.id}>{labelActividad(a)}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           )}

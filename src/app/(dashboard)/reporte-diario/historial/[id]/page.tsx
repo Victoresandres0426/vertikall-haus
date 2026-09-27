@@ -61,7 +61,7 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
   ] = await Promise.all([
     supabase
       .from("actividades")
-      .select("id, codigo, nombre, unidad, cantidad_objetivo, cantidad_ejecutada, avance_porcentaje, duracion_plan_dias, personal_planeado, costo_mano_obra")
+      .select("id, codigo, nombre, unidad, cantidad_objetivo, cantidad_ejecutada, avance_porcentaje, duracion_plan_dias, personal_planeado, costo_mano_obra, proceso_id, procesos ( codigo, nombre, orden )")
       .eq("proyecto_id", proyectoId)
       .order("codigo"),
     supabase
@@ -137,7 +137,33 @@ export default async function HistorialReporteDetallePage({ params }: { params: 
     .map((t) => ({ id: t.id, nombre_completo: t.nombre_completo, rol_obra: (rolPorProyecto.get(t.id) as string | undefined) ?? t.rol_obra }))
     .sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo))
 
-  const actividades: ActividadHist[] = (actividadesRaw ?? []) as ActividadHist[]
+  // Se agrupa por división/proceso para que el selector de actividades
+  // de esta pantalla quede organizado igual que en Reporte Diario y
+  // Gastos -- envuelto en try/catch: si algo inesperado en la forma de
+  // los datos rompe el agrupado, no debe tumbar la edición del reporte,
+  // solo se cae de vuelta a la lista plana por código.
+  type ActRaw = ActividadHist & {
+    procesos: { codigo: string; nombre: string; orden: number } | { codigo: string; nombre: string; orden: number }[] | null
+  }
+  let actividades: ActividadHist[]
+  try {
+    actividades = ((actividadesRaw ?? []) as unknown as ActRaw[])
+      .sort((a, b) => {
+        const procA = Array.isArray(a.procesos) ? a.procesos[0] : a.procesos
+        const procB = Array.isArray(b.procesos) ? b.procesos[0] : b.procesos
+        const oa = procA?.orden ?? 999
+        const ob = procB?.orden ?? 999
+        if (oa !== ob) return oa - ob
+        return (a.codigo ?? "").localeCompare(b.codigo ?? "")
+      })
+      .map((a) => {
+        const proc = Array.isArray(a.procesos) ? a.procesos[0] : a.procesos
+        const { procesos: _procesos, ...resto } = a
+        return { ...resto, proceso_codigo: proc?.codigo ?? null, proceso_nombre: proc?.nombre ?? null }
+      })
+  } catch {
+    actividades = (actividadesRaw ?? []) as unknown as ActividadHist[]
+  }
 
   const asistenciaInicial: Record<string, AsistenciaInicial> = {}
   for (const a of (asistenciaRaw ?? []) as { trabajador_id: string; presente: boolean; horas_regulares: number; horas_extra: number }[]) {

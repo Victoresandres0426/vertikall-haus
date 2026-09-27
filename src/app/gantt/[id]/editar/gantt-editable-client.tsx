@@ -57,7 +57,10 @@ export function GanttEditableClient({
   const scrollRef = useRef<HTMLDivElement>(null)
   const yaHizoScrollInicial = useRef(false)
 
-  const todasActividades = useMemo(() => procesos.flatMap((p) => p.actividades), [procesos])
+  const todasActividades = useMemo(
+    () => procesos.flatMap((p) => p.actividades.map((a) => ({ ...a, proceso_codigo: p.codigo, proceso_nombre: p.nombre }))),
+    [procesos]
+  )
 
   const rangeStart = useMemo(() => parseISO(rangeStartISO), [rangeStartISO])
   const rangeEnd = useMemo(() => parseISO(rangeEndISO), [rangeEndISO])

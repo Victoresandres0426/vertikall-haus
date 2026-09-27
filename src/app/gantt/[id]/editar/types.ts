@@ -17,6 +17,12 @@ export type ActividadEditable = {
   es_critica: boolean
   activa: boolean | null
   estado: string | null
+  // División/proceso al que pertenece -- se completa al aplanar
+  // ProcesoEditable[] a una lista plana (ver "todasActividades" en
+  // gantt-editable-client.tsx), para poder agrupar el selector de
+  // predecesoras en dependencias-modal.tsx igual que en el resto de la app.
+  proceso_codigo?: string
+  proceso_nombre?: string
 }
 
 export type ProcesoEditable = {
