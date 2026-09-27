@@ -317,41 +317,7 @@ export async function actualizarActividad(
 
   const costoMaterial = input.costo_material || 0
   const costoManoObra = input.costo_mano_obra || 0
-
-  // avance_porcentaje/estado normalmente se recalculan solos con un
-  // trigger sobre avance_diario (migración 064) cada vez que se guarda
-  // un Reporte Diario -- pero ese trigger solo se dispara con cambios en
-  // avance_diario, nunca con un cambio directo a cantidad_objetivo desde
-  // este editor. Sin esto, cambiar la "Cantidad propuesta" aquí dejaba
-  // el % de avance mostrado con el valor viejo (calculado contra la
-  // cantidad anterior) hasta el próximo Reporte Diario de esa actividad
-  // -- justo el síntoma reportado en 00.02. Se recalcula aquí con la
-  // MISMA fórmula que usa el trigger (_recalcular_avance_actividad,
-  // migración 064: cantidad_ejecutada / cantidad_objetivo × 100) para
-  // que ambos caminos den siempre el mismo resultado.
-  const { data: actual } = await supabase
-    .from("actividades")
-    .select("cantidad_ejecutada, estado")
-    .eq("id", actividadId)
-    .single()
-
-  const cantidadEjecutada = Number(actual?.cantidad_ejecutada ?? 0)
   const nuevoObjetivo = input.cantidad_objetivo ?? null
-  // Sin cantidad_objetivo no hay forma de calcular % -- se deja como esté
-  // (igual que el trigger).
-  const nuevoPct = nuevoObjetivo && nuevoObjetivo > 0
-    ? Math.round((cantidadEjecutada / nuevoObjetivo) * 100)
-    : null
-
-  const cambiosAvance: Record<string, unknown> = {}
-  if (nuevoPct !== null) {
-    cambiosAvance.avance_porcentaje = nuevoPct
-    cambiosAvance.estado = nuevoPct >= 100
-      ? "completada"
-      : cantidadEjecutada > 0
-        ? "en_progreso"
-        : (actual?.estado ?? "no_iniciada")
-  }
 
   const { data, error } = await supabase
     .from("actividades")
@@ -370,7 +336,6 @@ export async function actualizarActividad(
       fecha_inicio_plan: input.fecha_inicio_plan || null,
       fecha_fin_plan: input.fecha_fin_plan || null,
       es_critica: !!input.es_critica,
-      ...cambiosAvance,
     })
     .eq("id", actividadId)
     .select("proyecto_id")
@@ -380,6 +345,19 @@ export async function actualizarActividad(
     console.error("actualizarActividad error:", error)
     return { error: "Error al actualizar la actividad." }
   }
+
+  // avance_porcentaje/estado normalmente se recalculan solos con un
+  // trigger sobre avance_diario (migración 064) cada vez que se guarda
+  // un Reporte Diario -- pero ese trigger solo se dispara con cambios en
+  // avance_diario, nunca con un cambio directo a cantidad_objetivo desde
+  // este editor. En vez de reimplementar la fórmula a mano aquí (como se
+  // hacía antes, con riesgo de que un día se desalinee de la fórmula
+  // real del trigger), se llama a la MISMA función SQL que usa el
+  // trigger (recalcular_actividad, migración 112) -- así los dos
+  // caminos siempre dan el mismo resultado, y de paso también refresca
+  // costo_real por si acaso.
+  const { error: errorRecalc } = await supabase.rpc("recalcular_actividad", { p_actividad_id: actividadId })
+  if (errorRecalc) console.error("actualizarActividad - recalcular_actividad:", errorRecalc)
 
   // Si se tocó la fecha/duración, esto puede correr o atrasar toda la
   // ruta crítica -- recalculamos el cronograma completo del proyecto
@@ -392,6 +370,39 @@ export async function actualizarActividad(
   revalidatePath("/dashboard")
   revalidatePath("/alertas")
   return {}
+}
+
+// ── Recalcular avance/costo real de todas las actividades del proyecto ──
+// Botón de "última instancia": recorre todas las actividades activas del
+// proyecto y refresca cantidad_ejecutada/avance_porcentaje/estado (desde
+// avance_diario) y costo_real (desde costos_reales) con la MISMA fórmula
+// que usan los triggers (migraciones 057/064, expuesta como función
+// invocable en la migración 112). Pensado para cuando el dueño sospecha
+// que algo no cuadra y quiere forzar un resync completo sin esperar a
+// que se dispare un trigger.
+export async function recalcularActividadesProyecto(proyectoId: string): Promise<{ error?: string; actualizadas?: number }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  const { data, error } = await supabase.rpc("recalcular_actividades_proyecto", { p_proyecto_id: proyectoId })
+
+  if (error) {
+    console.error("recalcularActividadesProyecto error:", error)
+    if (error.message?.includes("recalcular_actividades_proyecto")) {
+      return { error: "Falta aplicar la migración 112 en la base de datos." }
+    }
+    return { error: "No se pudo recalcular. Intenta de nuevo." }
+  }
+
+  revalidatePath("/actividades")
+  revalidatePath("/dashboard")
+  revalidatePath("/proyectos")
+  revalidatePath("/gantt")
+  revalidatePath("/presupuesto")
+  revalidatePath("/alertas")
+
+  return { actualizadas: (data as number) ?? 0 }
 }
 
 export async function eliminarActividad(actividadId: string): Promise<{ error?: string }> {

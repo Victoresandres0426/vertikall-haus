@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/header"
 import { SelectorProyectoActivo } from "@/components/layout/selector-proyecto-activo"
 import { ActividadesClient, type ProyectoConActividades } from "./actividades-client"
 import { ActualizarCuadrillaBoton } from "./actualizar-cuadrilla-boton"
+import { RecalcularBoton } from "./recalcular-boton"
 import { getProyectoActivoId, resolverProyectoActivo } from "@/lib/proyecto-activo"
 
 const ROLES_EDITAN = ["project_manager", "administrador", "dueno", "superadmin"]
@@ -123,7 +124,10 @@ export default async function ActividadesPage() {
           todosLosProyectos.length > 0 ? (
             <div className="flex items-center gap-2">
               {puedeEditar && proyectos[0]?.id && (
-                <ActualizarCuadrillaBoton proyectoId={proyectos[0].id} />
+                <>
+                  <ActualizarCuadrillaBoton proyectoId={proyectos[0].id} />
+                  <RecalcularBoton proyectoId={proyectos[0].id} />
+                </>
               )}
               <SelectorProyectoActivo
                 proyectos={todosLosProyectos}
