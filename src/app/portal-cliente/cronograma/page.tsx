@@ -64,7 +64,7 @@ export default async function CronogramaClientePage() {
           <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100 overflow-hidden">
             {procesos.map((proc) => {
               const avanceProc = proc.actividades.length > 0
-                ? Math.round(proc.actividades.reduce((s, a) => s + (a.avance_porcentaje ?? 0), 0) / proc.actividades.length)
+                ? Math.round(proc.actividades.reduce((s, a) => s + Math.min(100, a.avance_porcentaje ?? 0), 0) / proc.actividades.length)
                 : 0
               return (
                 <details key={proc.id} className="group p-4">
@@ -84,7 +84,7 @@ export default async function CronogramaClientePage() {
                         <div className="flex items-center justify-between gap-2 mb-1">
                           <span className="text-sm text-slate-700 truncate">{facturaEnIngles ? (a.nombre_en || a.nombre) : a.nombre}</span>
                           <span className="text-xs text-slate-400 shrink-0">
-                            {estadoActividadLabelActivo[a.estado] ?? a.estado} · {Math.round(a.avance_porcentaje ?? 0)}%
+                            {estadoActividadLabelActivo[a.estado] ?? a.estado} · {Math.min(100, Math.round(a.avance_porcentaje ?? 0))}%
                           </span>
                         </div>
                         <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
