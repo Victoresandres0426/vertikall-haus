@@ -15,17 +15,28 @@ function formatoCorto(iso: string, en: boolean) {
 // de "hoy") -- pedido explicito del dueno: que se pueda leer el
 // numero justo donde estamos parados ahora, no solo intuirlo del
 // tamano de la barra.
+// La etiqueta va ARRIBA de su punto si esa línea queda más alta que la
+// otra ahí (más avance), y ABAJO si queda más baja -- así siempre es
+// la línea de arriba la que se lee arriba y la de abajo la que se lee
+// abajo, sin importar si esa línea es Real o Plan (antes Real siempre
+// se etiquetaba arriba y Plan siempre abajo, aunque el proyecto vaya
+// adelantado y Plan quede arriba, quedando las etiquetas cruzadas).
+// "empatePrefiereArriba" desempata cuando ambas líneas terminan en el
+// mismo valor, para que no se encimen las dos etiquetas del mismo lado.
 // Nota de tipos: recharts tipa "x"/"y"/"value" en el label render-prop
 // como string | number (pueden venir en % para otros charts), así que
 // anotar el parámetro como number aquí rompe el chequeo de tipos de
 // TypeScript al pasar esta función al prop "label". Por eso el
 // parámetro se recibe sin anotar y se convierte adentro con Number().
-function crearEtiquetaUltimoPunto(totalPuntos: number, color: string, dy: number) {
+function crearEtiquetaUltimoPunto(totalPuntos: number, color: string, valorOtraLinea: number | null, empatePrefiereArriba: boolean) {
   return (props: any) => {
     const { x, y, index, value } = props
     if (index !== totalPuntos - 1 || x == null || y == null || value == null) return null
     const nx = Number(x)
     const ny = Number(y)
+    const v = Number(value)
+    const vaArriba = valorOtraLinea == null || v > valorOtraLinea || (v === valorOtraLinea && empatePrefiereArriba)
+    const dy = vaArriba ? -12 : 18
     return (
       <text x={nx} y={ny + dy} textAnchor="middle" fontSize={12} fontWeight={700} fill={color}>
         {value}%
@@ -47,6 +58,9 @@ export function AvanceChart({
 
   const puntos = datos.map((d) => ({ ...d, fechaCorta: formatoCorto(d.fecha, en) }))
   const tienePlan = puntos.some((p) => p.avance_plan_pct != null)
+  const ultimo = puntos[puntos.length - 1]
+  const ultimoReal = ultimo?.avance_pct ?? null
+  const ultimoPlan = tienePlan ? (ultimo?.avance_plan_pct ?? null) : null
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-4">
@@ -83,7 +97,7 @@ export function AvanceChart({
               fill="url(#gradAvancePortal)"
               strokeWidth={2}
               dot={false}
-              label={crearEtiquetaUltimoPunto(puntos.length, "#3B72D8", -12)}
+              label={crearEtiquetaUltimoPunto(puntos.length, "#3B72D8", ultimoPlan, true)}
             />
             {tienePlan && (
               <Line
@@ -93,7 +107,7 @@ export function AvanceChart({
                 strokeWidth={2}
                 strokeDasharray="4 4"
                 dot={false}
-                label={crearEtiquetaUltimoPunto(puntos.length, "#B45309", 18)}
+                label={crearEtiquetaUltimoPunto(puntos.length, "#B45309", ultimoReal, false)}
               />
             )}
           </ComposedChart>
