@@ -60,23 +60,28 @@ export function SubirArchivoForm({ proyectoId, en }: { proyectoId: string; en: b
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <select
           value={categoria}
           onChange={(e) => setCategoria(e.target.value as "planos" | "documentos_colaborador")}
           disabled={subiendo}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#3B72D8]"
+          className="w-full sm:w-auto border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-[#3B72D8] appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22%2394a3b8%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M5.23%207.21a.75.75%200%20011.06.02L10%2011.168l3.71-3.938a.75.75%200%20111.08%201.04l-4.25%204.5a.75.75%200%2001-1.08%200l-4.25-4.5a.75.75%200%2001.02-1.06z%22%20clip-rule%3D%22evenodd%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[right_0.6rem_center] bg-[length:1.1rem] pr-9"
         >
           <option value="planos">{en ? "Plans" : "Planos"}</option>
           <option value="documentos_colaborador">{en ? "Specs / other documents" : "Specs / otros documentos"}</option>
         </select>
 
+        {/* accept explícito: sin esto, algunos navegadores móviles (sobre
+            todo en tablets/Android) abren directo la galería de fotos en
+            vez de ofrecer también "Archivos" -- al listar tipos que no son
+            solo imágenes, el selector nativo muestra el picker completo. */}
         <input
           ref={inputRef}
           type="file"
+          accept="application/pdf,image/*,.dwg,.dxf,.doc,.docx,.xls,.xlsx,.txt,.zip"
           onChange={handleSubir}
           disabled={subiendo}
-          className="text-sm text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[#3B72D8]/10 file:text-[#3B72D8] hover:file:bg-[#3B72D8]/20 file:cursor-pointer"
+          className="w-full sm:w-auto text-sm text-slate-500 file:mr-3 file:py-2.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[#3B72D8]/10 file:text-[#3B72D8] hover:file:bg-[#3B72D8]/20 file:cursor-pointer"
         />
 
         {subiendo && (
