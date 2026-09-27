@@ -163,6 +163,14 @@ export function HistorialEditClient({
 
   const [clima, setClima] = useState(climaInicial ?? "")
   const [observaciones, setObservaciones] = useState(observacionesInicial ?? "")
+  // Antes la fecha se mostraba fija como texto -- si el capataz metió
+  // el reporte en el día equivocado, no había forma de arreglarlo desde
+  // aquí. Ahora es un campo editable (migración 111 agrega p_fecha a
+  // actualizar_reporte_diario). Cambiarla mueve el reporte completo a
+  // ese otro día -- si ya existe otro reporte tuyo en ese proyecto para
+  // esa fecha, el servidor lo rechaza con un mensaje claro en vez de
+  // fusionarlos o duplicarlos.
+  const [fechaEditada, setFechaEditada] = useState(fecha)
 
   const [workers, setWorkers] = useState<WorkerState[]>(
     trabajadores.map((t) => {
@@ -457,7 +465,7 @@ export function HistorialEditClient({
       const res = await actualizarReporteDiario({
         reporte_id: reporteId,
         proyecto_id: proyectoId,
-        fecha,
+        fecha: fechaEditada,
         clima: clima || undefined,
         observaciones: observaciones || undefined,
         avances,
@@ -496,13 +504,23 @@ export function HistorialEditClient({
       <Card>
         <CardHeader>
           <CardTitle>Datos generales</CardTitle>
-          <CardDescription>Fecha: {fecha}</CardDescription>
+          <CardDescription>Corrige la fecha si el reporte quedó en el día equivocado.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-3">
+          <Input
+            label="Fecha" type="date"
+            value={fechaEditada}
+            onChange={(e) => setFechaEditada(e.target.value || fecha)}
+          />
           <Input label="Clima" value={clima} onChange={(e) => setClima(e.target.value)} placeholder="Ej. Soleado" />
           <div className="col-span-2">
             <Textarea label="Observaciones generales" rows={2} value={observaciones} onChange={(e) => setObservaciones(e.target.value)} />
           </div>
+          {fechaEditada !== fecha && (
+            <p className="col-span-2 text-[11px] text-amber-600">
+              Vas a mover este reporte del {fecha} al {fechaEditada}. Si ya tienes otro reporte tuyo en este proyecto en esa fecha, el sistema no dejará guardar y te avisará.
+            </p>
+          )}
         </CardContent>
       </Card>
 

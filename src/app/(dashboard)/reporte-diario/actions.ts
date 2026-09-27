@@ -170,6 +170,7 @@ export async function actualizarReporteDiario(input: {
     p_asistencias: input.asistencia,
     p_avances: input.avances,
     p_horas_actividad: input.horasPorActividad ?? [],
+    p_fecha: input.fecha,
   })
 
   if (rpcError) {
@@ -181,6 +182,9 @@ export async function actualizarReporteDiario(input: {
     }
     if (rpcError.message?.includes("reporte_no_encontrado")) {
       return { error: "Ese reporte ya no existe" }
+    }
+    if (rpcError.message?.includes("fecha_duplicada")) {
+      return { error: "Ya existe otro reporte tuyo en este proyecto para esa fecha. Elige un día distinto, o edita ese otro reporte en vez de este." }
     }
     return { error: "No se pudo guardar la edición: " + rpcError.message }
   }
