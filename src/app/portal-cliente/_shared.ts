@@ -50,6 +50,16 @@ export type Foto = {
   url?: string
 }
 
+export type ArchivoProyecto = {
+  id: string
+  categoria: "planos" | "otros"
+  nombre_archivo: string
+  storage_path: string
+  tamano_bytes: number | null
+  created_at: string
+  url?: string
+}
+
 export type FotoActividadReporte = {
   actividad_id: string
   codigo: string | null
@@ -238,6 +248,15 @@ export const t = {
     verFotos: "Ver la galería de fotos del proyecto",
     verReportes: "Ver los reportes diarios de obra",
     verFacturas: "Ver facturas, pagos y saldo pendiente",
+    archivos: "Archivos y planos",
+    verArchivos: "Ver planos y documentos del proyecto",
+    sinArchivos: "Todavía no hay archivos publicados.",
+    subirArchivo: "Subir archivo",
+    subiendo: "Subiendo...",
+    categoriaPlanos: "Planos",
+    categoriaOtros: "Otros documentos",
+    elegirArchivo: "Elegir archivo",
+    tipoDeArchivo: "Tipo de archivo",
   },
   en: {
     facturas: "Invoices",
@@ -294,6 +313,15 @@ export const t = {
     verFotos: "See the project photo gallery",
     verReportes: "See daily site reports",
     verFacturas: "See invoices, payments and balance due",
+    archivos: "Files and plans",
+    verArchivos: "See project plans and documents",
+    sinArchivos: "No files published yet.",
+    subirArchivo: "Upload file",
+    subiendo: "Uploading...",
+    categoriaPlanos: "Plans",
+    categoriaOtros: "Other documents",
+    elegirArchivo: "Choose file",
+    tipoDeArchivo: "File type",
   },
 } as const
 
@@ -325,14 +353,14 @@ export async function cargarSesionCliente() {
 
   const { data: perfil } = await supabase
     .from("perfiles_usuario")
-    .select("rol, nombre_completo")
+    .select("rol, nombre_completo, titulo_colaborador")
     .eq("id", user.id)
     .single()
 
   if (!perfil) redirect("/login")
-  if (perfil.rol !== "cliente") redirect("/dashboard")
+  if (perfil.rol !== "cliente" && perfil.rol !== "colaborador_externo") redirect("/dashboard")
 
-  return { supabase, perfil }
+  return { supabase, perfil, esColaborador: perfil.rol === "colaborador_externo" }
 }
 
 export async function obtenerProyectoCliente(supabase: Awaited<ReturnType<typeof createClient>>) {

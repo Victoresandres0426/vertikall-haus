@@ -60,7 +60,7 @@ export default function LoginPage() {
         .select("rol")
         .eq("id", authData.user.id)
         .single()
-      if (perfil?.rol === "cliente") destino = "/portal-cliente"
+      if (perfil?.rol === "cliente" || perfil?.rol === "colaborador_externo") destino = "/portal-cliente"
     }
 
     router.push(destino)

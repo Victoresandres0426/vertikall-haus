@@ -35,7 +35,10 @@ const rolLabel: Record<string, string> = {
   project_manager: "Project Manager",
   dueno: "Dueño",
   cliente: "Cliente",
+  colaborador_externo: "Colaborador externo (diseñador/arquitecto)",
 }
+
+const ROLES_PORTAL = new Set(["cliente", "colaborador_externo"])
 
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -164,7 +167,7 @@ export function InvitarUsuarioButton({ appUrl, puedeInvitar, proyectos = [] }: {
                     </select>
                   </div>
 
-                  {rolSeleccionado === "cliente" && (
+                  {ROLES_PORTAL.has(rolSeleccionado) && (
                     <div>
                       <label className="block text-xs font-medium text-slate-700 mb-1">
                         Proyecto al que tendrá acceso
@@ -181,7 +184,26 @@ export function InvitarUsuarioButton({ appUrl, puedeInvitar, proyectos = [] }: {
                         ))}
                       </select>
                       <p className="text-xs text-slate-400 mt-1">
-                        El cliente solo verá avance, fotos/reportes validados, el monto contratado y sus facturas de este proyecto.
+                        {rolSeleccionado === "cliente"
+                          ? "El cliente solo verá avance, fotos/reportes validados, el monto contratado y sus facturas de este proyecto."
+                          : "Verá lo mismo que el cliente (avance, fotos, reportes, planos), pero no facturación. Puede subir planos y documentos."}
+                      </p>
+                    </div>
+                  )}
+
+                  {rolSeleccionado === "colaborador_externo" && (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">
+                        Título a mostrar (opcional)
+                      </label>
+                      <input
+                        name="titulo_colaborador"
+                        type="text"
+                        placeholder="Diseñador, Arquitecto, Ingeniero estructural..."
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                      />
+                      <p className="text-xs text-slate-400 mt-1">
+                        Solo cosmético -- no cambia su nivel de acceso. Puedes invitar a varios colaboradores al mismo proyecto.
                       </p>
                     </div>
                   )}

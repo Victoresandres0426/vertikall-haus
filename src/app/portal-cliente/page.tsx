@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { CalendarDays, MapPin, Camera, Receipt, ListChecks, ClipboardList, ChevronRight } from "lucide-react"
+import { CalendarDays, MapPin, Camera, Receipt, ListChecks, ClipboardList, ChevronRight, FolderOpen } from "lucide-react"
 import { PortalHeader } from "./portal-header"
 import { SinProyecto } from "./sin-proyecto"
 import { CerrarSesionBoton } from "./cerrar-sesion-boton"
@@ -20,7 +20,7 @@ import {
 // botones grandes, uno por sección, cada uno navega a su propia
 // página (con su propio botón de volver).
 export default async function PortalClientePage() {
-  const { supabase, perfil } = await cargarSesionCliente()
+  const { supabase, perfil, esColaborador } = await cargarSesionCliente()
   const proyecto = await obtenerProyectoCliente(supabase)
 
   const facturaEnIngles = proyecto?.idioma_cliente === "en"
@@ -46,11 +46,16 @@ export default async function PortalClientePage() {
 
   const estadoProyectoLabelActivo = facturaEnIngles ? estadoProyectoLabelEn : estadoProyectoLabel
 
+  // El colaborador externo (diseñador/arquitecto) ve todo lo mismo que
+  // el cliente EXCEPTO Facturas, y además tiene la sección nueva de
+  // Archivos/planos (que el cliente también puede ver, solo que sin
+  // poder subir -- ver /portal-cliente/archivos).
   const secciones = [
     { href: "/portal-cliente/cronograma", icono: ListChecks, titulo: tf.cronogramaYAvance, sub: tf.verCronograma },
     { href: "/portal-cliente/fotos", icono: Camera, titulo: tf.fotosDelProyecto, sub: tf.verFotos },
     { href: "/portal-cliente/reportes", icono: ClipboardList, titulo: tf.fotosYReportes, sub: tf.verReportes },
-    { href: "/portal-cliente/facturas", icono: Receipt, titulo: tf.facturas, sub: tf.verFacturas },
+    { href: "/portal-cliente/archivos", icono: FolderOpen, titulo: tf.archivos, sub: tf.verArchivos },
+    ...(esColaborador ? [] : [{ href: "/portal-cliente/facturas", icono: Receipt, titulo: tf.facturas, sub: tf.verFacturas }]),
   ]
 
   return (
