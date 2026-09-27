@@ -55,7 +55,7 @@ export function AvanceChart({
         {tienePlan && (
           <div className="flex items-center gap-3 text-[11px] text-slate-400">
             <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#3B72D8]" /> {en ? "Actual" : "Real"}</span>
-            <span className="flex items-center gap-1"><span className="inline-block" style={{ borderTop: "2px dashed #94a3b8", width: 12 }} /> {en ? "Planned" : "Plan"}</span>
+            <span className="flex items-center gap-1"><span className="inline-block" style={{ borderTop: "2px dashed #F59E0B", width: 12 }} /> {en ? "Planned" : "Plan"}</span>
           </div>
         )}
       </div>
@@ -89,11 +89,11 @@ export function AvanceChart({
               <Line
                 type="monotone"
                 dataKey="avance_plan_pct"
-                stroke="#94a3b8"
+                stroke="#F59E0B"
                 strokeWidth={2}
                 strokeDasharray="4 4"
                 dot={false}
-                label={crearEtiquetaUltimoPunto(puntos.length, "#64748b", 18)}
+                label={crearEtiquetaUltimoPunto(puntos.length, "#B45309", 18)}
               />
             )}
           </ComposedChart>
