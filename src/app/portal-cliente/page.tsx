@@ -20,7 +20,7 @@ import {
 // botones grandes, uno por sección, cada uno navega a su propia
 // página (con su propio botón de volver).
 export default async function PortalClientePage() {
-  const { supabase, perfil, esColaborador } = await cargarSesionCliente()
+  const { supabase, perfil, esColaborador, esSubcontratista } = await cargarSesionCliente()
   const proyecto = await obtenerProyectoCliente(supabase)
 
   const facturaEnIngles = proyecto?.idioma_cliente === "en"
@@ -50,14 +50,23 @@ export default async function PortalClientePage() {
   // el cliente EXCEPTO Facturas, y además tiene una sección exclusiva
   // de Archivos/planos -- el cliente NO la ve (el dueño pidió que
   // planos y documentos del proyecto queden fuera del portal del
-  // cliente, solo para el equipo de diseño/arquitectura).
+  // cliente, solo para el equipo de diseño/arquitectura y los
+  // subcontratistas). El subcontratista ve lo mismo que colaborador
+  // pero sin Facturas y con Planos en modo solo-lectura (nunca
+  // Archivos completo -- eso lo filtra la RPC/RLS, no el front).
+  const esProyectista = esColaborador || esSubcontratista
   const secciones = [
     { href: "/portal-cliente/cronograma", icono: ListChecks, titulo: tf.cronogramaYAvance, sub: tf.verCronograma },
     { href: "/portal-cliente/fotos", icono: Camera, titulo: tf.fotosDelProyecto, sub: tf.verFotos },
     { href: "/portal-cliente/reportes", icono: ClipboardList, titulo: tf.fotosYReportes, sub: tf.verReportes },
     { href: "/portal-cliente/bitacora", icono: NotebookPen, titulo: tf.bitacora, sub: tf.verBitacora },
-    ...(esColaborador
-      ? [{ href: "/portal-cliente/archivos", icono: FolderOpen, titulo: tf.archivos, sub: tf.verArchivos }]
+    ...(esProyectista
+      ? [{
+          href: "/portal-cliente/archivos",
+          icono: FolderOpen,
+          titulo: esSubcontratista ? tf.planos : tf.archivos,
+          sub: esSubcontratista ? tf.verPlanos : tf.verArchivos,
+        }]
       : [{ href: "/portal-cliente/facturas", icono: Receipt, titulo: tf.facturas, sub: tf.verFacturas }]),
   ]
 

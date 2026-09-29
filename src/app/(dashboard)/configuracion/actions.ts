@@ -3,13 +3,13 @@
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
-const ROLES_VALIDOS = ["capataz", "administrador", "project_manager", "dueno", "cliente", "colaborador_externo"] as const
+const ROLES_VALIDOS = ["capataz", "administrador", "project_manager", "dueno", "cliente", "colaborador_externo", "subcontratista"] as const
 type RolValido = typeof ROLES_VALIDOS[number]
 
-// Roles de portal: además de 'cliente', el rol genérico para
-// colaboradores externos (diseñador, arquitecto, etc.) -- ambos
-// requieren un proyecto asignado al invitar.
-const ROLES_PORTAL = ["cliente", "colaborador_externo"] as const
+// Roles de portal: además de 'cliente', los roles de proyectistas
+// (colaborador_externo -- diseñador/arquitecto) y subcontratista --
+// todos requieren un proyecto asignado al invitar.
+const ROLES_PORTAL = ["cliente", "colaborador_externo", "subcontratista"] as const
 
 export async function invitarUsuario(formData: FormData): Promise<{ error?: string; token?: string; email?: string }> {
   const email = (formData.get("email") as string)?.toLowerCase().trim()
@@ -78,7 +78,7 @@ export async function invitarUsuario(formData: FormData): Promise<{ error?: stri
       nombre_completo: nombre,
       rol,
       proyecto_id: ROLES_PORTAL.includes(rol as typeof ROLES_PORTAL[number]) ? proyectoId : null,
-      titulo_colaborador: rol === "colaborador_externo" ? tituloColaborador : null,
+      titulo_colaborador: (rol === "colaborador_externo" || rol === "subcontratista") ? tituloColaborador : null,
       created_by: user.id,
     })
     .select("token")

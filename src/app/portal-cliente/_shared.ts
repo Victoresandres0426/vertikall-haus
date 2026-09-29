@@ -269,6 +269,8 @@ export const t = {
     categoriaOtros: "Otros documentos",
     elegirArchivo: "Elegir archivo",
     tipoDeArchivo: "Tipo de archivo",
+    planos: "Planos",
+    verPlanos: "Ver los planos del proyecto",
     bitacora: "Bitácora de obra",
     verBitacora: "Ver notas y decisiones del proyecto",
     sinNotasBitacora: "Todavía no hay entradas en la bitácora.",
@@ -341,6 +343,8 @@ export const t = {
     categoriaOtros: "Other documents",
     elegirArchivo: "Choose file",
     tipoDeArchivo: "File type",
+    planos: "Plans",
+    verPlanos: "See the project's plans",
     bitacora: "Site log",
     verBitacora: "See project notes and decisions",
     sinNotasBitacora: "No log entries yet.",
@@ -384,9 +388,15 @@ export async function cargarSesionCliente() {
     .single()
 
   if (!perfil) redirect("/login")
-  if (perfil.rol !== "cliente" && perfil.rol !== "colaborador_externo") redirect("/dashboard")
+  const ROLES_PORTAL = ["cliente", "colaborador_externo", "subcontratista"]
+  if (!ROLES_PORTAL.includes(perfil.rol)) redirect("/dashboard")
 
-  return { supabase, perfil, esColaborador: perfil.rol === "colaborador_externo" }
+  return {
+    supabase,
+    perfil,
+    esColaborador: perfil.rol === "colaborador_externo",
+    esSubcontratista: perfil.rol === "subcontratista",
+  }
 }
 
 export async function obtenerProyectoCliente(supabase: Awaited<ReturnType<typeof createClient>>) {

@@ -7,7 +7,7 @@ import { cargarSesionCliente, obtenerProyectoCliente, type EntradaBitacora, t } 
 // escritura) -- el dueño pidió transparencia de las decisiones para el
 // cliente, sin darle la posibilidad de escribir.
 export default async function BitacoraClientePage() {
-  const { supabase, perfil, esColaborador } = await cargarSesionCliente()
+  const { supabase, perfil, esColaborador, esSubcontratista } = await cargarSesionCliente()
   const proyecto = await obtenerProyectoCliente(supabase)
 
   const facturaEnIngles = proyecto?.idioma_cliente === "en"
@@ -55,7 +55,7 @@ export default async function BitacoraClientePage() {
         <BitacoraFeed
           proyectoId={proyecto.id}
           entradas={entradas}
-          puedeEscribir={esColaborador}
+          puedeEscribir={esColaborador || esSubcontratista}
           en={facturaEnIngles}
         />
       </main>

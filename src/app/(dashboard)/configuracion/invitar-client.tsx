@@ -36,9 +36,11 @@ const rolLabel: Record<string, string> = {
   dueno: "Dueño",
   cliente: "Cliente",
   colaborador_externo: "Colaborador externo (diseñador/arquitecto)",
+  subcontratista: "Subcontratista",
 }
 
-const ROLES_PORTAL = new Set(["cliente", "colaborador_externo"])
+const ROLES_PORTAL = new Set(["cliente", "colaborador_externo", "subcontratista"])
+const ROLES_CON_TITULO = new Set(["colaborador_externo", "subcontratista"])
 
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -186,12 +188,14 @@ export function InvitarUsuarioButton({ appUrl, puedeInvitar, proyectos = [] }: {
                       <p className="text-xs text-slate-400 mt-1">
                         {rolSeleccionado === "cliente"
                           ? "El cliente solo verá avance, fotos/reportes validados, el monto contratado y sus facturas de este proyecto."
-                          : "Verá lo mismo que el cliente (avance, fotos, reportes, planos), pero no facturación. Puede subir planos y documentos."}
+                          : rolSeleccionado === "colaborador_externo"
+                            ? "Verá lo mismo que el cliente (avance, fotos, reportes, planos), pero no facturación. Puede subir planos y documentos."
+                            : "Verá cronograma, reportes, fotos, planos (solo lectura) y bitácora -- no facturación ni el resto de archivos. Puede escribir en la bitácora."}
                       </p>
                     </div>
                   )}
 
-                  {rolSeleccionado === "colaborador_externo" && (
+                  {ROLES_CON_TITULO.has(rolSeleccionado) && (
                     <div>
                       <label className="block text-xs font-medium text-slate-700 mb-1">
                         Título a mostrar (opcional)
@@ -199,11 +203,11 @@ export function InvitarUsuarioButton({ appUrl, puedeInvitar, proyectos = [] }: {
                       <input
                         name="titulo_colaborador"
                         type="text"
-                        placeholder="Diseñador, Arquitecto, Ingeniero estructural..."
+                        placeholder={rolSeleccionado === "colaborador_externo" ? "Diseñador, Arquitecto, Ingeniero estructural..." : "Plomería, Electricidad, Carpintería..."}
                         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                       />
                       <p className="text-xs text-slate-400 mt-1">
-                        Solo cosmético -- no cambia su nivel de acceso. Puedes invitar a varios colaboradores al mismo proyecto.
+                        Solo cosmético -- no cambia su nivel de acceso. Puedes invitar a varios a la vez al mismo proyecto.
                       </p>
                     </div>
                   )}

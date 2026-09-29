@@ -39,9 +39,9 @@ async function getUserProfile() {
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const perfil = await getUserProfile()
 
-  // Los clientes y colaboradores externos no usan el dashboard interno
-  // — tienen su propio portal
-  if (perfil?.rol === "cliente" || perfil?.rol === "colaborador_externo") redirect("/portal-cliente")
+  // Los clientes, colaboradores externos y subcontratistas no usan el
+  // dashboard interno — tienen su propio portal
+  if (["cliente", "colaborador_externo", "subcontratista"].includes(perfil?.rol ?? "")) redirect("/portal-cliente")
 
   return (
     <DashboardShell

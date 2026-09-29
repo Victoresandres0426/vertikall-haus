@@ -5,14 +5,16 @@ import { SubirArchivoForm } from "./subir-archivo-form"
 import { ListaArchivos } from "./lista-archivos"
 import { cargarSesionCliente, obtenerProyectoCliente, type ArchivoProyecto, t } from "../_shared"
 
-// Sección exclusiva del colaborador externo (diseñador/arquitecto) --
-// el cliente no debe ver planos ni documentos del proyecto, así que
-// ni siquiera se le muestra la tarjeta en el home del portal (ver
-// page.tsx), pero por si entra directo a la URL se bloquea aquí
-// también (además de que el RPC ya lo rechaza a nivel de base).
+// Sección exclusiva de colaborador_externo (diseñador/arquitecto) y
+// subcontratista -- el cliente no debe ver planos ni documentos del
+// proyecto, así que ni siquiera se le muestra la tarjeta en el home
+// del portal (ver page.tsx), pero por si entra directo a la URL se
+// bloquea aquí también (además de que el RPC ya lo rechaza a nivel de
+// base). El subcontratista solo ve la categoría "planos", en modo
+// solo-lectura -- el filtrado real ocurre en la RPC/RLS, no aquí.
 export default async function ArchivosClientePage() {
-  const { supabase, perfil, esColaborador } = await cargarSesionCliente()
-  if (!esColaborador) redirect("/portal-cliente")
+  const { supabase, perfil, esColaborador, esSubcontratista } = await cargarSesionCliente()
+  if (!esColaborador && !esSubcontratista) redirect("/portal-cliente")
 
   const proyecto = await obtenerProyectoCliente(supabase)
 
@@ -28,7 +30,7 @@ export default async function ArchivosClientePage() {
     const { data } = await supabase.rpc("colaborador_ver_archivos")
     archivos = (data ?? []) as ArchivoProyecto[]
   } catch (e) {
-    console.error("colaborador_ver_archivos falló (¿falta correr la migración 119?):", e)
+    console.error("colaborador_ver_archivos falló (¿falta correr la migración 124?):", e)
   }
 
   if (archivos.length > 0) {
@@ -52,7 +54,7 @@ export default async function ArchivosClientePage() {
         proyectoNombre={proyecto.nombre}
         idioma={facturaEnIngles ? "en" : "es"}
         nombreCompleto={perfil.nombre_completo}
-        seccion={tf.archivos}
+        seccion={esSubcontratista ? tf.planos : tf.archivos}
         labelVolver={tf.volver}
       />
 

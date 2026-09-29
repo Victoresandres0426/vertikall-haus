@@ -13,11 +13,12 @@ const ROL_LABEL: Record<string, { es: string; en: string }> = {
   project_manager: { es: "Project Manager", en: "Project Manager" },
   capataz: { es: "Capataz", en: "Foreman" },
   colaborador_externo: { es: "Colaborador", en: "Collaborator" },
+  subcontratista: { es: "Subcontratista", en: "Subcontractor" },
   cliente: { es: "Cliente", en: "Client" },
 }
 
 function etiquetaAutor(e: EntradaBitacora, en: boolean) {
-  if (e.autor_rol === "colaborador_externo" && e.autor_titulo) return e.autor_titulo
+  if ((e.autor_rol === "colaborador_externo" || e.autor_rol === "subcontratista") && e.autor_titulo) return e.autor_titulo
   const label = ROL_LABEL[e.autor_rol ?? ""]
   return label ? (en ? label.en : label.es) : (e.autor_rol ?? "")
 }
