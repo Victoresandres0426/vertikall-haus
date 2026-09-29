@@ -589,6 +589,7 @@ export function ActividadesClient({
                                 const excedeMO = (act.costo_mano_obra ?? 0) > 0 && (act.costo_real_mano_obra ?? 0) > (act.costo_mano_obra as number)
                                 const excedeMat = (act.costo_material ?? 0) > 0 && (act.costo_real_material ?? 0) > (act.costo_material as number)
                                 return (
+                              <>
                               {(() => {
                                 const planPct = calcularPlanPct(act.fecha_inicio_plan, act.fecha_fin_plan)
                                 const realPct = Math.min(100, act.avance_porcentaje ?? 0)
@@ -677,6 +678,7 @@ export function ActividadesClient({
                                   <span className="text-xs text-slate-400" title="Días de margen antes de atrasar el proyecto -- 0 = ruta crítica">Holgura: {act.holgura_dias}d</span>
                                 )}
                               </div>
+                              </>
                                 )
                               })()}
 
