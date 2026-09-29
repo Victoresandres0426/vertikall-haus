@@ -13,6 +13,8 @@ export type EntradaBitacora = {
   autor_rol: string | null
   autor_titulo: string | null
   nota: string | null
+  idioma_detectado?: "es" | "en" | null
+  nota_traducida?: string | null
   fotos: FotoBitacora[]
   created_at: string
 }

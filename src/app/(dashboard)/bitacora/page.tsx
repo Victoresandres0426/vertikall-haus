@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/header"
 import { SelectorProyectoActivo } from "@/components/layout/selector-proyecto-activo"
 import { BitacoraClient, type EntradaBitacora } from "./bitacora-client"
 import { getProyectoActivoId, resolverProyectoActivo } from "@/lib/proyecto-activo"
+import { traducirBitacoraFaltantes, textoBitacoraParaIdioma } from "@/lib/traducir-bitacora"
 
 // Quién puede ESCRIBIR en la bitácora -- equipo de gestión interno.
 // Capataz no escribe aquí (ya tiene Reporte Diario); cliente tampoco
@@ -34,7 +35,7 @@ export default async function BitacoraPage() {
   if (proyectoActivo) {
     const { data, error } = await supabase
       .from("bitacora_proyecto")
-      .select("id, autor_nombre, autor_rol, autor_titulo, nota, fotos, created_at")
+      .select("id, autor_nombre, autor_rol, autor_titulo, nota, idioma_detectado, nota_traducida, fotos, created_at")
       .eq("proyecto_id", proyectoActivo.id)
       .order("created_at", { ascending: false })
 
@@ -42,6 +43,12 @@ export default async function BitacoraPage() {
       console.error("Error cargando bitácora (¿falta correr la migración 120?):", error.message)
     } else {
       entradas = (data ?? []) as EntradaBitacora[]
+      // El dashboard interno siempre se muestra en español -- traduce
+      // (y cachea) las notas que se hayan escrito en inglés desde el
+      // portal y aún no se hayan procesado, y sustituye `nota` por el
+      // texto ya resuelto para no tener que tocar el componente cliente.
+      await traducirBitacoraFaltantes(supabase, entradas)
+      entradas = entradas.map((e) => ({ ...e, nota: textoBitacoraParaIdioma(e, "es") }))
     }
 
     // Firmar las URLs de las fotos de cada entrada.

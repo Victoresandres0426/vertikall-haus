@@ -2,6 +2,7 @@ import { PortalHeader } from "../portal-header"
 import { SinProyecto } from "../sin-proyecto"
 import { BitacoraFeed } from "./bitacora-feed"
 import { cargarSesionCliente, obtenerProyectoCliente, type EntradaBitacora, t } from "../_shared"
+import { traducirBitacoraFaltantes, textoBitacoraParaIdioma } from "@/lib/traducir-bitacora"
 
 // Visible para cliente (solo lectura) y colaborador_externo (lectura +
 // escritura) -- el dueño pidió transparencia de las decisiones para el
@@ -21,6 +22,12 @@ export default async function BitacoraClientePage() {
   try {
     const { data } = await supabase.rpc("portal_ver_bitacora")
     entradas = (data ?? []) as EntradaBitacora[]
+    // Traduce (y cachea) las notas que aún no se hayan procesado, y
+    // sustituye `nota` por el texto en el idioma del lector actual --
+    // así BitacoraFeed no necesita saber nada de este mecanismo.
+    await traducirBitacoraFaltantes(supabase, entradas)
+    const idiomaLector = facturaEnIngles ? "en" : "es"
+    entradas = entradas.map((e) => ({ ...e, nota: textoBitacoraParaIdioma(e, idiomaLector) }))
   } catch (e) {
     console.error("portal_ver_bitacora falló (¿falta correr la migración 120?):", e)
   }
