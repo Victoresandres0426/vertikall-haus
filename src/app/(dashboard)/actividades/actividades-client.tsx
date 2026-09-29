@@ -5,6 +5,28 @@ import {
   CheckCircle, Play, Ban, Circle, AlertTriangle,
   Pencil, Trash2, Plus, Check, X, Loader2, History,
 } from "lucide-react"
+
+// Mismo cálculo que en el Cronograma del portal del cliente (ver
+// src/app/portal-cliente/cronograma/page.tsx): % que el plan dice que
+// debería llevar la actividad HOY, según sus fechas de plan. Compararlo
+// contra avance_porcentaje (real) es lo que permite ver dónde está el
+// atraso real, en vez de solo la salud general del proyecto.
+function calcularPlanPct(fechaInicioPlan: string | null, fechaFinPlan: string | null): number | null {
+  if (!fechaInicioPlan || !fechaFinPlan) return null
+  const hoy = new Date()
+  const ini = new Date(fechaInicioPlan + "T00:00:00")
+  const fin = new Date(fechaFinPlan + "T00:00:00")
+  if (ini.getTime() >= fin.getTime()) return null
+  if (hoy.getTime() >= fin.getTime()) return 100
+  if (hoy.getTime() <= ini.getTime()) return 0
+  return Math.round(((hoy.getTime() - ini.getTime()) / (fin.getTime() - ini.getTime())) * 100)
+}
+
+function formatoFechaCorta(f: string | null): string {
+  if (!f) return "—"
+  const d = new Date(f + "T00:00:00")
+  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short" })
+}
 import Link from "next/link"
 import { Badge, AlertaBadge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -29,6 +51,8 @@ type Actividad = {
   disciplina: string | null
   fecha_inicio_plan: string | null
   fecha_fin_plan: string | null
+  fecha_inicio_real: string | null
+  fecha_fin_real: string | null
   duracion_plan_dias: number | null
   holgura_dias: number
   costo_presupuesto: number
@@ -420,6 +444,18 @@ export function ActividadesClient({
                   ? Math.round(acts.reduce((s, a) => s + (a.avance_porcentaje ?? 0), 0) / acts.length)
                   : 0
 
+                // Plan vs. real por proceso -- mismo criterio que el
+                // Cronograma del portal del cliente: promedio del % que
+                // el plan dice que debería llevar cada actividad hoy,
+                // y cuántas están 3+ puntos por debajo de eso.
+                const conPlanProc = acts.map((a) => ({ a, plan: calcularPlanPct(a.fecha_inicio_plan, a.fecha_fin_plan) }))
+                const planesValidosProc = conPlanProc.filter((x) => x.plan != null)
+                const planProc = planesValidosProc.length > 0
+                  ? Math.round(planesValidosProc.reduce((s, x) => s + (x.plan ?? 0), 0) / planesValidosProc.length)
+                  : null
+                const deltaProc = planProc != null ? promedioAvance - planProc : null
+                const atrasadasProc = conPlanProc.filter((x) => x.plan != null && Math.min(100, x.a.avance_porcentaje ?? 0) - (x.plan ?? 0) < -3).length
+
                 return (
                   <div key={proc.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
@@ -449,10 +485,28 @@ export function ActividadesClient({
                         </div>
                       )}
                       <div className="flex items-center gap-2 shrink-0">
+                        {atrasadasProc > 0 && (
+                          <span className="flex items-center gap-1 text-xs text-amber-600 font-medium" title="Actividades con avance real por debajo de lo que el plan indica para hoy">
+                            <AlertTriangle className="h-3 w-3" />
+                            {atrasadasProc} atrasada{atrasadasProc !== 1 ? "s" : ""}
+                          </span>
+                        )}
                         <Progress value={promedioAvance} className="w-20 h-1.5" />
-                        <span className="text-xs font-medium text-slate-600">{promedioAvance}%</span>
+                        <span className="text-xs font-medium text-slate-600">
+                          {promedioAvance}%{planProc != null && <span className="text-slate-400"> · plan {planProc}%</span>}
+                        </span>
                       </div>
                     </div>
+
+                    {deltaProc != null && (
+                      <p className={cn("px-4 pt-2 text-xs font-medium", deltaProc >= -3 ? "text-emerald-600" : "text-amber-600")}>
+                        {deltaProc >= 3
+                          ? `Adelantado al plan por ${Math.round(deltaProc)}%`
+                          : deltaProc >= -3
+                            ? "En línea con el plan"
+                            : `${Math.abs(Math.round(deltaProc))}% detrás del plan`}
+                      </p>
+                    )}
 
                     <div className="divide-y divide-slate-50">
                       {acts.map((act) => (
@@ -535,9 +589,41 @@ export function ActividadesClient({
                                 const excedeMO = (act.costo_mano_obra ?? 0) > 0 && (act.costo_real_mano_obra ?? 0) > (act.costo_mano_obra as number)
                                 const excedeMat = (act.costo_material ?? 0) > 0 && (act.costo_real_material ?? 0) > (act.costo_material as number)
                                 return (
+                              {(() => {
+                                const planPct = calcularPlanPct(act.fecha_inicio_plan, act.fecha_fin_plan)
+                                const realPct = Math.min(100, act.avance_porcentaje ?? 0)
+                                const deltaPct = planPct != null ? realPct - planPct : null
+                                return (
+                                  <div className="flex items-center gap-2 mt-1" title="Barra: avance real. Marca gris: dónde debería ir hoy según el plan">
+                                    <div className="relative w-24 h-1 rounded-full bg-slate-100 overflow-hidden shrink-0">
+                                      <div
+                                        className={cn("h-full rounded-full", act.estado === "completada" ? "bg-emerald-500" : "bg-blue-600")}
+                                        style={{ width: `${Math.max(0, realPct)}%` }}
+                                      />
+                                      {planPct != null && (
+                                        <div
+                                          className="absolute top-0 bottom-0 w-[2px] bg-slate-500/70"
+                                          style={{ left: `${Math.min(99, Math.max(0, planPct))}%` }}
+                                        />
+                                      )}
+                                    </div>
+                                    {deltaPct != null && (
+                                      <span className={cn("text-[11px] font-medium shrink-0", deltaPct >= -3 ? "text-emerald-600" : "text-amber-600")}>
+                                        {deltaPct >= 3 ? `+${Math.round(deltaPct)}%` : deltaPct >= -3 ? "≈ plan" : `${Math.round(deltaPct)}%`}
+                                      </span>
+                                    )}
+                                  </div>
+                                )
+                              })()}
+
                               <div className="flex items-center gap-3 mt-1 flex-wrap" title="Avance: % ejecutado vs. lo reportado hasta hoy">
-                                <Progress value={act.avance_porcentaje ?? 0} className="w-24 h-1" />
-                                <span className="text-xs text-slate-500">Avance: {act.avance_porcentaje ?? 0}%</span>
+                                <span className="text-xs text-slate-500">
+                                  Avance: {act.avance_porcentaje ?? 0}%
+                                  {(() => {
+                                    const planPct = calcularPlanPct(act.fecha_inicio_plan, act.fecha_fin_plan)
+                                    return planPct != null ? <span className="text-slate-400"> · plan {planPct}%</span> : null
+                                  })()}
+                                </span>
                                 {act.cantidad_objetivo != null && (
                                   <span
                                     className={cn("text-xs", excedeCantidad ? "text-red-600 font-semibold" : "text-slate-400")}
@@ -581,8 +667,11 @@ export function ActividadesClient({
                                     )
                                   </span>
                                 )}
-                                {act.fecha_fin_plan && (
-                                  <span className="text-xs text-slate-400" title="Fecha planeada de finalización">Fin plan: {act.fecha_fin_plan}</span>
+                                {(act.fecha_inicio_plan || act.fecha_fin_plan) && (
+                                  <span className="text-xs text-slate-400" title="Fechas de plan vs. reales">
+                                    Plan: {formatoFechaCorta(act.fecha_inicio_plan)} → {formatoFechaCorta(act.fecha_fin_plan)}
+                                    {" · "}Real: {formatoFechaCorta(act.fecha_inicio_real)} → {act.fecha_fin_real ? formatoFechaCorta(act.fecha_fin_real) : (act.fecha_inicio_real ? "en curso" : "—")}
+                                  </span>
                                 )}
                                 {(act.holgura_dias ?? 0) > 0 && (
                                   <span className="text-xs text-slate-400" title="Días de margen antes de atrasar el proyecto -- 0 = ruta crítica">Holgura: {act.holgura_dias}d</span>

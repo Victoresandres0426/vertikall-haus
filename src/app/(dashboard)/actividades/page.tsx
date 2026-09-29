@@ -50,7 +50,8 @@ async function getProyectosConActividades(): Promise<{
         actividades (
           id, codigo, nombre, nombre_en, estado, activa,
           avance_porcentaje, es_critica, riesgo_nivel, disciplina,
-          fecha_inicio_plan, fecha_fin_plan, duracion_plan_dias, holgura_dias,
+          fecha_inicio_plan, fecha_fin_plan, fecha_inicio_real, fecha_fin_real,
+          duracion_plan_dias, holgura_dias,
           costo_presupuesto, costo_real, costo_material, costo_mano_obra,
           cantidad_objetivo, cantidad_ejecutada, unidad, personal_planeado,
           composicion_cuadrilla, productividad_plan_texto
