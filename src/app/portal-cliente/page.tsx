@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { CalendarDays, MapPin, Camera, Receipt, ListChecks, ClipboardList, ChevronRight, FolderOpen } from "lucide-react"
+import { CalendarDays, MapPin, Camera, Receipt, ListChecks, ClipboardList, ChevronRight, FolderOpen, NotebookPen } from "lucide-react"
 import { PortalHeader } from "./portal-header"
 import { SinProyecto } from "./sin-proyecto"
 import { CerrarSesionBoton } from "./cerrar-sesion-boton"
@@ -55,6 +55,7 @@ export default async function PortalClientePage() {
     { href: "/portal-cliente/cronograma", icono: ListChecks, titulo: tf.cronogramaYAvance, sub: tf.verCronograma },
     { href: "/portal-cliente/fotos", icono: Camera, titulo: tf.fotosDelProyecto, sub: tf.verFotos },
     { href: "/portal-cliente/reportes", icono: ClipboardList, titulo: tf.fotosYReportes, sub: tf.verReportes },
+    { href: "/portal-cliente/bitacora", icono: NotebookPen, titulo: tf.bitacora, sub: tf.verBitacora },
     ...(esColaborador
       ? [{ href: "/portal-cliente/archivos", icono: FolderOpen, titulo: tf.archivos, sub: tf.verArchivos }]
       : [{ href: "/portal-cliente/facturas", icono: Receipt, titulo: tf.facturas, sub: tf.verFacturas }]),

@@ -50,6 +50,18 @@ export type Foto = {
   url?: string
 }
 
+export type FotoBitacora = { storage_path: string; nombre_archivo: string; url?: string }
+
+export type EntradaBitacora = {
+  id: string
+  autor_nombre: string | null
+  autor_rol: string | null
+  autor_titulo: string | null
+  nota: string | null
+  fotos: FotoBitacora[]
+  created_at: string
+}
+
 export type ArchivoProyecto = {
   id: string
   categoria: "planos" | "documentos_colaborador"
@@ -257,6 +269,13 @@ export const t = {
     categoriaOtros: "Otros documentos",
     elegirArchivo: "Elegir archivo",
     tipoDeArchivo: "Tipo de archivo",
+    bitacora: "Bitácora de obra",
+    verBitacora: "Ver notas y decisiones del proyecto",
+    sinNotasBitacora: "Todavía no hay entradas en la bitácora.",
+    nuevaEntradaBitacora: "Nueva entrada",
+    escribirNotaBitacora: "Describe el suceso o la decisión tomada...",
+    publicarBitacora: "Publicar",
+    publicandoBitacora: "Publicando...",
   },
   en: {
     facturas: "Invoices",
@@ -322,6 +341,13 @@ export const t = {
     categoriaOtros: "Other documents",
     elegirArchivo: "Choose file",
     tipoDeArchivo: "File type",
+    bitacora: "Site log",
+    verBitacora: "See project notes and decisions",
+    sinNotasBitacora: "No log entries yet.",
+    nuevaEntradaBitacora: "New entry",
+    escribirNotaBitacora: "Describe the event or decision made...",
+    publicarBitacora: "Post",
+    publicandoBitacora: "Posting...",
   },
 } as const
 
