@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { GitMerge, DollarSign, Clock, CheckCircle, XCircle, AlertCircle, Plus, X } from "lucide-react"
+import { GitMerge, DollarSign, Clock, CheckCircle, XCircle, AlertCircle, Plus, X, Pencil, Send, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { crearChangeOrder } from "./actions"
+import { crearChangeOrder, actualizarChangeOrder, validarChangeOrder, enviarChangeOrderCliente } from "./actions"
 
 export type ChangeOrder = {
   id: string
@@ -18,10 +18,12 @@ export type ChangeOrder = {
   costo_directo: number | null
   margen_pct_aplicado: number | null
   costo_margen: number | null
+  motivo_rechazo: string | null
   facturado: boolean
   cobrado: boolean
   created_at: string
   aprobado_at: string | null
+  proyecto_id: string
   proyectos: { nombre: string; codigo: string } | null
 }
 
@@ -62,6 +64,22 @@ export function ChangeOrdersClient({
 }) {
   const [changeOrders] = useState<ChangeOrder[]>(changeOrdersIniciales)
   const [showModal, setShowModal] = useState(false)
+  const [editCO, setEditCO] = useState<ChangeOrder | null>(null)
+  const [pendingId, setPendingId] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  const ejecutar = (id: string, accion: () => Promise<{ error?: string }>) => {
+    setPendingId(id)
+    startTransition(async () => {
+      const result = await accion()
+      if (result.error) {
+        alert(result.error)
+      } else {
+        window.location.reload()
+      }
+      setPendingId(null)
+    })
+  }
 
   const aprobados = changeOrders.filter((co) => ["aprobado", "facturado", "cobrado"].includes(co.estado))
   const pendientes = changeOrders.filter((co) => ["detectado", "en_estimacion", "enviado_cliente"].includes(co.estado))
@@ -157,6 +175,49 @@ export function ChangeOrdersClient({
                       {co.solicitado_por && (
                         <p className="text-xs text-slate-400 mt-1">Solicitado por: {co.solicitado_por}</p>
                       )}
+                      {co.estado === "rechazado" && co.motivo_rechazo && (
+                        <p className="text-xs text-red-600 mt-1">Motivo del rechazo: {co.motivo_rechazo}</p>
+                      )}
+                      {co.estado === "aprobado" && (
+                        <p className="text-xs text-emerald-600 mt-1">
+                          Aprobado por el cliente — agregado al presupuesto y al cronograma
+                        </p>
+                      )}
+                      {co.estado === "enviado_cliente" && (
+                        <p className="text-xs text-amber-600 mt-1">Esperando decisión del cliente</p>
+                      )}
+                      {puedeCrear && ["detectado", "en_estimacion"].includes(co.estado) && (
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditCO(co)}
+                            disabled={isPending}
+                            className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 disabled:opacity-50"
+                          >
+                            <Pencil className="h-3 w-3" /> Modificar
+                          </button>
+                          {co.estado === "detectado" && (
+                            <button
+                              type="button"
+                              onClick={() => ejecutar(co.id, () => validarChangeOrder(co.id))}
+                              disabled={isPending}
+                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                            >
+                              <ShieldCheck className="h-3 w-3" /> {pendingId === co.id ? "Validando..." : "Validar"}
+                            </button>
+                          )}
+                          {co.estado === "en_estimacion" && (
+                            <button
+                              type="button"
+                              onClick={() => ejecutar(co.id, () => enviarChangeOrderCliente(co.id))}
+                              disabled={isPending}
+                              className="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 disabled:opacity-50"
+                            >
+                              <Send className="h-3 w-3" /> {pendingId === co.id ? "Enviando..." : "Enviar al cliente"}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="shrink-0 text-right space-y-1">
                       {(co.impacto_costo ?? 0) !== 0 && (
@@ -195,6 +256,9 @@ export function ChangeOrdersClient({
       {showModal && (
         <ModalRegistrarChangeOrder proyectos={proyectos} onClose={() => setShowModal(false)} />
       )}
+      {editCO && (
+        <ModalRegistrarChangeOrder proyectos={proyectos} onClose={() => setEditCO(null)} editCO={editCO} />
+      )}
     </div>
   )
 }
@@ -202,14 +266,16 @@ export function ChangeOrdersClient({
 function ModalRegistrarChangeOrder({
   proyectos,
   onClose,
+  editCO,
 }: {
   proyectos: ProyectoOpcion[]
   onClose: () => void
+  editCO?: ChangeOrder
 }) {
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState("")
-  const [proyectoId, setProyectoId] = useState("")
-  const [costoDirecto, setCostoDirecto] = useState("")
+  const [proyectoId, setProyectoId] = useState(editCO?.proyecto_id ?? "")
+  const [costoDirecto, setCostoDirecto] = useState(editCO?.costo_directo != null ? String(editCO.costo_directo) : "")
 
   const proyectoSel = proyectos.find((p) => p.id === proyectoId)
   const margenPct = proyectoSel?.margen_co_pct ?? 0
@@ -223,7 +289,9 @@ function ModalRegistrarChangeOrder({
     const formData = new FormData(e.currentTarget)
 
     startTransition(async () => {
-      const result = await crearChangeOrder(formData)
+      const result = editCO
+        ? await actualizarChangeOrder(editCO.id, formData)
+        : await crearChangeOrder(formData)
       if (result.error) {
         setError(result.error)
       } else {
@@ -247,7 +315,9 @@ function ModalRegistrarChangeOrder({
           <X className="h-5 w-5" />
         </button>
 
-        <h3 className="text-lg font-semibold text-slate-900 mb-5">Registrar change order</h3>
+        <h3 className="text-lg font-semibold text-slate-900 mb-5">
+          {editCO ? "Modificar change order" : "Registrar change order"}
+        </h3>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -257,7 +327,8 @@ function ModalRegistrarChangeOrder({
               required
               value={proyectoId}
               onChange={(e) => setProyectoId(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+              disabled={!!editCO}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white disabled:bg-slate-50 disabled:text-slate-400"
             >
               <option value="">Selecciona un proyecto</option>
               {proyectos.map((p) => (
@@ -271,6 +342,7 @@ function ModalRegistrarChangeOrder({
               <label className="block text-xs font-medium text-slate-700 mb-1">Número</label>
               <input
                 name="numero"
+                defaultValue={editCO?.numero ?? ""}
                 placeholder="Ej. CO-003"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
               />
@@ -279,6 +351,7 @@ function ModalRegistrarChangeOrder({
               <label className="block text-xs font-medium text-slate-700 mb-1">Solicitado por</label>
               <input
                 name="solicitado_por"
+                defaultValue={editCO?.solicitado_por ?? ""}
                 placeholder="Ej. Cliente / Arquitecto"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
               />
@@ -290,6 +363,7 @@ function ModalRegistrarChangeOrder({
             <input
               name="titulo"
               required
+              defaultValue={editCO?.titulo ?? ""}
               placeholder="Ej. Cambio de acabado en fachada"
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
             />
@@ -300,6 +374,7 @@ function ModalRegistrarChangeOrder({
             <textarea
               name="descripcion"
               rows={2}
+              defaultValue={editCO?.descripcion ?? ""}
               placeholder="Detalle del cambio solicitado o detectado..."
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 resize-none"
             />
@@ -345,6 +420,7 @@ function ModalRegistrarChangeOrder({
               name="impacto_dias"
               type="number"
               step="1"
+              defaultValue={editCO?.impacto_dias ?? ""}
               placeholder="0"
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
             />
@@ -361,7 +437,7 @@ function ModalRegistrarChangeOrder({
               Cancelar
             </Button>
             <Button type="submit" className="flex-1" isLoading={isPending}>
-              Registrar
+              {editCO ? "Guardar cambios" : "Registrar"}
             </Button>
           </div>
         </form>

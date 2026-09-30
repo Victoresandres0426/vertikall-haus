@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { CalendarDays, MapPin, Camera, Receipt, ListChecks, ClipboardList, ChevronRight, FolderOpen, NotebookPen } from "lucide-react"
+import { CalendarDays, MapPin, Camera, Receipt, ListChecks, ClipboardList, ChevronRight, FolderOpen, NotebookPen, GitMerge } from "lucide-react"
 import { PortalHeader } from "./portal-header"
 import { SinProyecto } from "./sin-proyecto"
 import { CerrarSesionBoton } from "./cerrar-sesion-boton"
@@ -67,7 +67,10 @@ export default async function PortalClientePage() {
           titulo: esSubcontratista ? tf.planos : tf.archivos,
           sub: esSubcontratista ? tf.verPlanos : tf.verArchivos,
         }]
-      : [{ href: "/portal-cliente/facturas", icono: Receipt, titulo: tf.facturas, sub: tf.verFacturas }]),
+      : [
+          { href: "/portal-cliente/facturas", icono: Receipt, titulo: tf.facturas, sub: tf.verFacturas },
+          { href: "/portal-cliente/change-orders", icono: GitMerge, titulo: tf.changeOrders, sub: tf.verChangeOrders },
+        ]),
   ]
 
   return (

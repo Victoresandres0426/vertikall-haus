@@ -132,6 +132,24 @@ export type DesgloseActividad = {
   avance_hasta_pct?: number
 }
 
+export type ChangeOrder = {
+  id: string
+  numero: string | null
+  titulo: string
+  descripcion: string | null
+  solicitado_por: string | null
+  estado: string
+  costo_directo: number | null
+  margen_pct_aplicado: number | null
+  costo_margen: number | null
+  impacto_costo: number
+  impacto_dias: number
+  motivo_rechazo: string | null
+  enviado_at: string | null
+  decidido_at: string | null
+  created_at: string
+}
+
 export type Factura = {
   id: string
   numero: string | null
@@ -285,6 +303,26 @@ export const t = {
     escribirNotaBitacora: "Describe el suceso o la decisión tomada...",
     publicarBitacora: "Publicar",
     publicandoBitacora: "Publicando...",
+    changeOrders: "Change Orders",
+    verChangeOrders: "Ver y aprobar órdenes de cambio",
+    sinChangeOrders: "Todavía no hay change orders enviados para tu revisión.",
+    costoDirecto: "Costo directo (material + mano de obra)",
+    indirectosContingenciaMargen: "Indirectos + Contingencia + Margen",
+    impactoTotalCosto: "Impacto total en costo",
+    impactoEnDias: "Impacto en días",
+    aprobarCO: "Aprobar",
+    rechazarCO: "Rechazar",
+    aprobando: "Aprobando...",
+    rechazando: "Rechazando...",
+    motivoRechazoLabel: "Motivo del rechazo (opcional)",
+    motivoRechazoPlaceholder: "Explica por qué se rechaza este cambio...",
+    confirmarRechazo: "Confirmar rechazo",
+    cancelar: "Cancelar",
+    estadoCOAprobado: "Aprobado",
+    estadoCORechazado: "Rechazado",
+    estadoCOEsperando: "Esperando tu decisión",
+    coAprobadoNota: "Aprobaste este cambio — ya se agregó al presupuesto y al cronograma del proyecto.",
+    coRechazadoNota: "Rechazaste este cambio.",
   },
   en: {
     facturas: "Invoices",
@@ -364,6 +402,26 @@ export const t = {
     escribirNotaBitacora: "Describe the event or decision made...",
     publicarBitacora: "Post",
     publicandoBitacora: "Posting...",
+    changeOrders: "Change Orders",
+    verChangeOrders: "Review and approve change orders",
+    sinChangeOrders: "No change orders have been sent to you for review yet.",
+    costoDirecto: "Direct cost (material + labor)",
+    indirectosContingenciaMargen: "Indirect + Contingency + Margin",
+    impactoTotalCosto: "Total cost impact",
+    impactoEnDias: "Schedule impact",
+    aprobarCO: "Approve",
+    rechazarCO: "Reject",
+    aprobando: "Approving...",
+    rechazando: "Rejecting...",
+    motivoRechazoLabel: "Reason for rejection (optional)",
+    motivoRechazoPlaceholder: "Explain why this change is being rejected...",
+    confirmarRechazo: "Confirm rejection",
+    cancelar: "Cancel",
+    estadoCOAprobado: "Approved",
+    estadoCORechazado: "Rejected",
+    estadoCOEsperando: "Awaiting your decision",
+    coAprobadoNota: "You approved this change — it has been added to the project's budget and schedule.",
+    coRechazadoNota: "You rejected this change.",
   },
 } as const
 

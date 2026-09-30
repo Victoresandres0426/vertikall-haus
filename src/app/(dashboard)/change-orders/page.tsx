@@ -36,8 +36,8 @@ async function getData() {
       .select(`
         id, numero, titulo, descripcion, solicitado_por,
         estado, impacto_costo, impacto_dias,
-        costo_directo, margen_pct_aplicado, costo_margen,
-        facturado, cobrado, created_at, aprobado_at,
+        costo_directo, margen_pct_aplicado, costo_margen, motivo_rechazo,
+        facturado, cobrado, created_at, aprobado_at, proyecto_id,
         proyectos ( nombre, codigo )
       `)
       .eq("proyecto_id", proyectoActivo.id)
