@@ -281,7 +281,7 @@ function ModalRegistrarChangeOrder({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Impacto en costo (MXN)</label>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Impacto en costo (USD)</label>
               <input
                 name="impacto_costo"
                 type="number"
