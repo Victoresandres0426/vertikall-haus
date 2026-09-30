@@ -37,7 +37,7 @@ export default async function ChangeOrdersClientePage() {
       />
 
       <main className="max-w-3xl mx-auto px-6 py-8">
-        <ChangeOrdersFeed changeOrders={changeOrders} en={facturaEnIngles} />
+        <ChangeOrdersFeed changeOrders={changeOrders} en={facturaEnIngles} tf={tf} />
       </main>
     </div>
   )

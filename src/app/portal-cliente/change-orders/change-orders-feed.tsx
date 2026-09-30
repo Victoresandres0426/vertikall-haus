@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { GitMerge, CheckCircle, XCircle, Clock } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import { t, type ChangeOrder } from "../_shared"
+import type { ChangeOrder, PortalStrings } from "../_shared"
 
 function formatoMoneda(n: number | null | undefined) {
   if (n === null || n === undefined) return "—"
@@ -16,9 +16,15 @@ function formatoFechaHora(iso: string, en: boolean) {
   return d.toLocaleString(en ? "en-US" : "es-MX", { day: "2-digit", month: "short", year: "numeric" })
 }
 
-export function ChangeOrdersFeed({ changeOrders, en }: { changeOrders: ChangeOrder[]; en: boolean }) {
-  const tf = t[en ? "en" : "es"]
-
+export function ChangeOrdersFeed({
+  changeOrders,
+  en,
+  tf,
+}: {
+  changeOrders: ChangeOrder[]
+  en: boolean
+  tf: PortalStrings
+}) {
   if (changeOrders.length === 0) {
     return (
       <div className="text-center py-16 border border-dashed border-slate-200 rounded-xl text-slate-400 bg-white">
@@ -31,15 +37,14 @@ export function ChangeOrdersFeed({ changeOrders, en }: { changeOrders: ChangeOrd
   return (
     <div className="space-y-3">
       {changeOrders.map((co) => (
-        <TarjetaChangeOrder key={co.id} co={co} en={en} />
+        <TarjetaChangeOrder key={co.id} co={co} en={en} tf={tf} />
       ))}
     </div>
   )
 }
 
-function TarjetaChangeOrder({ co, en }: { co: ChangeOrder; en: boolean }) {
+function TarjetaChangeOrder({ co, en, tf }: { co: ChangeOrder; en: boolean; tf: PortalStrings }) {
   const router = useRouter()
-  const tf = t[en ? "en" : "es"]
   const [procesando, setProcesando] = useState(false)
   const [mostrarRechazo, setMostrarRechazo] = useState(false)
   const [motivo, setMotivo] = useState("")

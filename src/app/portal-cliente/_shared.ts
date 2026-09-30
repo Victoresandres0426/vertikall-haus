@@ -425,6 +425,16 @@ export const t = {
   },
 } as const
 
+// Tipo del objeto de traducciones ya resuelto para un idioma (t.es o
+// t.en) -- los componentes cliente lo reciben como prop en vez de
+// importar `t` en tiempo de ejecución, porque este archivo también
+// exporta cargarSesionCliente/obtenerProyectoCliente que usan
+// createClient de @/lib/supabase/server (solo-servidor, usa
+// next/headers) -- si un componente "use client" importa un VALOR de
+// este archivo, Next intenta meter ese código de servidor en el bundle
+// del navegador y el build falla.
+export type PortalStrings = typeof t.es
+
 export function descripcionFactura(f: Factura, en: boolean): string {
   if (!en) return f.descripcion ?? ""
   if (f.avance_delta_pct == null) return f.descripcion ?? ""
