@@ -26,8 +26,24 @@ export async function crearChangeOrder(formData: FormData): Promise<{ error?: st
   if (!proyecto_id) return { error: "Selecciona un proyecto" }
   if (!titulo?.trim()) return { error: "El título es requerido" }
 
-  const impactoCostoRaw = formData.get("impacto_costo") as string
-  const impacto_costo = impactoCostoRaw ? parseFloat(impactoCostoRaw) : 0
+  // El costo directo (material + mano de obra) lo captura el usuario;
+  // el margen de Utilidad+OH se calcula aquí en el servidor a partir del
+  // % configurado en el proyecto (migración 126) -- no se confía en un
+  // total que venga ya calculado del cliente, para que nadie pueda
+  // mandar un impacto_costo manipulado que no cuadre con el % pactado.
+  const costoDirectoRaw = formData.get("costo_directo") as string
+  const costo_directo = costoDirectoRaw ? parseFloat(costoDirectoRaw) : 0
+
+  const { data: proyecto } = await supabase
+    .from("proyectos")
+    .select("margen_co_pct")
+    .eq("id", proyecto_id)
+    .single()
+
+  const margen_pct_aplicado = proyecto?.margen_co_pct ?? 0
+  const costo_margen = isNaN(costo_directo) ? 0 : Math.round(costo_directo * (margen_pct_aplicado / 100) * 100) / 100
+  const impacto_costo = (isNaN(costo_directo) ? 0 : costo_directo) + costo_margen
+
   const impactoDiasRaw = formData.get("impacto_dias") as string
   const impacto_dias = impactoDiasRaw ? parseInt(impactoDiasRaw, 10) : 0
 
@@ -39,7 +55,10 @@ export async function crearChangeOrder(formData: FormData): Promise<{ error?: st
     solicitado_por: (formData.get("solicitado_por") as string) || null,
     detectado_por: perfil.id,
     estado: "detectado",
-    impacto_costo: isNaN(impacto_costo) ? 0 : impacto_costo,
+    costo_directo: isNaN(costo_directo) ? 0 : costo_directo,
+    margen_pct_aplicado,
+    costo_margen,
+    impacto_costo,
     impacto_dias: isNaN(impacto_dias) ? 0 : impacto_dias,
   })
 

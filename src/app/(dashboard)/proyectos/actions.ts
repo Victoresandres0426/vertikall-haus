@@ -193,6 +193,45 @@ const ZONAS_HORARIAS_VALIDAS = [
   "America/Cancun",
 ]
 
+// Margen de Utilidad+OH que se aplica automáticamente sobre el costo
+// directo (material+mano de obra) al registrar un Change Order (migración
+// 126) -- mismo candado de permisos que el resto de los campos de la
+// ficha del proyecto.
+export async function actualizarMargenCO(proyectoId: string, margenPct: number): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  const { data: perfil } = await supabase
+    .from("perfiles_usuario")
+    .select("rol")
+    .eq("id", user.id)
+    .single()
+
+  if (!perfil || !ROLES_EDITAN_CLIENTE.includes(perfil.rol)) {
+    return { error: "No tienes permisos para editar el margen de Change Orders" }
+  }
+
+  if (!Number.isFinite(margenPct) || margenPct < 0 || margenPct > 100) {
+    return { error: "El margen debe ser un número entre 0 y 100" }
+  }
+
+  const { error } = await supabase
+    .from("proyectos")
+    .update({ margen_co_pct: margenPct })
+    .eq("id", proyectoId)
+
+  if (error) {
+    console.error("actualizarMargenCO error:", error)
+    return { error: "Error al guardar el margen." }
+  }
+
+  revalidatePath(`/proyectos/${proyectoId}`)
+  revalidatePath("/change-orders")
+  return {}
+}
+
 export async function actualizarZonaHoraria(proyectoId: string, zonaHoraria: string): Promise<{ error?: string }> {
   const supabase = await createClient()
 

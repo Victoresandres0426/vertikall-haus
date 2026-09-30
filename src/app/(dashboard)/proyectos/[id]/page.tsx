@@ -17,6 +17,7 @@ import { TelefonoCliente } from "./telefono-cliente"
 import { CoordenadasObra } from "./coordenadas-obra"
 import { HoraEntrada } from "./hora-entrada"
 import { ZonaHoraria } from "./zona-horaria"
+import { MargenCO } from "./margen-co"
 import { ArchivosProyecto, type ArchivoProyecto } from "./archivos-proyecto"
 import { EstadoProyecto } from "./estado-proyecto"
 import { SeccionDesplegable } from "./seccion-desplegable"
@@ -37,6 +38,7 @@ type Proyecto = {
   fecha_inicio_plan: string; fecha_fin_plan: string
   fecha_inicio_real: string | null; fecha_fin_forecast: string | null
   presupuesto_base: number; presupuesto_venta: number; margen_objetivo: number
+  margen_co_pct: number
 }
 
 type RegistroAsistenciaQR = {
@@ -99,7 +101,7 @@ async function getData(id: string) {
     .select(`
       id, codigo, nombre, cliente, cliente_email, idioma_cliente, cliente_telefono, coordenadas, hora_entrada_esperada, ubicacion, zona_horaria, estado,
       fecha_inicio_plan, fecha_fin_plan, fecha_inicio_real, fecha_fin_forecast,
-      presupuesto_base, presupuesto_venta, margen_objetivo, configuracion
+      presupuesto_base, presupuesto_venta, margen_objetivo, margen_co_pct, configuracion
     `)
     .eq("id", id)
     .single()
@@ -529,6 +531,7 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
               <CoordenadasObra proyectoId={proyecto.id} coordenadasIniciales={proyecto.coordenadas} puedeEditar={puedeEditarCliente} />
               <HoraEntrada proyectoId={proyecto.id} horaInicial={proyecto.hora_entrada_esperada} puedeEditar={puedeEditarCliente} />
               <ZonaHoraria proyectoId={proyecto.id} zonaInicial={proyecto.zona_horaria} puedeEditar={puedeEditarCliente} />
+              <MargenCO proyectoId={proyecto.id} margenInicial={proyecto.margen_co_pct} puedeEditar={puedeEditarCliente} />
             </div>
           </div>
           {ultimoIIDP && (

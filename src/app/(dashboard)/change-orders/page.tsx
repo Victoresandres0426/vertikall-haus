@@ -22,7 +22,7 @@ async function getData() {
 
   const { data: proyectos } = await supabase
     .from("proyectos")
-    .select("id, nombre, codigo")
+    .select("id, nombre, codigo, margen_co_pct")
     .order("nombre")
 
   const todosLosProyectos = proyectos ?? []
@@ -36,6 +36,7 @@ async function getData() {
       .select(`
         id, numero, titulo, descripcion, solicitado_por,
         estado, impacto_costo, impacto_dias,
+        costo_directo, margen_pct_aplicado, costo_margen,
         facturado, cobrado, created_at, aprobado_at,
         proyectos ( nombre, codigo )
       `)

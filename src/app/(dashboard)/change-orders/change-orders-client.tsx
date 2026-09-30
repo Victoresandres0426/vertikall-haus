@@ -15,6 +15,9 @@ export type ChangeOrder = {
   estado: string
   impacto_costo: number
   impacto_dias: number
+  costo_directo: number | null
+  margen_pct_aplicado: number | null
+  costo_margen: number | null
   facturado: boolean
   cobrado: boolean
   created_at: string
@@ -22,7 +25,7 @@ export type ChangeOrder = {
   proyectos: { nombre: string; codigo: string } | null
 }
 
-export type ProyectoOpcion = { id: string; nombre: string; codigo: string }
+export type ProyectoOpcion = { id: string; nombre: string; codigo: string; margen_co_pct: number }
 
 const estadoConfig: Record<string, { label: string; color: string; icon: React.ElementType }> = {
   detectado: { label: "Detectado", color: "bg-slate-100 text-slate-700", icon: AlertCircle },
@@ -154,6 +157,11 @@ export function ChangeOrdersClient({
                           <p className={cn("text-sm font-bold", co.impacto_costo > 0 ? "text-red-600" : "text-emerald-600")}>
                             {co.impacto_costo > 0 ? "+" : ""}{formatMXN(co.impacto_costo)}
                           </p>
+                          {co.costo_directo != null && co.costo_margen != null && (
+                            <p className="text-[11px] text-slate-400">
+                              Directo {formatMXN(co.costo_directo)} + Margen ({co.margen_pct_aplicado}%) {formatMXN(co.costo_margen)}
+                            </p>
+                          )}
                         </div>
                       )}
                       {(co.impacto_dias ?? 0) !== 0 && (
@@ -192,6 +200,14 @@ function ModalRegistrarChangeOrder({
 }) {
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState("")
+  const [proyectoId, setProyectoId] = useState("")
+  const [costoDirecto, setCostoDirecto] = useState("")
+
+  const proyectoSel = proyectos.find((p) => p.id === proyectoId)
+  const margenPct = proyectoSel?.margen_co_pct ?? 0
+  const directoNum = parseFloat(costoDirecto) || 0
+  const margenNum = directoNum * (margenPct / 100)
+  const totalNum = directoNum + margenNum
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -231,6 +247,8 @@ function ModalRegistrarChangeOrder({
             <select
               name="proyecto_id"
               required
+              value={proyectoId}
+              onChange={(e) => setProyectoId(e.target.value)}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
             >
               <option value="">Selecciona un proyecto</option>
@@ -279,27 +297,49 @@ function ModalRegistrarChangeOrder({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Impacto en costo (USD)</label>
-              <input
-                name="impacto_costo"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
-              />
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Costo directo -- Material + Mano de obra (USD)</label>
+            <input
+              name="costo_directo"
+              type="number"
+              step="0.01"
+              placeholder="0.00"
+              value={costoDirecto}
+              onChange={(e) => setCostoDirecto(e.target.value)}
+              disabled={!proyectoId}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 disabled:bg-slate-50 disabled:text-slate-400"
+            />
+            {!proyectoId && (
+              <p className="text-[11px] text-slate-400 mt-1">Selecciona primero el proyecto para calcular el margen.</p>
+            )}
+          </div>
+
+          {proyectoId && (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1 text-xs">
+              <div className="flex justify-between text-slate-500">
+                <span>Costo directo</span>
+                <span className="font-medium text-slate-700">{formatMXN(directoNum)}</span>
+              </div>
+              <div className="flex justify-between text-slate-500">
+                <span>Margen (Utilidad + OH) — {margenPct}%</span>
+                <span className="font-medium text-slate-700">{formatMXN(margenNum)}</span>
+              </div>
+              <div className="flex justify-between pt-1 border-t border-slate-200 font-semibold text-slate-900">
+                <span>Total (Impacto en costo)</span>
+                <span>{formatMXN(totalNum)}</span>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Impacto en días</label>
-              <input
-                name="impacto_dias"
-                type="number"
-                step="1"
-                placeholder="0"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
-              />
-            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Impacto en días</label>
+            <input
+              name="impacto_dias"
+              type="number"
+              step="1"
+              placeholder="0"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+            />
           </div>
 
           {error && (
