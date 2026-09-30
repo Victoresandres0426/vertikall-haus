@@ -231,12 +231,33 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
         fecha_inicio_plan,
         fecha_fin_plan,
         costo_presupuesto,
-        duracion_plan_dias
+        duracion_plan_dias,
+        activa
       )
     `)
     .eq("proyecto_id", pid)
     .eq("activo", true)
     .order("orden", { ascending: true })
+
+  // NOTA: el embed de arriba no filtra por actividades.activa (Supabase
+  // solo permite filtrar la tabla embebida con un !inner + .eq() en la
+  // relación, y eso haría desaparecer procesos enteros si TODAS sus
+  // actividades quedaran inactivas). Por eso se filtra acá, en JS, antes
+  // de usar el resultado -- para que coincida con el resto de la app
+  // (portal cliente, gráfico "Avance en el tiempo", recalcular_actividad),
+  // que sí excluyen actividades con activa = false. Sin este filtro, una
+  // actividad archivada/reemplazada seguía contando en el promedio y
+  // este KPI no cuadraba con las demás pantallas.
+  type ActividadParaAvance = {
+    avance_porcentaje: number
+    fecha_inicio_plan: string | null
+    fecha_fin_plan: string | null
+    costo_presupuesto: number
+    duracion_plan_dias: number | null
+    activa?: boolean | null
+  }
+  const soloActivas = (acts: ActividadParaAvance[] | null | undefined) =>
+    (acts ?? []).filter((a) => a.activa !== false)
 
   // Avance ponderado: mezcla en partes iguales costo_presupuesto (peso
   // económico) y duracion_plan_dias (peso en cronograma), para que una
@@ -287,15 +308,9 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
   }
 
   const avancePorProceso: ProcesoConAvance[] = ((procesosData ?? []) as (Proceso & {
-    actividades: Array<{
-      avance_porcentaje: number
-      fecha_inicio_plan: string | null
-      fecha_fin_plan: string | null
-      costo_presupuesto: number
-      duracion_plan_dias: number | null
-    }>
+    actividades: ActividadParaAvance[]
   })[]).map((proc) => {
-    const acts = proc.actividades ?? []
+    const acts = soloActivas(proc.actividades)
     if (acts.length === 0) return { id: proc.id, nombre: proc.nombre, plan_pct: 0, real_pct: 0 }
 
     const { real_pct, plan_pct } = avanceYPlanPonderados(acts, new Date().getTime())
@@ -341,12 +356,8 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
   // Misma convención que scoreCronograma/scoreFinanzas en lib/engine/iidp.ts
   // y que cliente_ver_avance_general() (migración 093) en el portal cliente.
   const todasActividadesGlobal = ((procesosData ?? []) as (Proceso & {
-    actividades: Array<{
-      avance_porcentaje: number; costo_presupuesto: number
-      fecha_inicio_plan: string | null; fecha_fin_plan: string | null
-      duracion_plan_dias: number | null
-    }>
-  })[]).flatMap((p) => p.actividades ?? [])
+    actividades: ActividadParaAvance[]
+  })[]).flatMap((p) => soloActivas(p.actividades))
 
   const { real_pct: avanceGlobalPct, plan_pct: planGlobalPct } =
     avanceYPlanPonderados(todasActividadesGlobal, new Date().getTime())

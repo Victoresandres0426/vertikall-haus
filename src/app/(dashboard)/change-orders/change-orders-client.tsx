@@ -40,6 +40,11 @@ export type RenglonCO = {
   costo_material: number
   costo_mano_obra: number
   duracion_dias: number
+  // Cantidad real de obra de este renglón (SF, unidad, ml...) -- opcional;
+  // si se deja vacío, la actividad queda con el valor de relleno de
+  // siempre (1 / "CO"), igual que antes de la migración 135.
+  cantidad_objetivo?: number | null
+  unidad?: string | null
   orden?: number
 }
 
@@ -315,7 +320,7 @@ function ModalRegistrarChangeOrder({
   const agregarRenglon = () => {
     setRenglones((prev) => [
       ...prev,
-      { proceso_id: procesos[0]?.id ?? "", nombre: "", costo_material: 0, costo_mano_obra: 0, duracion_dias: 1 },
+      { proceso_id: procesos[0]?.id ?? "", nombre: "", costo_material: 0, costo_mano_obra: 0, duracion_dias: 1, cantidad_objetivo: null, unidad: "" },
     ])
   }
   const quitarRenglon = (i: number) => setRenglones((prev) => prev.filter((_, idx) => idx !== i))
@@ -536,6 +541,30 @@ function ModalRegistrarChangeOrder({
                       />
                     </div>
                   </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-slate-400">Cantidad (opcional)</label>
+                      <input
+                        type="number" step="0.01"
+                        value={r.cantidad_objetivo ?? ""}
+                        onChange={(e) => actualizarRenglon(i, { cantidad_objetivo: e.target.value === "" ? null : parseFloat(e.target.value) || 0 })}
+                        placeholder="ej. 253"
+                        className="w-full border border-slate-200 rounded px-2 py-1 text-xs bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400">Unidad</label>
+                      <input
+                        value={r.unidad ?? ""}
+                        onChange={(e) => actualizarRenglon(i, { unidad: e.target.value })}
+                        placeholder="ej. SF, ml, unidad"
+                        className="w-full border border-slate-200 rounded px-2 py-1 text-xs bg-white"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    Si se deja en blanco, la actividad queda con cantidad "1 CO" de relleno -- no bloquea guardar el CO.
+                  </p>
                 </div>
               ))}
 

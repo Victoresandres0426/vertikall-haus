@@ -25,6 +25,7 @@ type ActividadRaw = {
   fecha_inicio_plan: string | null
   fecha_fin_plan: string | null
   duracion_plan_dias: number | null
+  activa?: boolean | null
 }
 
 export type ProyectoFromDB = {
@@ -83,7 +84,12 @@ function procesarProyecto(p: ProyectoFromDB): Proyecto {
   // lib/dashboard/queries.ts y cliente_ver_avance_general() (migración
   // 093), para que Dashboard, Proyectos y el portal del cliente
   // muestren siempre el mismo número.
-  const acts = p.actividades ?? []
+  // Se excluyen actividades inactivas (activa = false, ej. archivadas o
+  // reemplazadas) -- misma convención que el portal del cliente, el
+  // gráfico "Avance en el tiempo" y recalcular_actividad(). Sin este
+  // filtro una actividad archivada seguía contando en el promedio y
+  // este número no coincidía con las demás pantallas.
+  const acts = (p.actividades ?? []).filter((a) => a.activa !== false)
   let pesoCosto = 0, realCosto = 0, planCosto = 0
   let pesoDuracion = 0, realDuracion = 0, planDuracion = 0
   const today = Date.now()
@@ -114,8 +120,11 @@ function procesarProyecto(p: ProyectoFromDB): Proyecto {
   const avance_real = Math.round((realCostoPct + realDuracionPct) / 2)
   const avance_plan = Math.round((planCostoPct + planDuracionPct) / 2)
 
-  // Costo actual: suma de costo_real de actividades
-  const costo_actual = acts.reduce((s, a) => s + (a.costo_real ?? 0), 0)
+  // Costo actual: suma de costo_real de TODAS las actividades (incluidas
+  // inactivas) -- si ya se gastó dinero real en una actividad archivada
+  // o reemplazada, ese gasto sigue siendo real y no debe desaparecer del
+  // costo ejecutado del proyecto, aunque ya no cuente para el % de avance.
+  const costo_actual = (p.actividades ?? []).reduce((s, a) => s + (a.costo_real ?? 0), 0)
 
   return {
     id: p.id,

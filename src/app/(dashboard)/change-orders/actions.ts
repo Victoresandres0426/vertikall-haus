@@ -12,6 +12,8 @@ type RenglonInput = {
   costo_material: number
   costo_mano_obra: number
   duracion_dias: number // acepta decimales -- ver comentario en migración 132
+  cantidad_objetivo?: number | null // cantidad real de obra (SF, unidad, ml...) -- migración 135
+  unidad?: string | null
 }
 
 // Los renglones viajan como JSON en un campo oculto del formulario
@@ -36,6 +38,10 @@ function parseRenglones(formData: FormData): RenglonInput[] {
         costo_material: Number(r.costo_material) || 0,
         costo_mano_obra: Number(r.costo_mano_obra) || 0,
         duracion_dias: Math.max(0.01, Number(r.duracion_dias) || 1),
+        cantidad_objetivo: r.cantidad_objetivo !== undefined && r.cantidad_objetivo !== null && r.cantidad_objetivo !== ""
+          ? Number(r.cantidad_objetivo) || null
+          : null,
+        unidad: r.unidad ? String(r.unidad).trim() : null,
       }))
   } catch {
     return []
@@ -60,6 +66,8 @@ async function guardarRenglones(
       costo_material: r.costo_material,
       costo_mano_obra: r.costo_mano_obra,
       duracion_dias: r.duracion_dias,
+      cantidad_objetivo: r.cantidad_objetivo ?? null,
+      unidad: r.unidad ?? null,
       orden: i + 1,
     }))
   )

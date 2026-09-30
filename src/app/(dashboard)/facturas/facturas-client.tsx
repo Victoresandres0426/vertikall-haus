@@ -73,6 +73,12 @@ export type FacturaCliente = {
   estado: string
   monto_cobrado: number
   proyectos: { nombre: string; codigo: string } | null
+  // Presente solo si esta factura viene de un Change Order (migración
+  // 134 -- se factura sola conforme avanza, sin anticipo). Se usa para
+  // mostrar un marcador claro y no confundirla con la facturación
+  // regular del contrato.
+  change_order_id?: string | null
+  change_orders?: { numero: string | null; titulo: string } | null
 }
 
 export type FacturaProveedor = {
@@ -603,7 +609,7 @@ function TarjetaBorrador({
         onClick={() => setColapsada((c) => !c)}
       >
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-800 flex items-center gap-2">
+          <p className="text-sm font-medium text-slate-800 flex items-center gap-2 flex-wrap">
             <span className="font-mono text-[10px] text-slate-400 mr-1">{f.proyectos?.codigo}</span>
             {f.proyectos?.nombre} · {f.numero}
             <span className={cn(
@@ -612,6 +618,14 @@ function TarjetaBorrador({
             )}>
               {f.estado === "aprobada" ? "Aprobada · sin enviar" : "Borrador"}
             </span>
+            {f.change_order_id && (
+              <span
+                className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 shrink-0"
+                title="Esta factura corresponde a un Change Order -- se factura sola conforme avanza, sin anticipo"
+              >
+                CH.O. {f.change_orders?.numero ?? ""}
+              </span>
+            )}
           </p>
           {colapsada ? (
             <p className="text-xs text-slate-500 mt-1">{formatExacto(f.monto)} · click para ver el detalle</p>
@@ -731,8 +745,16 @@ function FilaCliente({ f }: { f: FacturaCliente }) {
           <span className="text-slate-700">{f.proyectos?.nombre}</span>
         </td>
         <td className="px-3 py-2.5 text-slate-600">
-          <span className="inline-flex items-center gap-1">
+          <span className="inline-flex items-center gap-1.5 flex-wrap">
             <ChevronDown className={cn("h-3.5 w-3.5 text-slate-400 transition-transform shrink-0", expandida && "rotate-180")} />
+            {f.change_order_id && (
+              <span
+                className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 shrink-0"
+                title="Esta factura corresponde a un Change Order -- se factura sola conforme avanza, sin anticipo"
+              >
+                CH.O. {f.change_orders?.numero ?? ""}
+              </span>
+            )}
             {f.descripcion ?? f.numero ?? "—"}
           </span>
           {f.amortizacion_anticipo > 0 && (
