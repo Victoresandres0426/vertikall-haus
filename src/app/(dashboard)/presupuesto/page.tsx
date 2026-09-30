@@ -30,24 +30,40 @@ async function getData() {
   const proyectoActivo = resolverProyectoActivo(todosLosProyectos, cookieId)
 
   let presupuestos: Presupuesto[] = []
+  let avancePonderadoActual: number | null = null
   if (proyectoActivo) {
-    const { data } = await supabase
-      .from("presupuestos")
-      .select(`
-        id, version, nombre_version, es_baseline_actual,
-        monto_total:total,
-        proyectos ( nombre, codigo ),
-        partidas:partidas_presupuesto (
-          id, codigo, descripcion, tipo_recurso,
-          cantidad, unidad, precio_unitario,
-          monto_presupuestado, monto_comprometido, monto_ejercido,
-          proceso_id, actividad_id,
-          procesos ( nombre, codigo )
-        )
-      `)
-      .eq("proyecto_id", proyectoActivo.id)
-      .order("created_at", { ascending: false })
+    const [{ data }, { data: snap }] = await Promise.all([
+      supabase
+        .from("presupuestos")
+        .select(`
+          id, version, nombre_version, es_baseline_actual,
+          monto_total:total,
+          proyectos ( nombre, codigo ),
+          partidas:partidas_presupuesto (
+            id, codigo, descripcion, tipo_recurso,
+            cantidad, unidad, precio_unitario,
+            monto_presupuestado, monto_comprometido, monto_ejercido,
+            proceso_id, actividad_id,
+            procesos ( nombre, codigo )
+          )
+        `)
+        .eq("proyecto_id", proyectoActivo.id)
+        .order("created_at", { ascending: false }),
+      // Última corrida de la facturación automática -- es el mismo %
+      // que usa generar_facturas_semanales para prorratear los
+      // indirectos, así que sirve para comparar "gastado real" vs
+      // "lo que según el prorrateo ya se le debería haber reconocido"
+      // a cada partida indirecta (ver FilaPartida en presupuesto-client).
+      supabase
+        .from("avance_snapshots_semanales")
+        .select("avance_ponderado_pct, fecha")
+        .eq("proyecto_id", proyectoActivo.id)
+        .order("fecha", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
     presupuestos = (data ?? []) as unknown as Presupuesto[]
+    avancePonderadoActual = snap?.avance_ponderado_pct ?? null
   }
 
   return {
@@ -58,11 +74,12 @@ async function getData() {
     puedeCrear: !!perfil && ROLES_GESTION.includes(perfil.rol),
     todosLosProyectos,
     proyectoActivoId: proyectoActivo?.id ?? null,
+    avancePonderadoActual,
   }
 }
 
 export default async function PresupuestoPage() {
-  const { presupuestos, proyectos, puedeCrear, todosLosProyectos, proyectoActivoId } = await getData()
+  const { presupuestos, proyectos, puedeCrear, todosLosProyectos, proyectoActivoId, avancePonderadoActual } = await getData()
 
   const totalPartidas = presupuestos.reduce((s, p) => s + p.partidas.length, 0)
   const totalPresupuestado = presupuestos.reduce((s, p) => s + (p.monto_total ?? 0), 0)
@@ -88,7 +105,7 @@ export default async function PresupuestoPage() {
           ) : undefined
         }
       />
-      <PresupuestoClient presupuestosIniciales={presupuestos} proyectos={proyectos} puedeCrear={puedeCrear} />
+      <PresupuestoClient presupuestosIniciales={presupuestos} proyectos={proyectos} puedeCrear={puedeCrear} avancePonderadoActual={avancePonderadoActual} />
     </div>
   )
 }

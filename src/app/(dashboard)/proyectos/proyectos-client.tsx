@@ -26,6 +26,7 @@ type ActividadRaw = {
   fecha_fin_plan: string | null
   duracion_plan_dias: number | null
   activa?: boolean | null
+  excluir_de_avance?: boolean | null
 }
 
 export type ProyectoFromDB = {
@@ -89,7 +90,7 @@ function procesarProyecto(p: ProyectoFromDB): Proyecto {
   // gráfico "Avance en el tiempo" y recalcular_actividad(). Sin este
   // filtro una actividad archivada seguía contando en el promedio y
   // este número no coincidía con las demás pantallas.
-  const acts = (p.actividades ?? []).filter((a) => a.activa !== false)
+  const acts = (p.actividades ?? []).filter((a) => a.activa !== false && a.excluir_de_avance !== true)
   let pesoCosto = 0, realCosto = 0, planCosto = 0
   let pesoDuracion = 0, realDuracion = 0, planDuracion = 0
   const today = Date.now()

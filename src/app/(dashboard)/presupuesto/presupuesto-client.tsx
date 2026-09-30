@@ -105,10 +105,17 @@ export function PresupuestoClient({
   presupuestosIniciales,
   proyectos,
   puedeCrear,
+  avancePonderadoActual,
 }: {
   presupuestosIniciales: Presupuesto[]
   proyectos: ProyectoOpcion[]
   puedeCrear: boolean
+  // % de avance físico ponderado más reciente del proyecto (de la
+  // última corrida de generar_facturas_semanales) -- se usa para
+  // mostrar, en cada partida indirecta, cuánto debería llevar
+  // reconocido/facturado según el prorrateo, comparado con lo
+  // realmente gastado (monto_ejercido).
+  avancePonderadoActual?: number | null
 }) {
   const [presupuestos] = useState<Presupuesto[]>(presupuestosIniciales)
   const [showModalVersion, setShowModalVersion] = useState(false)
@@ -278,7 +285,7 @@ export function PresupuestoClient({
                             </div>
                             <div className="divide-y divide-slate-50">
                               {grupo.items.map((partida) => (
-                                <FilaPartida key={partida.id} partida={partida} puedeEditar={puedeCrear} />
+                                <FilaPartida key={partida.id} partida={partida} puedeEditar={puedeCrear} avancePonderadoActual={avancePonderadoActual} />
                               ))}
                             </div>
                           </div>
@@ -318,7 +325,7 @@ export function PresupuestoClient({
   )
 }
 
-function FilaPartida({ partida, puedeEditar }: { partida: Partida; puedeEditar: boolean }) {
+function FilaPartida({ partida, puedeEditar, avancePonderadoActual }: { partida: Partida; puedeEditar: boolean; avancePonderadoActual?: number | null }) {
   const [editando, setEditando] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState("")
@@ -328,6 +335,17 @@ function FilaPartida({ partida, puedeEditar }: { partida: Partida; puedeEditar: 
   const [montoPresupuestado, setMontoPresupuestado] = useState(String(partida.monto_presupuestado ?? 0))
 
   const desviacion = (partida.monto_ejercido ?? 0) - (partida.monto_presupuestado ?? 0)
+
+  // Solo para indirectos sin actividad: cuánto de esta partida ya
+  // debería estar "reconocido" según el prorrateo que usa la
+  // facturación automática (monto_presupuestado × % de avance físico
+  // ponderado del proyecto). Se compara contra lo realmente gastado
+  // (monto_ejercido) -- son dos cosas distintas: lo facturado al
+  // cliente es presupuesto prorrateado, lo gastado es costo real.
+  const esIndirectoSinActividad = partida.tipo_recurso === "indirecto" && !partida.actividad_id
+  const esperadoSegunAvance = esIndirectoSinActividad && avancePonderadoActual != null
+    ? (partida.monto_presupuestado ?? 0) * (avancePonderadoActual / 100)
+    : null
 
   if (!editando) {
     return (
@@ -350,6 +368,11 @@ function FilaPartida({ partida, puedeEditar }: { partida: Partida; puedeEditar: 
             )}>
               Gastado: {formatMXN(partida.monto_ejercido ?? 0)}
             </p>
+            {esperadoSegunAvance != null && (
+              <p className="text-[10px] text-slate-400" title="Monto presupuestado × % de avance físico del proyecto -- es lo que ya se le reconoce al cliente por esta partida, no necesariamente lo gastado real">
+                Esperado (avance {avancePonderadoActual}%): {formatMXN(esperadoSegunAvance)}
+              </p>
+            )}
           </div>
           <span className={cn("font-medium text-xs flex items-center gap-0.5",
             desviacion > 0 ? "text-red-600" : desviacion < 0 ? "text-emerald-600" : "text-slate-500"
