@@ -228,14 +228,22 @@ export async function actualizarTituloUsuario(usuarioId: string, titulo: string 
     if (check.error) return { error: check.error }
   }
 
-  const { error } = await supabase
+  // Se pide de vuelta la fila actualizada (.select().single()) en vez
+  // de solo mirar `error` -- si el UPDATE no encuentra ninguna fila que
+  // cumpla la política de RLS, Postgrest no lanza error, simplemente
+  // actualiza 0 filas ("éxito" silencioso). Sin este chequeo, un candado
+  // de permisos mal calzado se vería igual que un guardado exitoso.
+  const { data, error } = await supabase
     .from("perfiles_usuario")
     .update({ titulo_colaborador: tituloLimpio })
     .eq("id", usuarioId)
+    .select("id")
+    .single()
 
-  if (error) return { error: "No se pudo actualizar el título" }
+  if (error || !data) return { error: "No se pudo actualizar el título (sin permiso o cuenta no encontrada)." }
 
   revalidatePath("/configuracion")
+  revalidatePath("/bitacora")
   return {}
 }
 

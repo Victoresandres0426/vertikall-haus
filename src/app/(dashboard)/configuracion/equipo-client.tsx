@@ -120,6 +120,7 @@ function FilaEdicion({
   const [titulo, setTitulo] = useState(usuario.titulo_colaborador ?? "")
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState("")
+  const [tituloGuardado, setTituloGuardado] = useState(false)
 
   const handleGuardarRol = () => {
     if (rol === usuario.rol) return
@@ -134,10 +135,14 @@ function FilaEdicion({
   const handleGuardarTitulo = () => {
     if ((titulo.trim() || null) === (usuario.titulo_colaborador ?? null)) return
     setError("")
+    setTituloGuardado(false)
     startTransition(async () => {
       const res = await actualizarTituloUsuario(usuario.id, titulo)
       if (res.error) setError(res.error)
-      else onDone()
+      // No se cierra el panel entero (a diferencia de rol/activo) --
+      // así se ve de inmediato el mensaje de "Guardado" en vez de que
+      // el panel simplemente desaparezca sin confirmación visible.
+      else setTituloGuardado(true)
     })
   }
 
@@ -191,7 +196,7 @@ function FilaEdicion({
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={titulo}
-          onChange={(e) => setTitulo(e.target.value)}
+          onChange={(e) => { setTitulo(e.target.value); setTituloGuardado(false) }}
           disabled={isPending}
           placeholder="Título en bitácora/portal (ej. GC, Arquitecto...)"
           title="Reemplaza el rol del sistema al mostrar quién escribió una nota en la Bitácora de obra y en el portal del cliente -- solo es texto para mostrar, no cambia el acceso."
@@ -204,6 +209,7 @@ function FilaEdicion({
         >
           Guardar título
         </button>
+        {tituloGuardado && <span className="text-xs font-medium text-emerald-600">✓ Guardado</span>}
       </div>
 
       {error && <p className="text-[11px] text-red-600 w-full">{error}</p>}
