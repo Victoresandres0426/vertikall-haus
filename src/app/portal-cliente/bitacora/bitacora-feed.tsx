@@ -18,7 +18,9 @@ const ROL_LABEL: Record<string, { es: string; en: string }> = {
 }
 
 function etiquetaAutor(e: EntradaBitacora, en: boolean) {
-  if ((e.autor_rol === "colaborador_externo" || e.autor_rol === "subcontratista") && e.autor_titulo) return e.autor_titulo
+  // El título (ej. "GC") reemplaza el rol del sistema para CUALQUIER
+  // rol -- ver mismo comentario en el dashboard interno (bitacora-client.tsx).
+  if (e.autor_titulo) return e.autor_titulo
   const label = ROL_LABEL[e.autor_rol ?? ""]
   return label ? (en ? label.en : label.es) : (e.autor_rol ?? "")
 }

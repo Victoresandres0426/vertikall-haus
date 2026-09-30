@@ -58,7 +58,7 @@ async function getData() {
 
   const { data: equipo } = await supabase
     .from("perfiles_usuario")
-    .select("id, nombre_completo, email, rol, activo")
+    .select("id, nombre_completo, email, rol, activo, titulo_colaborador")
     .eq("empresa_id", perfil.empresa_id)
     .order("rol")
     .order("nombre_completo")

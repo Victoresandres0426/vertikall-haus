@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { Pencil, X } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { actualizarRolUsuario, cambiarActivoUsuario } from "./actions"
+import { actualizarRolUsuario, cambiarActivoUsuario, actualizarTituloUsuario } from "./actions"
 
 type Usuario = {
   id: string
@@ -11,6 +11,7 @@ type Usuario = {
   email: string
   rol: string
   activo: boolean
+  titulo_colaborador?: string | null
 }
 
 const ROLES_PROTEGIDOS = ["dueno", "superadmin"]
@@ -48,6 +49,11 @@ export function EquipoLista({
           puedeGestionar &&
           !esUnoMismo &&
           !(perfilActualRol === "administrador" && ROLES_PROTEGIDOS.includes(u.rol))
+        // El título que se muestra en la bitácora (ej. "GC" en vez de
+        // "Dueño") es solo texto para mostrar, no un permiso -- cualquiera
+        // puede editar el suyo propio, aunque no pueda gestionar su
+        // propia cuenta (rol/activo) desde aquí.
+        const puedeEditarFila = puedeEditarEste || esUnoMismo
         const editando = editandoId === u.id
 
         return (
@@ -73,7 +79,7 @@ export function EquipoLista({
               <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium shrink-0", rolColor[u.rol] ?? "bg-slate-100 text-slate-600")}>
                 {rolLabel[u.rol] ?? u.rol}
               </span>
-              {puedeEditarEste && (
+              {puedeEditarFila && (
                 <button
                   onClick={() => setEditandoId(editando ? null : u.id)}
                   className="text-slate-300 hover:text-slate-700 shrink-0"
@@ -88,6 +94,7 @@ export function EquipoLista({
               <FilaEdicion
                 usuario={u}
                 rolLabel={rolLabel}
+                puedeEditarRolYActivo={puedeEditarEste}
                 onDone={() => setEditandoId(null)}
               />
             )}
@@ -101,13 +108,16 @@ export function EquipoLista({
 function FilaEdicion({
   usuario,
   rolLabel,
+  puedeEditarRolYActivo,
   onDone,
 }: {
   usuario: Usuario
   rolLabel: Record<string, string>
+  puedeEditarRolYActivo: boolean
   onDone: () => void
 }) {
   const [rol, setRol] = useState(usuario.rol)
+  const [titulo, setTitulo] = useState(usuario.titulo_colaborador ?? "")
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState("")
 
@@ -116,6 +126,16 @@ function FilaEdicion({
     setError("")
     startTransition(async () => {
       const res = await actualizarRolUsuario(usuario.id, rol)
+      if (res.error) setError(res.error)
+      else onDone()
+    })
+  }
+
+  const handleGuardarTitulo = () => {
+    if ((titulo.trim() || null) === (usuario.titulo_colaborador ?? null)) return
+    setError("")
+    startTransition(async () => {
+      const res = await actualizarTituloUsuario(usuario.id, titulo)
       if (res.error) setError(res.error)
       else onDone()
     })
@@ -133,36 +153,59 @@ function FilaEdicion({
   }
 
   return (
-    <div className="mt-2.5 ml-12 flex flex-wrap items-center gap-2 bg-slate-50 rounded-lg p-2.5">
-      <select
-        value={rol}
-        onChange={(e) => setRol(e.target.value)}
-        disabled={isPending}
-        className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
-      >
-        {ROLES_ASIGNABLES.map((r) => (
-          <option key={r} value={r}>{rolLabel[r] ?? r}</option>
-        ))}
-      </select>
-      <button
-        onClick={handleGuardarRol}
-        disabled={isPending || rol === usuario.rol}
-        className="text-xs font-medium text-white bg-slate-900 hover:bg-slate-700 disabled:opacity-40 rounded-lg px-3 py-1.5"
-      >
-        Guardar rol
-      </button>
-      <button
-        onClick={handleToggleActivo}
-        disabled={isPending}
-        className={cn(
-          "text-xs font-medium rounded-lg px-3 py-1.5 disabled:opacity-40",
-          usuario.activo
-            ? "text-red-600 bg-red-50 hover:bg-red-100"
-            : "text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
-        )}
-      >
-        {usuario.activo ? "Desactivar" : "Reactivar"}
-      </button>
+    <div className="mt-2.5 ml-12 flex flex-col gap-2 bg-slate-50 rounded-lg p-2.5">
+      {puedeEditarRolYActivo && (
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={rol}
+            onChange={(e) => setRol(e.target.value)}
+            disabled={isPending}
+            className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
+          >
+            {ROLES_ASIGNABLES.map((r) => (
+              <option key={r} value={r}>{rolLabel[r] ?? r}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleGuardarRol}
+            disabled={isPending || rol === usuario.rol}
+            className="text-xs font-medium text-white bg-slate-900 hover:bg-slate-700 disabled:opacity-40 rounded-lg px-3 py-1.5"
+          >
+            Guardar rol
+          </button>
+          <button
+            onClick={handleToggleActivo}
+            disabled={isPending}
+            className={cn(
+              "text-xs font-medium rounded-lg px-3 py-1.5 disabled:opacity-40",
+              usuario.activo
+                ? "text-red-600 bg-red-50 hover:bg-red-100"
+                : "text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+            )}
+          >
+            {usuario.activo ? "Desactivar" : "Reactivar"}
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={titulo}
+          onChange={(e) => setTitulo(e.target.value)}
+          disabled={isPending}
+          placeholder="Título en bitácora/portal (ej. GC, Arquitecto...)"
+          title="Reemplaza el rol del sistema al mostrar quién escribió una nota en la Bitácora de obra y en el portal del cliente -- solo es texto para mostrar, no cambia el acceso."
+          className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 flex-1 min-w-[200px]"
+        />
+        <button
+          onClick={handleGuardarTitulo}
+          disabled={isPending || (titulo.trim() || null) === (usuario.titulo_colaborador ?? null)}
+          className="text-xs font-medium text-white bg-slate-900 hover:bg-slate-700 disabled:opacity-40 rounded-lg px-3 py-1.5"
+        >
+          Guardar título
+        </button>
+      </div>
+
       {error && <p className="text-[11px] text-red-600 w-full">{error}</p>}
     </div>
   )

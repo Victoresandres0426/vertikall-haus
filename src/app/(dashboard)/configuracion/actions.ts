@@ -210,6 +210,35 @@ export async function actualizarRolUsuario(usuarioId: string, nuevoRol: string):
   return {}
 }
 
+// Título mostrado en la bitácora/portal en vez del rol genérico del
+// sistema (ej. "GC" en vez de "Dueño" cuando el dueño de la empresa
+// actúa como General Contractor en un proyecto puntual). No es un
+// permiso especial: cualquiera puede poner el suyo propio (es solo
+// texto para mostrar, no cambia accesos); para poner el de otra
+// persona sí hace falta ser parte de la gestión del equipo, mismo
+// candado que actualizarRolUsuario.
+export async function actualizarTituloUsuario(usuarioId: string, titulo: string | null): Promise<{ error?: string }> {
+  const tituloLimpio = titulo?.trim() || null
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  if (user.id !== usuarioId) {
+    const check = await verificarPermisoGestionEquipo(supabase, usuarioId)
+    if (check.error) return { error: check.error }
+  }
+
+  const { error } = await supabase
+    .from("perfiles_usuario")
+    .update({ titulo_colaborador: tituloLimpio })
+    .eq("id", usuarioId)
+
+  if (error) return { error: "No se pudo actualizar el título" }
+
+  revalidatePath("/configuracion")
+  return {}
+}
+
 export async function cambiarActivoUsuario(usuarioId: string, activo: boolean): Promise<{ error?: string }> {
   const supabase = await createClient()
   const check = await verificarPermisoGestionEquipo(supabase, usuarioId)

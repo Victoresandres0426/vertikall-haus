@@ -31,7 +31,11 @@ const ROL_LABEL: Record<string, string> = {
 }
 
 function etiquetaAutor(e: EntradaBitacora) {
-  if ((e.autor_rol === "colaborador_externo" || e.autor_rol === "subcontratista") && e.autor_titulo) return e.autor_titulo
+  // El título (ej. "GC") reemplaza el rol del sistema para CUALQUIER
+  // rol, no solo colaborador_externo/subcontratista -- por ejemplo el
+  // dueño de la empresa puede estar actuando como General Contractor en
+  // un proyecto puntual y no quiere que la bitácora diga "Dueño".
+  if (e.autor_titulo) return e.autor_titulo
   return ROL_LABEL[e.autor_rol ?? ""] ?? e.autor_rol ?? ""
 }
 
