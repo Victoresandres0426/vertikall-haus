@@ -433,7 +433,7 @@ export const t = {
 // next/headers) -- si un componente "use client" importa un VALOR de
 // este archivo, Next intenta meter ese código de servidor en el bundle
 // del navegador y el build falla.
-export type PortalStrings = typeof t.es
+export type PortalStrings = { [K in keyof typeof t.es]: string }
 
 export function descripcionFactura(f: Factura, en: boolean): string {
   if (!en) return f.descripcion ?? ""
