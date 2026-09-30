@@ -26,6 +26,19 @@ type Perfil = {
   configuracion_notificaciones: { email: boolean; push: boolean }
 }
 
+// Tipo aparte del perfil propio (Perfil, arriba) -- la fila de un
+// miembro del equipo en la lista no trae configuracion_notificaciones
+// (no se selecciona esa columna para todo el equipo, sería un dato
+// privado de cada quien) pero sí trae titulo_colaborador.
+type MiembroEquipo = {
+  id: string
+  nombre_completo: string
+  email: string
+  rol: string
+  activo: boolean
+  titulo_colaborador: string | null
+}
+
 type Invitacion = {
   id: string
   email: string
@@ -80,7 +93,7 @@ async function getData() {
   return {
     empresa: empresa as Empresa,
     perfil: perfil as Perfil & { empresa_id: string },
-    equipo: (equipo ?? []) as Perfil[],
+    equipo: (equipo ?? []) as MiembroEquipo[],
     invitaciones: (invitaciones ?? []) as Invitacion[],
     proyectos: (proyectos ?? []) as { id: string; codigo: string; nombre: string }[],
   }
