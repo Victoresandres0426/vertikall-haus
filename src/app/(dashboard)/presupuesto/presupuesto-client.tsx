@@ -56,6 +56,51 @@ function formatMXN(n: number) {
   return `$${n.toLocaleString()}`
 }
 
+// Compara códigos tipo "01.09" vs "01.10" numéricamente segmento por
+// segmento, para que no se ordenen como texto plano (donde "01.10"
+// quedaría antes que "01.9").
+function compararCodigos(a: string | null, b: string | null): number {
+  if (!a && !b) return 0
+  if (!a) return 1
+  if (!b) return -1
+  const segsA = a.split(".").map(Number)
+  const segsB = b.split(".").map(Number)
+  for (let i = 0; i < Math.max(segsA.length, segsB.length); i++) {
+    const diff = (segsA[i] ?? 0) - (segsB[i] ?? 0)
+    if (diff !== 0 && !Number.isNaN(diff)) return diff
+  }
+  return a.localeCompare(b)
+}
+
+// Agrupa las partidas por división/proceso (mismo criterio que
+// Actividades y Reporte Diario) -- así partidas de disciplinas
+// distintas no quedan mezcladas en una sola lista plana, y dentro de
+// cada división se puede seguir viendo el orden (o el orden por gasto,
+// cuando el filtro "solo con gasto" está activo).
+function agruparPorDivision(partidas: Partida[]): { etiqueta: string; codigo: string; items: Partida[] }[] {
+  const grupos: { etiqueta: string; codigo: string; items: Partida[] }[] = []
+  const indicePorEtiqueta = new Map<string, number>()
+  for (const p of partidas) {
+    const codigo = p.procesos?.codigo ?? ""
+    const etiqueta = p.procesos?.codigo && p.procesos?.nombre
+      ? `${p.procesos.codigo} — ${p.procesos.nombre}`
+      : "Sin división"
+    let idx = indicePorEtiqueta.get(etiqueta)
+    if (idx === undefined) {
+      idx = grupos.length
+      indicePorEtiqueta.set(etiqueta, idx)
+      grupos.push({ etiqueta, codigo, items: [] })
+    }
+    grupos[idx].items.push(p)
+  }
+  grupos.sort((a, b) => {
+    if (a.etiqueta === "Sin división") return 1
+    if (b.etiqueta === "Sin división") return -1
+    return compararCodigos(a.codigo, b.codigo)
+  })
+  return grupos
+}
+
 export function PresupuestoClient({
   presupuestosIniciales,
   proyectos,
@@ -201,7 +246,9 @@ export function PresupuestoClient({
                     ? pres.partidas
                         .filter((p) => (p.monto_ejercido ?? 0) > 0)
                         .sort((a, b) => (b.monto_ejercido ?? 0) - (a.monto_ejercido ?? 0))
-                    : pres.partidas
+                    : [...pres.partidas].sort((a, b) => compararCodigos(a.codigo, b.codigo))
+                  const visibles = expandidos[pres.id] || filtroActivo ? partidasBase : partidasBase.slice(0, 10)
+                  const grupos = agruparPorDivision(visibles)
                   return (
                   <div>
                     <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/50">
@@ -221,15 +268,26 @@ export function PresupuestoClient({
                         Todavía no hay gasto real registrado en ninguna partida.
                       </div>
                     ) : (
-                      <div className="divide-y divide-slate-50">
-                        {(expandidos[pres.id] || filtroActivo ? partidasBase : partidasBase.slice(0, 10)).map((partida) => (
-                          <FilaPartida key={partida.id} partida={partida} puedeEditar={puedeCrear} />
+                      <div>
+                        {grupos.map((grupo) => (
+                          <div key={grupo.etiqueta}>
+                            <div className="px-4 py-1.5 bg-slate-50 border-b border-t border-slate-100 first:border-t-0">
+                              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                                {grupo.etiqueta}
+                              </span>
+                            </div>
+                            <div className="divide-y divide-slate-50">
+                              {grupo.items.map((partida) => (
+                                <FilaPartida key={partida.id} partida={partida} puedeEditar={puedeCrear} />
+                              ))}
+                            </div>
+                          </div>
                         ))}
                         {!filtroActivo && partidasBase.length > 10 && (
                           <button
                             type="button"
                             onClick={() => setExpandidos((prev) => ({ ...prev, [pres.id]: !prev[pres.id] }))}
-                            className="w-full px-4 py-2 text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-50 text-center font-medium"
+                            className="w-full px-4 py-2 text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-50 text-center font-medium border-t border-slate-100"
                           >
                             {expandidos[pres.id]
                               ? "Ver menos"
