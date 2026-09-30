@@ -1,7 +1,7 @@
 import { PortalHeader } from "../portal-header"
 import { SinProyecto } from "../sin-proyecto"
 import { ChangeOrdersFeed } from "./change-orders-feed"
-import { cargarSesionCliente, obtenerProyectoCliente, marcarVistoSeccion, traducirChangeOrdersFaltantes, type ChangeOrder, t } from "../_shared"
+import { cargarSesionCliente, obtenerProyectoCliente, traducirChangeOrdersFaltantes, type ChangeOrder, t } from "../_shared"
 
 // Solo visible para el rol "cliente" -- colaborador_externo y
 // subcontratista no ven change orders (información contractual/de
@@ -18,8 +18,9 @@ export default async function ChangeOrdersClientePage() {
     return <SinProyecto mensaje={tf.cuentaSinProyecto} contacto={tf.contactaContacto} />
   }
 
-  await marcarVistoSeccion(supabase, "change_orders")
-
+  // Nota: esta sección ya no marca "visto" -- el aviso de Change
+  // Orders pendientes (migración 131) se calcula por estado
+  // (enviado_cliente, sin decidir), no por si el cliente la miró.
   let changeOrders: ChangeOrder[] = []
   try {
     const { data } = await supabase.rpc("portal_ver_change_orders")

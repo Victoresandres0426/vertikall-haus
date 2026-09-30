@@ -6,7 +6,6 @@ import { PagosChart } from "../pagos-chart"
 import {
   cargarSesionCliente,
   obtenerProyectoCliente,
-  marcarVistoSeccion,
   descripcionFactura,
   formatoFecha,
   formatoMoneda,
@@ -28,8 +27,9 @@ export default async function FacturasClientePage() {
     return <SinProyecto mensaje={tf.cuentaSinProyecto} contacto={tf.contactaContacto} />
   }
 
-  await marcarVistoSeccion(supabase, "facturas")
-
+  // Nota: esta sección ya no marca "visto" -- el aviso de facturas
+  // pendientes (migración 131) se calcula por estado (no pagada),
+  // no por si el cliente entró a mirarla.
   const { data } = await supabase.rpc("cliente_ver_facturas")
   const facturas = (data ?? []) as Factura[]
 
