@@ -43,6 +43,14 @@ function formatMXN(n: number) {
   return `$${n.toLocaleString()}`
 }
 
+// Monto exacto (con centavos y separador de miles), sin abreviar a K/M --
+// para desgloses lado a lado (directo/margen/total) donde el redondeo a
+// K hacía que montos distintos se vieran igual (ej. $3,535 y $4,418.75
+// ambos se veían como "$4K").
+function formatMonto(n: number) {
+  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
 export function ChangeOrdersClient({
   changeOrdersIniciales,
   proyectos,
@@ -159,7 +167,7 @@ export function ChangeOrdersClient({
                           </p>
                           {co.costo_directo != null && co.costo_margen != null && (
                             <p className="text-[11px] text-slate-400">
-                              Directo {formatMXN(co.costo_directo)} + Indirectos/Contingencia/Margen ({co.margen_pct_aplicado}%) {formatMXN(co.costo_margen)}
+                              Directo {formatMonto(co.costo_directo)} + Indirectos/Contingencia/Margen ({co.margen_pct_aplicado}%) {formatMonto(co.costo_margen)}
                             </p>
                           )}
                         </div>
@@ -318,15 +326,15 @@ function ModalRegistrarChangeOrder({
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1 text-xs">
               <div className="flex justify-between text-slate-500">
                 <span>Costo directo</span>
-                <span className="font-medium text-slate-700">{formatMXN(directoNum)}</span>
+                <span className="font-medium text-slate-700">{formatMonto(directoNum)}</span>
               </div>
               <div className="flex justify-between text-slate-500">
                 <span>Indirectos + Contingencia + Margen — {margenPct}%</span>
-                <span className="font-medium text-slate-700">{formatMXN(margenNum)}</span>
+                <span className="font-medium text-slate-700">{formatMonto(margenNum)}</span>
               </div>
               <div className="flex justify-between pt-1 border-t border-slate-200 font-semibold text-slate-900">
                 <span>Total (Impacto en costo)</span>
-                <span>{formatMXN(totalNum)}</span>
+                <span>{formatMonto(totalNum)}</span>
               </div>
             </div>
           )}
