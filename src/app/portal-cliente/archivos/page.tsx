@@ -3,7 +3,7 @@ import { PortalHeader } from "../portal-header"
 import { SinProyecto } from "../sin-proyecto"
 import { SubirArchivoForm } from "./subir-archivo-form"
 import { ListaArchivos } from "./lista-archivos"
-import { cargarSesionCliente, obtenerProyectoCliente, type ArchivoProyecto, t } from "../_shared"
+import { cargarSesionCliente, obtenerProyectoCliente, marcarVistoSeccion, type ArchivoProyecto, t } from "../_shared"
 
 // Sección exclusiva de colaborador_externo (diseñador/arquitecto) y
 // subcontratista -- el cliente no debe ver planos ni documentos del
@@ -24,6 +24,8 @@ export default async function ArchivosClientePage() {
   if (!proyecto) {
     return <SinProyecto mensaje={tf.cuentaSinProyecto} contacto={tf.contactaContacto} />
   }
+
+  await marcarVistoSeccion(supabase, "archivos")
 
   let archivos: ArchivoProyecto[] = []
   try {

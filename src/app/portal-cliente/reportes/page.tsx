@@ -5,6 +5,7 @@ import { GaleriaFotos } from "../galeria-fotos"
 import {
   cargarSesionCliente,
   obtenerProyectoCliente,
+  marcarVistoSeccion,
   traducirReportesFaltantes,
   formatoFecha,
   type Reporte,
@@ -26,6 +27,8 @@ export default async function ReportesClientePage() {
   if (!proyecto) {
     return <SinProyecto mensaje={tf.cuentaSinProyecto} contacto={tf.contactaContacto} />
   }
+
+  await marcarVistoSeccion(supabase, "reportes")
 
   const { data } = await supabase.rpc("cliente_ver_reportes")
   const reportes = (data ?? []) as Reporte[]

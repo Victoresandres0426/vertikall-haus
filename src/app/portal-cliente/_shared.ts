@@ -487,6 +487,21 @@ export async function obtenerProyectoCliente(supabase: Awaited<ReturnType<typeof
   return data as Proyecto | null
 }
 
+// Resetea el contador de "sin revisar" de esta sección para el
+// usuario actual (migración 130) -- se llama al abrir cada página del
+// portal. Mejor esfuerzo: si la migración 130 todavía no se corrió,
+// no debe romper la página, solo queda sin resetear el contador.
+export async function marcarVistoSeccion(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  seccion: string
+): Promise<void> {
+  try {
+    await supabase.rpc("portal_marcar_visto", { p_seccion: seccion })
+  } catch (e) {
+    console.error(`portal_marcar_visto('${seccion}') falló (¿falta correr la migración 130?):`, e)
+  }
+}
+
 // Traduce con IA (cacheando el resultado en la base) los reportes que
 // todavía no tienen su versión en inglés -- solo se llama cuando el
 // cliente está viendo el portal en inglés. Si falla (sin API key, IA

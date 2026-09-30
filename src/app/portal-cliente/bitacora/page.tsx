@@ -1,7 +1,7 @@
 import { PortalHeader } from "../portal-header"
 import { SinProyecto } from "../sin-proyecto"
 import { BitacoraFeed } from "./bitacora-feed"
-import { cargarSesionCliente, obtenerProyectoCliente, type EntradaBitacora, t } from "../_shared"
+import { cargarSesionCliente, obtenerProyectoCliente, marcarVistoSeccion, type EntradaBitacora, t } from "../_shared"
 import { traducirBitacoraFaltantes, textoBitacoraParaIdioma } from "@/lib/traducir-bitacora"
 
 // Visible para cliente (solo lectura) y colaborador_externo (lectura +
@@ -17,6 +17,8 @@ export default async function BitacoraClientePage() {
   if (!proyecto) {
     return <SinProyecto mensaje={tf.cuentaSinProyecto} contacto={tf.contactaContacto} />
   }
+
+  await marcarVistoSeccion(supabase, "bitacora")
 
   let entradas: EntradaBitacora[] = []
   try {

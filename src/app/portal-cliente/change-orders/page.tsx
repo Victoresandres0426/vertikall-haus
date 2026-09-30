@@ -1,7 +1,7 @@
 import { PortalHeader } from "../portal-header"
 import { SinProyecto } from "../sin-proyecto"
 import { ChangeOrdersFeed } from "./change-orders-feed"
-import { cargarSesionCliente, obtenerProyectoCliente, traducirChangeOrdersFaltantes, type ChangeOrder, t } from "../_shared"
+import { cargarSesionCliente, obtenerProyectoCliente, marcarVistoSeccion, traducirChangeOrdersFaltantes, type ChangeOrder, t } from "../_shared"
 
 // Solo visible para el rol "cliente" -- colaborador_externo y
 // subcontratista no ven change orders (información contractual/de
@@ -17,6 +17,8 @@ export default async function ChangeOrdersClientePage() {
   if (!proyecto) {
     return <SinProyecto mensaje={tf.cuentaSinProyecto} contacto={tf.contactaContacto} />
   }
+
+  await marcarVistoSeccion(supabase, "change_orders")
 
   let changeOrders: ChangeOrder[] = []
   try {

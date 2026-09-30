@@ -5,6 +5,7 @@ import { AvanceChart } from "../avance-chart"
 import {
   cargarSesionCliente,
   obtenerProyectoCliente,
+  marcarVistoSeccion,
   estadoActividadLabel,
   estadoActividadLabelEn,
   formatoFecha,
@@ -40,6 +41,8 @@ export default async function CronogramaClientePage() {
   if (!proyecto) {
     return <SinProyecto mensaje={tf.cuentaSinProyecto} contacto={tf.contactaContacto} />
   }
+
+  await marcarVistoSeccion(supabase, "cronograma")
 
   const { data } = await supabase.rpc("cliente_ver_avance")
   const avance = (data ?? []) as Actividad[]

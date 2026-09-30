@@ -1,7 +1,7 @@
 import { PortalHeader } from "../portal-header"
 import { SinProyecto } from "../sin-proyecto"
 import { GaleriaFotos } from "../galeria-fotos"
-import { cargarSesionCliente, obtenerProyectoCliente, type Foto, t } from "../_shared"
+import { cargarSesionCliente, obtenerProyectoCliente, marcarVistoSeccion, type Foto, t } from "../_shared"
 
 export default async function FotosClientePage() {
   const { supabase, perfil } = await cargarSesionCliente()
@@ -13,6 +13,8 @@ export default async function FotosClientePage() {
   if (!proyecto) {
     return <SinProyecto mensaje={tf.cuentaSinProyecto} contacto={tf.contactaContacto} />
   }
+
+  await marcarVistoSeccion(supabase, "fotos")
 
   let fotos: Foto[] = []
   try {

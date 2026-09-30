@@ -56,22 +56,31 @@ export default async function PortalClientePage() {
   // Archivos completo -- eso lo filtra la RPC/RLS, no el front).
   const esProyectista = esColaborador || esSubcontratista
   const secciones = [
-    { href: "/portal-cliente/cronograma", icono: ListChecks, titulo: tf.cronogramaYAvance, sub: tf.verCronograma },
-    { href: "/portal-cliente/fotos", icono: Camera, titulo: tf.fotosDelProyecto, sub: tf.verFotos },
-    { href: "/portal-cliente/reportes", icono: ClipboardList, titulo: tf.fotosYReportes, sub: tf.verReportes },
-    { href: "/portal-cliente/bitacora", icono: NotebookPen, titulo: tf.bitacora, sub: tf.verBitacora },
+    { href: "/portal-cliente/cronograma", clave: "cronograma", icono: ListChecks, titulo: tf.cronogramaYAvance, sub: tf.verCronograma },
+    { href: "/portal-cliente/fotos", clave: "fotos", icono: Camera, titulo: tf.fotosDelProyecto, sub: tf.verFotos },
+    { href: "/portal-cliente/reportes", clave: "reportes", icono: ClipboardList, titulo: tf.fotosYReportes, sub: tf.verReportes },
+    { href: "/portal-cliente/bitacora", clave: "bitacora", icono: NotebookPen, titulo: tf.bitacora, sub: tf.verBitacora },
     ...(esProyectista
       ? [{
           href: "/portal-cliente/archivos",
+          clave: "archivos",
           icono: FolderOpen,
           titulo: esSubcontratista ? tf.planos : tf.archivos,
           sub: esSubcontratista ? tf.verPlanos : tf.verArchivos,
         }]
       : [
-          { href: "/portal-cliente/facturas", icono: Receipt, titulo: tf.facturas, sub: tf.verFacturas },
-          { href: "/portal-cliente/change-orders", icono: GitMerge, titulo: tf.changeOrders, sub: tf.verChangeOrders },
+          { href: "/portal-cliente/facturas", clave: "facturas", icono: Receipt, titulo: tf.facturas, sub: tf.verFacturas },
+          { href: "/portal-cliente/change-orders", clave: "change_orders", icono: GitMerge, titulo: tf.changeOrders, sub: tf.verChangeOrders },
         ]),
   ]
+
+  let notificaciones: Record<string, number> = {}
+  try {
+    const { data } = await supabase.rpc("portal_contar_notificaciones")
+    notificaciones = (data ?? {}) as Record<string, number>
+  } catch (e) {
+    console.error("portal_contar_notificaciones falló (¿falta correr la migración 130?):", e)
+  }
 
   return (
     <div className="min-h-screen bg-[#F7F9FC]">
@@ -156,14 +165,20 @@ export default async function PortalClientePage() {
         <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {secciones.map((s) => {
             const Icono = s.icono
+            const sinRevisar = notificaciones[s.clave] ?? 0
             return (
               <Link
                 key={s.href}
                 href={s.href}
                 className="flex items-center gap-4 bg-white border border-slate-200 rounded-2xl p-5 hover:border-[#3B72D8]/40 hover:bg-[#3B72D8]/[0.03] transition-colors"
               >
-                <div className="h-11 w-11 rounded-xl bg-[#3B72D8]/10 flex items-center justify-center shrink-0">
+                <div className="relative h-11 w-11 rounded-xl bg-[#3B72D8]/10 flex items-center justify-center shrink-0">
                   <Icono className="h-5 w-5 text-[#3B72D8]" />
+                  {sinRevisar > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                      {sinRevisar > 9 ? "9+" : sinRevisar}
+                    </span>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-slate-900">{s.titulo}</p>

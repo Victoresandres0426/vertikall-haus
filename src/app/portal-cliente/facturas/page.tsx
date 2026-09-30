@@ -6,6 +6,7 @@ import { PagosChart } from "../pagos-chart"
 import {
   cargarSesionCliente,
   obtenerProyectoCliente,
+  marcarVistoSeccion,
   descripcionFactura,
   formatoFecha,
   formatoMoneda,
@@ -26,6 +27,8 @@ export default async function FacturasClientePage() {
   if (!proyecto) {
     return <SinProyecto mensaje={tf.cuentaSinProyecto} contacto={tf.contactaContacto} />
   }
+
+  await marcarVistoSeccion(supabase, "facturas")
 
   const { data } = await supabase.rpc("cliente_ver_facturas")
   const facturas = (data ?? []) as Factura[]
