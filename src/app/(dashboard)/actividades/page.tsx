@@ -87,6 +87,26 @@ async function getProyectosConActividades(): Promise<{
     else desgloseCostoReal[c.actividad_id].otros += monto
   }
 
+  // Actividades que vienen de un Change Order (migración 132) -- para
+  // marcarlas visualmente en la lista, así se distingue de un vistazo
+  // qué no es parte del alcance original del contrato.
+  const idsActividades = (data ?? []).flatMap((p: any) =>
+    (p.procesos ?? []).flatMap((pr: any) => (pr.actividades ?? []).map((a: any) => a.id))
+  )
+
+  const coNumeroPorActividad: Record<string, string> = {}
+  if (idsActividades.length > 0) {
+    const { data: coActs } = await supabase
+      .from("change_order_actividades_creadas")
+      .select("actividad_id, change_orders ( numero )")
+      .in("actividad_id", idsActividades)
+
+    for (const r of (coActs ?? []) as any[]) {
+      const numero = r.change_orders?.numero
+      if (numero) coNumeroPorActividad[r.actividad_id] = numero
+    }
+  }
+
   const proyectos = ((data ?? []) as unknown as ProyectoConActividades[]).map((proy) => ({
     ...proy,
     procesos: (proy.procesos ?? [])
@@ -101,6 +121,7 @@ async function getProyectosConActividades(): Promise<{
             costo_real_material: desgloseCostoReal[a.id]?.material ?? 0,
             costo_real_mano_obra: desgloseCostoReal[a.id]?.mano_obra ?? 0,
             costo_real_otros: desgloseCostoReal[a.id]?.otros ?? 0,
+            co_numero: coNumeroPorActividad[a.id] ?? null,
           })),
       })),
   }))

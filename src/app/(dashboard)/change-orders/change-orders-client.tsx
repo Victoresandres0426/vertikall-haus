@@ -200,7 +200,8 @@ export function ChangeOrdersClient({
                       )}
                       {co.estado === "aprobado" && (
                         <p className="text-xs text-emerald-600 mt-1">
-                          Aprobado por el cliente — agregado al presupuesto y al cronograma
+                          Aprobado por el cliente — agregado al presupuesto y al cronograma.
+                          {" "}Se factura solo conforme se reporte avance en sus actividades (sin anticipo).
                         </p>
                       )}
                       {co.estado === "enviado_cliente" && (

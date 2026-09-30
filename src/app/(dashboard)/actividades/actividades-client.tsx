@@ -68,6 +68,10 @@ type Actividad = {
   personal_planeado: number | null
   composicion_cuadrilla: string | null
   productividad_plan_texto: string | null
+  // Si esta actividad se generó al aprobarse un Change Order (migración
+  // 132), aquí viene su número (ej. "CH.O. Radnor 001") -- para que se
+  // note a simple vista que no es parte del alcance original.
+  co_numero?: string | null
 }
 
 type Proceso = {
@@ -573,6 +577,14 @@ export function ActividadesClient({
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-mono text-xs text-slate-400">{act.codigo}</span>
                                 <span className="text-sm font-medium text-slate-800 truncate">{act.nombre}</span>
+                                {act.co_numero && (
+                                  <span
+                                    className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium"
+                                    title="Esta actividad viene de un Change Order, no del alcance original"
+                                  >
+                                    {act.co_numero}
+                                  </span>
+                                )}
                                 {act.es_critica && (
                                   <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-medium">Crítica</span>
                                 )}
