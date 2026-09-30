@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { NotebookPen, UploadCloud, X } from "lucide-react"
+import { NotebookPen, UploadCloud, X, ChevronDown } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import type { EntradaBitacora } from "../_shared"
 
@@ -50,31 +50,36 @@ export function BitacoraFeed({
           {en ? "No log entries yet." : "Todavía no hay entradas en la bitácora."}
         </p>
       ) : (
-        <div className="space-y-3">
+        <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100 overflow-hidden">
           {entradas.map((e) => (
-            <div key={e.id} className="bg-white border border-slate-200 rounded-2xl p-4">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-slate-800">{e.autor_nombre ?? "—"}</span>
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+            <details key={e.id} className="group p-4">
+              <summary className="flex items-center justify-between gap-2 cursor-pointer list-none marker:content-none [&::-webkit-details-marker]:hidden">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-semibold text-slate-800 truncate">{e.autor_nombre ?? "—"}</span>
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 shrink-0">
                     {etiquetaAutor(e, en)}
                   </span>
                 </div>
-                <span className="text-xs text-slate-400 shrink-0">{formatoFechaHora(e.created_at, en)}</span>
+                <span className="flex items-center gap-2 text-xs text-slate-400 shrink-0">
+                  {formatoFechaHora(e.created_at, en)}
+                  <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                </span>
+              </summary>
+
+              <div className="mt-3">
+                {e.nota && <p className="text-sm text-slate-700 whitespace-pre-wrap">{e.nota}</p>}
+
+                {e.fotos?.length > 0 && (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-3">
+                    {e.fotos.filter((f) => f.url).map((f, i) => (
+                      <a key={i} href={f.url} target="_blank" rel="noopener noreferrer">
+                        <img src={f.url} alt={f.nombre_archivo} className="aspect-square object-cover rounded-lg border border-slate-100" />
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
-
-              {e.nota && <p className="text-sm text-slate-700 whitespace-pre-wrap">{e.nota}</p>}
-
-              {e.fotos?.length > 0 && (
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-3">
-                  {e.fotos.filter((f) => f.url).map((f, i) => (
-                    <a key={i} href={f.url} target="_blank" rel="noopener noreferrer">
-                      <img src={f.url} alt={f.nombre_archivo} className="aspect-square object-cover rounded-lg border border-slate-100" />
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
+            </details>
           ))}
         </div>
       )}
