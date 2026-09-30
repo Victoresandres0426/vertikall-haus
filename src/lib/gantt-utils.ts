@@ -37,26 +37,42 @@ export const NOMBRES_MES = [
 export const DIA_SEMANA = ["D", "L", "M", "M", "J", "V", "S"]
 
 // Color de la barra según el estado real de la actividad -- prioridad:
-// completada (verde) > atrasada (rojo) > en progreso (ámbar) >
-// programada/no iniciada (azul). La ruta crítica ya no se distingue por
-// color (chocaría con "atrasada" en rojo) sino con un borde oscuro
-// encima del color de estado, para poder ver ambas cosas a la vez.
+// completada (verde) > en progreso (ámbar, SIEMPRE que haya avance real,
+// sin importar si ya se pasó de fecha) > atrasada -- nunca arrancó
+// (rojo) > programada/no iniciada (azul). La ruta crítica ya no se
+// distingue por color (chocaría con "atrasada" en rojo) sino con un
+// borde oscuro encima del color de estado, para poder ver ambas cosas a
+// la vez.
 //
-// "Atrasada" cubre DOS casos, no solo uno:
-//   - Ya pasó la fecha de fin plan y no está completada.
-//   - Ya pasó la fecha de INICIO plan y todavía no arrancó (sigue
-//     "no_iniciada"/"bloqueada") -- una actividad que debía haber
-//     empezado ayer y sigue sin arrancar ya está atrasada, aunque su
-//     fecha de fin todavía no haya llegado.
+// Antes "en progreso" perdía su color ámbar y se pintaba de rojo en
+// cuanto se pasaba la fecha de fin plan -- que es el caso MÁS COMÚN en
+// una obra real (casi toda actividad activa termina llevándose más
+// días de los planeados). Eso hacía que el Gantt se viera casi todo
+// rojo y no dejaba distinguir "esto se está trabajando ahora mismo" de
+// "esto nunca arrancó". Ahora el rojo se reserva para lo que de verdad
+// está detenido: nunca arrancó (sigue no_iniciada/bloqueada) y ya se
+// pasó su fecha de inicio O de fin plan. Una actividad en progreso que
+// va detrás del plan se sigue marcando (ver estaAtrasadaEnProgreso) con
+// un ⚠ dentro de la barra, sin perder el ámbar que indica que sí hay
+// trabajo activo.
 export function colorBarra(act: ActividadGanttMin, hoy: Date): string {
   if (act.estado === "completada") return "bg-emerald-500"
+  if (act.estado === "en_progreso") return "bg-amber-500"
   const inicioPlan = act.fecha_inicio_plan ? parseISO(act.fecha_inicio_plan) : null
   const finPlan = act.fecha_fin_plan ? parseISO(act.fecha_fin_plan) : null
   const noTerminoATiempo = finPlan !== null && finPlan < hoy
-  const noArrancoATiempo = act.estado !== "en_progreso" && inicioPlan !== null && inicioPlan < hoy
+  const noArrancoATiempo = inicioPlan !== null && inicioPlan < hoy
   if (noTerminoATiempo || noArrancoATiempo) return "bg-red-500"
-  if (act.estado === "en_progreso") return "bg-amber-500"
   return "bg-[#3B72D8]"
+}
+
+// Marca cuando una actividad "en progreso" (ámbar) ya se pasó de su
+// fecha de fin plan -- para resaltarlo con un ⚠ dentro de la barra sin
+// tener que sacrificar el color que dice "hay trabajo activo aquí".
+export function estaAtrasadaEnProgreso(act: ActividadGanttMin, hoy: Date): boolean {
+  if (act.estado !== "en_progreso") return false
+  const finPlan = act.fecha_fin_plan ? parseISO(act.fecha_fin_plan) : null
+  return finPlan !== null && finPlan < hoy
 }
 
 // "Hoy" en la zona horaria del proyecto (no siempre México -- ver

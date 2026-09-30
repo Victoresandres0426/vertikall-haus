@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useTransition, useEffect, type PointerEvent as ReactPointerEvent } from "react"
 import { useRouter } from "next/navigation"
 import { Link2 } from "lucide-react"
-import { parseISO, diasEntre, formatISO, colorBarra, NOMBRES_MES, DIA_SEMANA } from "@/lib/gantt-utils"
+import { parseISO, diasEntre, formatISO, colorBarra, estaAtrasadaEnProgreso, NOMBRES_MES, DIA_SEMANA } from "@/lib/gantt-utils"
 import { actualizarFechasActividad } from "../actions"
 import type { ActividadEditable, ProcesoEditable, DependenciaEditable } from "./types"
 import { DependenciasModal } from "./dependencias-modal"
@@ -377,9 +377,11 @@ export function GanttEditableClient({
                   >
                     <div
                       className={`absolute inset-0 rounded flex items-center justify-center text-white text-[8px] ${colorBarra(act, hoy)} ${act.es_critica ? "ring-2 ring-slate-900" : ""} ${soloLectura ? "" : "cursor-grab active:cursor-grabbing"}`}
-                      title={`${act.codigo} — ${act.nombre}\n${formatISO(addDays(rangeStart, inicioIdx))} a ${formatISO(addDays(rangeStart, finIdx))}`}
+                      title={`${act.codigo} — ${act.nombre}\n${formatISO(addDays(rangeStart, inicioIdx))} a ${formatISO(addDays(rangeStart, finIdx))}${estaAtrasadaEnProgreso(act, hoy) ? "\n⚠ En progreso, detrás del plan" : ""}`}
                       {...handlersPara(act, "move")}
-                    />
+                    >
+                      {estaAtrasadaEnProgreso(act, hoy) ? "⚠" : ""}
+                    </div>
                     {!soloLectura && (
                       <>
                         <div className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize" {...handlersPara(act, "resize-l")} />

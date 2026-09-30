@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Move } from "lucide-react"
 import { BotonImprimir } from "./boton-imprimir"
 import { BotonRecalcular } from "./boton-recalcular"
-import { parseISO, diasEntre, colorBarra, hoyMexico, NOMBRES_MES, DIA_SEMANA } from "@/lib/gantt-utils"
+import { parseISO, diasEntre, colorBarra, estaAtrasadaEnProgreso, hoyMexico, NOMBRES_MES, DIA_SEMANA } from "@/lib/gantt-utils"
 
 type Actividad = {
   id: string
@@ -153,8 +153,9 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
               <div className="flex items-center gap-4 text-[10px] text-slate-500 mt-1 flex-wrap">
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-[#3B72D8] rounded-sm" /> Programada</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-amber-500 rounded-sm" /> En progreso</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-amber-500 rounded-sm" />⚠ En progreso, detrás del plan</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-emerald-500 rounded-sm" /> Completada</span>
-                <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-red-500 rounded-sm" /> Atrasada (no arrancó o no terminó a tiempo)</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-red-500 rounded-sm" /> Atrasada (nunca arrancó)</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-[#3B72D8] rounded-sm border-2 border-slate-900" /> Ruta crítica</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2.5 bg-slate-200 rounded-sm" /> Fin de semana</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-0.5 h-2.5 bg-violet-600" /> Hoy</span>
@@ -231,7 +232,7 @@ export default async function GanttPage({ params }: { params: Promise<{ id: stri
                                 borderBottomRightRadius: despues ? 0 : 4,
                               }}
                             >
-                              {antes ? "◀" : ""}{despues ? "▶" : ""}
+                              {antes ? "◀" : ""}{estaAtrasadaEnProgreso(act, hoy) ? "⚠" : ""}{despues ? "▶" : ""}
                             </div>
                           </td>
                           {endIdx < nDias - 1 && <td colSpan={nDias - 1 - endIdx} />}
