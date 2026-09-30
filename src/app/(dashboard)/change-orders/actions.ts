@@ -5,6 +5,67 @@ import { revalidatePath } from "next/cache"
 
 const ROLES_GESTION = ["project_manager", "dueno", "superadmin", "administrador"]
 
+type RenglonInput = {
+  proceso_id: string
+  nombre: string
+  descripcion?: string | null
+  costo_material: number
+  costo_mano_obra: number
+  duracion_dias: number // acepta decimales -- ver comentario en migración 132
+}
+
+// Los renglones viajan como JSON en un campo oculto del formulario
+// (formData no soporta arrays de objetos directamente). Son el
+// desglose interno -- nunca se le muestra al cliente -- de qué
+// actividades/divisiones cubre el CO y cuánto de material/mano de
+// obra cada una. Si vienen vacíos, el CO se sigue creando igual (modo
+// "monto global" de siempre) y decidir_change_order() usará el
+// comportamiento legacy al aprobarse.
+function parseRenglones(formData: FormData): RenglonInput[] {
+  const raw = formData.get("renglones") as string | null
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((r) => r && typeof r === "object" && r.proceso_id && r.nombre?.trim())
+      .map((r) => ({
+        proceso_id: String(r.proceso_id),
+        nombre: String(r.nombre).trim(),
+        descripcion: r.descripcion ? String(r.descripcion).trim() : null,
+        costo_material: Number(r.costo_material) || 0,
+        costo_mano_obra: Number(r.costo_mano_obra) || 0,
+        duracion_dias: Math.max(0.01, Number(r.duracion_dias) || 1),
+      }))
+  } catch {
+    return []
+  }
+}
+
+async function guardarRenglones(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  changeOrderId: string,
+  renglones: RenglonInput[]
+) {
+  // Reemplaza el set completo -- más simple y seguro que hacer diff,
+  // y el volumen por CO es mínimo (unas pocas filas).
+  await supabase.from("change_order_renglones").delete().eq("change_order_id", changeOrderId)
+  if (renglones.length === 0) return
+  const { error } = await supabase.from("change_order_renglones").insert(
+    renglones.map((r, i) => ({
+      change_order_id: changeOrderId,
+      proceso_id: r.proceso_id,
+      nombre: r.nombre,
+      descripcion: r.descripcion,
+      costo_material: r.costo_material,
+      costo_mano_obra: r.costo_mano_obra,
+      duracion_dias: r.duracion_dias,
+      orden: i + 1,
+    }))
+  )
+  if (error) console.error("guardarRenglones error:", error)
+}
+
 export async function crearChangeOrder(formData: FormData): Promise<{ error?: string }> {
   const supabase = await createClient()
 
@@ -47,7 +108,15 @@ export async function crearChangeOrder(formData: FormData): Promise<{ error?: st
   const impactoDiasRaw = formData.get("impacto_dias") as string
   const impacto_dias = impactoDiasRaw ? parseInt(impactoDiasRaw, 10) : 0
 
-  const { error } = await supabase.from("change_orders").insert({
+  const renglones = parseRenglones(formData)
+  if (renglones.length > 0) {
+    const sumaRenglones = renglones.reduce((s, r) => s + r.costo_material + r.costo_mano_obra, 0)
+    if (Math.abs(sumaRenglones - (isNaN(costo_directo) ? 0 : costo_directo)) > 0.01) {
+      return { error: `El desglose por actividad (${sumaRenglones.toFixed(2)}) no coincide con el costo directo (${(isNaN(costo_directo) ? 0 : costo_directo).toFixed(2)}). Ajusta uno de los dos.` }
+    }
+  }
+
+  const { data: nuevoCO, error } = await supabase.from("change_orders").insert({
     proyecto_id,
     numero: (formData.get("numero") as string) || null,
     titulo: titulo.trim(),
@@ -60,12 +129,14 @@ export async function crearChangeOrder(formData: FormData): Promise<{ error?: st
     costo_margen,
     impacto_costo,
     impacto_dias: isNaN(impacto_dias) ? 0 : impacto_dias,
-  })
+  }).select("id").single()
 
-  if (error) {
+  if (error || !nuevoCO) {
     console.error("crearChangeOrder error:", error)
     return { error: "Error al guardar. Intenta de nuevo." }
   }
+
+  await guardarRenglones(supabase, nuevoCO.id, renglones)
 
   revalidatePath("/change-orders")
   return {}
@@ -125,6 +196,14 @@ export async function actualizarChangeOrder(id: string, formData: FormData): Pro
   const impactoDiasRaw = formData.get("impacto_dias") as string
   const impacto_dias = impactoDiasRaw ? parseInt(impactoDiasRaw, 10) : 0
 
+  const renglones = parseRenglones(formData)
+  if (renglones.length > 0) {
+    const sumaRenglones = renglones.reduce((s, r) => s + r.costo_material + r.costo_mano_obra, 0)
+    if (Math.abs(sumaRenglones - (isNaN(costo_directo) ? 0 : costo_directo)) > 0.01) {
+      return { error: `El desglose por actividad (${sumaRenglones.toFixed(2)}) no coincide con el costo directo (${(isNaN(costo_directo) ? 0 : costo_directo).toFixed(2)}). Ajusta uno de los dos.` }
+    }
+  }
+
   const { error } = await supabase
     .from("change_orders")
     .update({
@@ -145,6 +224,8 @@ export async function actualizarChangeOrder(id: string, formData: FormData): Pro
     console.error("actualizarChangeOrder error:", error)
     return { error: "Error al guardar. Intenta de nuevo." }
   }
+
+  await guardarRenglones(supabase, id, renglones)
 
   revalidatePath("/change-orders")
   return {}

@@ -25,7 +25,25 @@ export type ChangeOrder = {
   aprobado_at: string | null
   proyecto_id: string
   proyectos: { nombre: string; codigo: string } | null
+  change_order_renglones?: RenglonCO[]
 }
+
+// Desglose interno (nunca visible al cliente) de en qué división y con
+// qué costo de material/mano de obra se va a registrar este CO cuando
+// se apruebe -- así el presupuesto y el cronograma quedan igual que
+// cualquier otra actividad, en vez de una sola línea de "Subcontrato".
+export type RenglonCO = {
+  id?: string
+  proceso_id: string
+  nombre: string
+  descripcion?: string | null
+  costo_material: number
+  costo_mano_obra: number
+  duracion_dias: number
+  orden?: number
+}
+
+export type ProcesoOpcion = { id: string; codigo: string; nombre: string }
 
 export type ProyectoOpcion = { id: string; nombre: string; codigo: string; margen_co_pct: number }
 
@@ -57,10 +75,12 @@ export function ChangeOrdersClient({
   changeOrdersIniciales,
   proyectos,
   puedeCrear,
+  procesosPorProyecto,
 }: {
   changeOrdersIniciales: ChangeOrder[]
   proyectos: ProyectoOpcion[]
   puedeCrear: boolean
+  procesosPorProyecto: Record<string, ProcesoOpcion[]>
 }) {
   const [changeOrders] = useState<ChangeOrder[]>(changeOrdersIniciales)
   const [showModal, setShowModal] = useState(false)
@@ -254,10 +274,10 @@ export function ChangeOrdersClient({
       )}
 
       {showModal && (
-        <ModalRegistrarChangeOrder proyectos={proyectos} onClose={() => setShowModal(false)} />
+        <ModalRegistrarChangeOrder proyectos={proyectos} procesosPorProyecto={procesosPorProyecto} onClose={() => setShowModal(false)} />
       )}
       {editCO && (
-        <ModalRegistrarChangeOrder proyectos={proyectos} onClose={() => setEditCO(null)} editCO={editCO} />
+        <ModalRegistrarChangeOrder proyectos={proyectos} procesosPorProyecto={procesosPorProyecto} onClose={() => setEditCO(null)} editCO={editCO} />
       )}
     </div>
   )
@@ -265,10 +285,12 @@ export function ChangeOrdersClient({
 
 function ModalRegistrarChangeOrder({
   proyectos,
+  procesosPorProyecto,
   onClose,
   editCO,
 }: {
   proyectos: ProyectoOpcion[]
+  procesosPorProyecto: Record<string, ProcesoOpcion[]>
   onClose: () => void
   editCO?: ChangeOrder
 }) {
@@ -276,17 +298,39 @@ function ModalRegistrarChangeOrder({
   const [error, setError] = useState("")
   const [proyectoId, setProyectoId] = useState(editCO?.proyecto_id ?? "")
   const [costoDirecto, setCostoDirecto] = useState(editCO?.costo_directo != null ? String(editCO.costo_directo) : "")
+  const [renglones, setRenglones] = useState<RenglonCO[]>(
+    (editCO?.change_order_renglones ?? []).slice().sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+  )
 
   const proyectoSel = proyectos.find((p) => p.id === proyectoId)
   const margenPct = proyectoSel?.margen_co_pct ?? 0
   const directoNum = parseFloat(costoDirecto) || 0
   const margenNum = directoNum * (margenPct / 100)
   const totalNum = directoNum + margenNum
+  const procesos = procesosPorProyecto[proyectoId] ?? []
+  const sumaRenglones = renglones.reduce((s, r) => s + (r.costo_material || 0) + (r.costo_mano_obra || 0), 0)
+  const renglonesCuadran = renglones.length === 0 || Math.abs(sumaRenglones - directoNum) < 0.01
+
+  const agregarRenglon = () => {
+    setRenglones((prev) => [
+      ...prev,
+      { proceso_id: procesos[0]?.id ?? "", nombre: "", costo_material: 0, costo_mano_obra: 0, duracion_dias: 1 },
+    ])
+  }
+  const quitarRenglon = (i: number) => setRenglones((prev) => prev.filter((_, idx) => idx !== i))
+  const actualizarRenglon = (i: number, patch: Partial<RenglonCO>) => {
+    setRenglones((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
+  }
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError("")
+    if (!renglonesCuadran) {
+      setError(`El desglose por actividad (${formatMonto(sumaRenglones)}) no coincide con el costo directo (${formatMonto(directoNum)}).`)
+      return
+    }
     const formData = new FormData(e.currentTarget)
+    formData.set("renglones", JSON.stringify(renglones.filter((r) => r.proceso_id && r.nombre.trim())))
 
     startTransition(async () => {
       const result = editCO
@@ -411,6 +455,98 @@ function ModalRegistrarChangeOrder({
                 <span>Total (Impacto en costo)</span>
                 <span>{formatMonto(totalNum)}</span>
               </div>
+            </div>
+          )}
+
+          {proyectoId && (
+            <div className="border border-slate-200 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-medium text-slate-700">
+                  Desglose interno por actividad (no lo ve el cliente)
+                </label>
+                <button
+                  type="button"
+                  onClick={agregarRenglon}
+                  disabled={procesos.length === 0}
+                  className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900 disabled:opacity-40"
+                >
+                  <Plus className="h-3 w-3" /> Agregar renglón
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Opcional, pero recomendado: reparte el costo directo en las actividades/divisiones reales.
+                Al aprobarse, cada renglón entra al presupuesto y al cronograma (inicio = mañana) en su
+                división correspondiente, en vez de una sola línea de "Subcontrato".
+              </p>
+
+              {procesos.length === 0 && (
+                <p className="text-[11px] text-amber-600">Este proyecto no tiene divisiones (procesos) registradas todavía.</p>
+              )}
+
+              {renglones.map((r, i) => (
+                <div key={i} className="border border-slate-100 rounded-lg p-2 space-y-2 bg-slate-50/50">
+                  <div className="flex gap-2">
+                    <select
+                      value={r.proceso_id}
+                      onChange={(e) => actualizarRenglon(i, { proceso_id: e.target.value })}
+                      className="flex-1 border border-slate-200 rounded px-2 py-1 text-xs bg-white"
+                    >
+                      <option value="">División...</option>
+                      {procesos.map((p) => (
+                        <option key={p.id} value={p.id}>{p.codigo} — {p.nombre}</option>
+                      ))}
+                    </select>
+                    <button type="button" onClick={() => quitarRenglon(i)} className="text-slate-400 hover:text-red-600">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <input
+                    value={r.nombre}
+                    onChange={(e) => actualizarRenglon(i, { nombre: e.target.value })}
+                    placeholder="Nombre de la actividad"
+                    className="w-full border border-slate-200 rounded px-2 py-1 text-xs bg-white"
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-slate-400">Material</label>
+                      <input
+                        type="number" step="0.01"
+                        value={r.costo_material || ""}
+                        onChange={(e) => actualizarRenglon(i, { costo_material: parseFloat(e.target.value) || 0 })}
+                        className="w-full border border-slate-200 rounded px-2 py-1 text-xs bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400">Mano de obra</label>
+                      <input
+                        type="number" step="0.01"
+                        value={r.costo_mano_obra || ""}
+                        onChange={(e) => actualizarRenglon(i, { costo_mano_obra: parseFloat(e.target.value) || 0 })}
+                        className="w-full border border-slate-200 rounded px-2 py-1 text-xs bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400">Días</label>
+                      <input
+                        type="number" step="0.01" min={0.01}
+                        value={r.duracion_dias || 1}
+                        onChange={(e) => actualizarRenglon(i, { duracion_dias: Math.max(0.01, parseFloat(e.target.value) || 1) })}
+                        className="w-full border border-slate-200 rounded px-2 py-1 text-xs bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {renglones.length > 0 && (
+                <div className={cn(
+                  "flex justify-between text-xs font-medium pt-1 border-t border-slate-200",
+                  renglonesCuadran ? "text-slate-600" : "text-red-600"
+                )}>
+                  <span>Suma del desglose</span>
+                  <span>{formatMonto(sumaRenglones)} {!renglonesCuadran && `(debe ser ${formatMonto(directoNum)})`}</span>
+                </div>
+              )}
             </div>
           )}
 
