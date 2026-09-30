@@ -1,7 +1,7 @@
 import { PortalHeader } from "../portal-header"
 import { SinProyecto } from "../sin-proyecto"
 import { ChangeOrdersFeed } from "./change-orders-feed"
-import { cargarSesionCliente, obtenerProyectoCliente, type ChangeOrder, t } from "../_shared"
+import { cargarSesionCliente, obtenerProyectoCliente, traducirChangeOrdersFaltantes, type ChangeOrder, t } from "../_shared"
 
 // Solo visible para el rol "cliente" -- colaborador_externo y
 // subcontratista no ven change orders (información contractual/de
@@ -24,6 +24,20 @@ export default async function ChangeOrdersClientePage() {
     changeOrders = (data ?? []) as ChangeOrder[]
   } catch (e) {
     console.error("portal_ver_change_orders falló (¿falta correr la migración 127?):", e)
+  }
+
+  if (facturaEnIngles) {
+    await traducirChangeOrdersFaltantes(supabase, changeOrders)
+    // Sustituye el texto libre (título/descripción/motivo de rechazo)
+    // por su versión en inglés ya traducida/cacheada -- las etiquetas
+    // fijas de la interfaz ya viajan traducidas en `tf`, esto cubre lo
+    // que el equipo escribió en español al crear el CO.
+    changeOrders = changeOrders.map((co) => ({
+      ...co,
+      titulo: co.titulo_en || co.titulo,
+      descripcion: co.descripcion_en || co.descripcion,
+      motivo_rechazo: co.motivo_rechazo_en || co.motivo_rechazo,
+    }))
   }
 
   return (

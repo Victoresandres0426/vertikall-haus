@@ -136,7 +136,9 @@ export type ChangeOrder = {
   id: string
   numero: string | null
   titulo: string
+  titulo_en?: string | null
   descripcion: string | null
+  descripcion_en?: string | null
   solicitado_por: string | null
   estado: string
   costo_directo: number | null
@@ -145,6 +147,7 @@ export type ChangeOrder = {
   impacto_costo: number
   impacto_dias: number
   motivo_rechazo: string | null
+  motivo_rechazo_en?: string | null
   enviado_at: string | null
   decidido_at: string | null
   created_at: string
@@ -541,5 +544,79 @@ export async function traducirReportesFaltantes(
     }
   } catch (e) {
     console.error("traducirReportesFaltantes falló:", e)
+  }
+}
+
+// Mismo mecanismo que traducirReportesFaltantes, pero para el
+// título/descripción/motivo de rechazo de un Change Order -- texto
+// libre que escribe el equipo en español, no un catálogo fijo. Se
+// traduce con IA la primera vez que se ve en inglés y se cachea
+// (titulo_en, descripcion_en, motivo_rechazo_en) para no repetir la
+// traducción en cada visita. Si falla, se ignora en silencio y el
+// portal muestra el texto en español para esos CO.
+export async function traducirChangeOrdersFaltantes(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  changeOrders: ChangeOrder[]
+): Promise<void> {
+  const faltantes = changeOrders.filter(
+    (co) =>
+      (co.titulo && !co.titulo_en) ||
+      (co.descripcion && !co.descripcion_en) ||
+      (co.motivo_rechazo && !co.motivo_rechazo_en)
+  )
+  if (faltantes.length === 0) return
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return
+
+  try {
+    const lista = faltantes.map((co) => ({
+      id: co.id,
+      titulo: co.titulo,
+      descripcion: co.descripcion,
+      motivo_rechazo: co.motivo_rechazo,
+    }))
+    const respuesta = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-5",
+        max_tokens: 8192,
+        system: `Eres un traductor de change orders (órdenes de cambio) de un proyecto de construcción (español -> inglés) para el cliente dueño del proyecto. Recibes un array JSON de objetos {id, titulo, descripcion, motivo_rechazo} (descripcion y motivo_rechazo pueden venir null). Devuelve ÚNICAMENTE un JSON válido (sin texto antes ni después, sin markdown), con esta forma exacta: { "traducciones": [ { "id": string, "titulo_en": string, "descripcion_en": string | null, "motivo_rechazo_en": string | null } ] }. Si "descripcion" o "motivo_rechazo" venía null, su traducción también debe ser null. Traduce con el tono profesional y directo que usaría un contratista general en Estados Unidos.`,
+        messages: [{ role: "user", content: JSON.stringify(lista) }],
+      }),
+    })
+    if (!respuesta.ok) return
+
+    const json = await respuesta.json()
+    const bloques: Array<{ type?: string; text?: string }> = Array.isArray(json?.content) ? json.content : []
+    const texto = bloques.find((b) => b.type === "text")?.text ?? ""
+    let parsed: {
+      traducciones?: { id: string; titulo_en: string; descripcion_en: string | null; motivo_rechazo_en: string | null }[]
+    }
+    try {
+      parsed = JSON.parse(texto)
+    } catch {
+      const match = texto.match(/\{[\s\S]*\}/)
+      if (!match) return
+      parsed = JSON.parse(match[0])
+    }
+
+    for (const t of parsed.traducciones ?? []) {
+      const co = faltantes.find((c) => c.id === t.id)
+      if (!co) continue
+      co.titulo_en = t.titulo_en ?? null
+      co.descripcion_en = t.descripcion_en ?? null
+      co.motivo_rechazo_en = t.motivo_rechazo_en ?? null
+      // Fire-and-forget: cachea la traducción, no bloquea el render de esta visita.
+      supabase.rpc("cliente_guardar_traduccion_co", {
+        p_id: t.id,
+        p_titulo_en: t.titulo_en ?? null,
+        p_descripcion_en: t.descripcion_en ?? null,
+        p_motivo_rechazo_en: t.motivo_rechazo_en ?? null,
+      }).then(() => {})
+    }
+  } catch (e) {
+    console.error("traducirChangeOrdersFaltantes falló:", e)
   }
 }
