@@ -193,9 +193,10 @@ const ZONAS_HORARIAS_VALIDAS = [
   "America/Cancun",
 ]
 
-// Margen de Utilidad+OH que se aplica automáticamente sobre el costo
-// directo (material+mano de obra) al registrar un Change Order (migración
-// 126) -- mismo candado de permisos que el resto de los campos de la
+// % de Indirectos+Contingencia+Margen que se aplica automáticamente
+// sobre el costo directo (material+mano de obra) al registrar un Change
+// Order (migración 126) -- mismo candado de permisos que el resto de los
+// campos de la
 // ficha del proyecto.
 export async function actualizarMargenCO(proyectoId: string, margenPct: number): Promise<{ error?: string }> {
   const supabase = await createClient()

@@ -159,7 +159,7 @@ export function ChangeOrdersClient({
                           </p>
                           {co.costo_directo != null && co.costo_margen != null && (
                             <p className="text-[11px] text-slate-400">
-                              Directo {formatMXN(co.costo_directo)} + Margen ({co.margen_pct_aplicado}%) {formatMXN(co.costo_margen)}
+                              Directo {formatMXN(co.costo_directo)} + Indirectos/Contingencia/Margen ({co.margen_pct_aplicado}%) {formatMXN(co.costo_margen)}
                             </p>
                           )}
                         </div>
@@ -321,7 +321,7 @@ function ModalRegistrarChangeOrder({
                 <span className="font-medium text-slate-700">{formatMXN(directoNum)}</span>
               </div>
               <div className="flex justify-between text-slate-500">
-                <span>Margen (Utilidad + OH) — {margenPct}%</span>
+                <span>Indirectos + Contingencia + Margen — {margenPct}%</span>
                 <span className="font-medium text-slate-700">{formatMXN(margenNum)}</span>
               </div>
               <div className="flex justify-between pt-1 border-t border-slate-200 font-semibold text-slate-900">

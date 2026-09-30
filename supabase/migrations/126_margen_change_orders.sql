@@ -1,18 +1,19 @@
 -- Change Orders: separar costo directo (material+mano de obra, lo que
--- captura el usuario) del margen de utilidad+OH que se calcula
--- automáticamente sobre ese directo -- mismo criterio que ya usa el
--- presupuesto base del proyecto (ver PRESUPUESTO RADNOR +5%.pdf:
--- "MARGEN CONTRATISTA (Utilidad + OH)" ≈ 20.91% sobre costos directos).
+-- captura el usuario) del % de indirectos+contingencia+margen que se
+-- calcula automáticamente sobre ese directo -- mismo criterio que ya usa
+-- el presupuesto base del proyecto (ver PRESUPUESTO RADNOR +5%.pdf), pero
+-- fijado a 25% en vez del ~30.96% que salía de sumar exactamente
+-- Indirectos+Contingencia+Margen de ese presupuesto.
 --
 -- El % vive por proyecto (cada contrato puede tener un margen distinto
 -- pactado con el cliente) y queda fijo -- no se recalcula solo, el
 -- dueño/PM lo ajusta a mano en la ficha del proyecto si cambia.
 
 ALTER TABLE proyectos
-  ADD COLUMN IF NOT EXISTS margen_co_pct NUMERIC(5,2) NOT NULL DEFAULT 20.91;
+  ADD COLUMN IF NOT EXISTS margen_co_pct NUMERIC(5,2) NOT NULL DEFAULT 25.00;
 
 COMMENT ON COLUMN proyectos.margen_co_pct IS
-  'Porcentaje de Utilidad+OH que se aplica automáticamente sobre el costo directo (material+mano de obra) al registrar un Change Order.';
+  'Porcentaje de Indirectos+Contingencia+Margen que se aplica automáticamente sobre el costo directo (material+mano de obra) al registrar un Change Order.';
 
 -- costo_directo: lo que el usuario captura (material + mano de obra).
 -- margen_pct_aplicado / costo_margen: quedan congelados al momento de
