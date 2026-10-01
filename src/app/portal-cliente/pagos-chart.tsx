@@ -1,11 +1,33 @@
 "use client"
 
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from "recharts"
 
 export type Factura = {
   fecha_emision: string | null
   monto: number
   monto_cobrado: number
+}
+
+// Formato corto para el eje y las etiquetas dentro de las barras --
+// con decimales cuando hace falta (ej. "$3.3k") en vez de redondear a
+// miles enteros, que con montos chicos (un solo mes, pocas facturas)
+// terminaba mostrando el mismo "$0k"/"$3k" para valores bien distintos.
+function formatoCortoMXN(n: number) {
+  const v = Number(n)
+  if (Math.abs(v) >= 1000) return `$${(v / 1000).toFixed(1)}k`
+  return `$${Math.round(v)}`
+}
+
+// Las etiquetas dentro de la barra solo caben si la barra mide lo
+// suficiente -- si no, recharts las dejaría encimadas con el borde.
+function EtiquetaDentroDeBarra(props: any) {
+  const { x, y, width, height, value } = props
+  if (value == null || height == null || height < 18) return null
+  return (
+    <text x={x + width / 2} y={y + 14} textAnchor="middle" fontSize={10} fontWeight={600} fill="#ffffff">
+      {formatoCortoMXN(value)}
+    </text>
+  )
 }
 
 function agruparPorMes(facturas: Factura[], en: boolean) {
@@ -53,17 +75,21 @@ export function PagosChart({ facturas, en, label }: { facturas: Factura[]; en: b
       </div>
       <div className="h-40">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={datos} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+          <BarChart data={datos} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="mes" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={45}
-              tickFormatter={(v) => `$${Math.round(Number(v) / 1000)}k`} />
+            <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={56}
+              tickFormatter={formatoCortoMXN} />
             <Tooltip
               formatter={(value) => Number(value).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}
               contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }}
             />
-            <Bar dataKey="facturado" fill="#93b4ea" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="pagado" fill="#10b981" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="facturado" fill="#93b4ea" radius={[4, 4, 0, 0]}>
+              <LabelList dataKey="facturado" content={EtiquetaDentroDeBarra} />
+            </Bar>
+            <Bar dataKey="pagado" fill="#10b981" radius={[4, 4, 0, 0]}>
+              <LabelList dataKey="pagado" content={EtiquetaDentroDeBarra} />
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>

@@ -6,13 +6,31 @@
 // construido?" -- si la barra de facturado crece mucho más rápido que
 // la línea de avance, es una señal de alerta para el cliente.
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList,
 } from "recharts"
 
 export type PuntoFacturadoAvance = {
   mes: string
   facturadoAcumulado: number
   avancePct: number | null
+}
+
+// Mismo formato corto que el gráfico de Pagos -- con decimales (ej.
+// "$3.3k") en vez de redondear a miles enteros.
+function formatoCortoMXN(n: number) {
+  const v = Number(n)
+  if (Math.abs(v) >= 1000) return `$${(v / 1000).toFixed(1)}k`
+  return `$${Math.round(v)}`
+}
+
+function EtiquetaDentroDeBarra(props: any) {
+  const { x, y, width, height, value } = props
+  if (value == null || height == null || height < 18) return null
+  return (
+    <text x={x + width / 2} y={y + 14} textAnchor="middle" fontSize={10} fontWeight={600} fill="#ffffff">
+      {formatoCortoMXN(value)}
+    </text>
+  )
 }
 
 // Junta, mes a mes, el facturado acumulado con el % de avance real más
@@ -91,7 +109,7 @@ export function FacturadoAvanceChart({
       </div>
       <div className="h-44">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={datos} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+          <ComposedChart data={datos} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="mes" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
             <YAxis
@@ -99,8 +117,8 @@ export function FacturadoAvanceChart({
               tick={{ fontSize: 10, fill: "#94a3b8" }}
               axisLine={false}
               tickLine={false}
-              width={45}
-              tickFormatter={(v) => `$${Math.round(Number(v) / 1000)}k`}
+              width={56}
+              tickFormatter={formatoCortoMXN}
             />
             <YAxis
               yAxisId="pct"
@@ -120,7 +138,9 @@ export function FacturadoAvanceChart({
               }
               contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }}
             />
-            <Bar yAxisId="monto" dataKey="facturadoAcumulado" fill="#93b4ea" radius={[4, 4, 0, 0]} />
+            <Bar yAxisId="monto" dataKey="facturadoAcumulado" fill="#93b4ea" radius={[4, 4, 0, 0]}>
+              <LabelList dataKey="facturadoAcumulado" content={EtiquetaDentroDeBarra} />
+            </Bar>
             <Line
               yAxisId="pct"
               type="monotone"
