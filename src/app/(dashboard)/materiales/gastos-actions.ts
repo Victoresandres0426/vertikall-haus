@@ -359,6 +359,76 @@ export async function asignarPartidaLinea(lineaId: string, partidaId: string | n
   return {}
 }
 
+// Divide una línea de gasto entre varias actividades -- caso típico: un
+// mismo material de una factura (ej. un bulto de tornillos, una cubeta de
+// pintura) en realidad se usó en más de una actividad. Antes solo se
+// podía asignar UNA actividad por línea, así que esa actividad se
+// sobregiraba con el monto completo mientras las demás se quedaban sin
+// ese gasto. Esto reemplaza la línea original por N líneas nuevas (una
+// por actividad), cada una con su propio monto/cantidad proporcional --
+// la suma de las partes sigue siendo exactamente el monto original, así
+// que el total de la factura no cambia.
+export type SplitActividad = { actividadId: string; monto: number }
+
+export async function dividirLineaGasto(lineaId: string, splits: SplitActividad[]): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  if (splits.length < 2) return { error: "Agrega al menos dos actividades para dividir el gasto." }
+  if (splits.some((s) => !s.actividadId || !(s.monto > 0))) {
+    return { error: "Cada división necesita una actividad y un monto mayor a cero." }
+  }
+
+  const { data: original, error: errOriginal } = await supabase
+    .from("costos_reales")
+    .select("proyecto_id, factura_id, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, fecha, aprobado")
+    .eq("id", lineaId)
+    .single()
+
+  if (errOriginal || !original) {
+    return { error: "No se encontró la línea a dividir." }
+  }
+
+  const sumaSplits = splits.reduce((s, x) => s + x.monto, 0)
+  if (Math.abs(sumaSplits - (original.monto ?? 0)) > 0.02) {
+    return { error: `La suma de las divisiones (${sumaSplits.toFixed(2)}) no coincide con el monto original (${(original.monto ?? 0).toFixed(2)}). Ajusta los montos.` }
+  }
+
+  const factor = (monto: number) => (original.monto ? monto / original.monto : 0)
+
+  const nuevasLineas = splits.map((s) => ({
+    proyecto_id: original.proyecto_id,
+    factura_id: original.factura_id,
+    actividad_id: s.actividadId,
+    partida_id: null,
+    tipo_recurso: original.tipo_recurso,
+    descripcion: original.descripcion,
+    unidad: original.unidad,
+    cantidad: original.cantidad != null ? Math.round(original.cantidad * factor(s.monto) * 1000) / 1000 : null,
+    precio_unitario: original.precio_unitario,
+    tax: original.tax != null ? Math.round(original.tax * factor(s.monto) * 100) / 100 : null,
+    monto: s.monto,
+    fecha: original.fecha,
+    aprobado: original.aprobado,
+  }))
+
+  const { error: errInsert } = await supabase.from("costos_reales").insert(nuevasLineas)
+  if (errInsert) {
+    console.error("dividirLineaGasto insert:", errInsert)
+    return { error: "No se pudo crear el desglose. Intenta de nuevo." }
+  }
+
+  const { error: errDelete } = await supabase.from("costos_reales").delete().eq("id", lineaId)
+  if (errDelete) {
+    console.error("dividirLineaGasto delete:", errDelete)
+    return { error: "Se crearon las líneas divididas, pero no se pudo borrar la línea original -- revísala manualmente." }
+  }
+
+  revalidarTodo()
+  return {}
+}
+
 // ── Análisis de la foto del recibo con IA ────────────────────────
 // Mismo patrón que src/app/(dashboard)/proyectos/importar/actions.ts
 // (fetch directo a la API de Anthropic con la misma ANTHROPIC_API_KEY ya

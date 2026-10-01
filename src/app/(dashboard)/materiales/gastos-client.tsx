@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useTransition } from "react"
-import { Receipt, Plus, X, Trash2, Camera, RefreshCw, AlertTriangle, Pencil, Check } from "lucide-react"
+import { Receipt, Plus, X, Trash2, Camera, RefreshCw, AlertTriangle, Pencil, Check, Scissors } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
@@ -15,8 +15,10 @@ import {
   eliminarLineaGasto,
   actualizarFacturaGasto,
   descartarAvisoDuplicado,
+  dividirLineaGasto,
   type LineaGastoInput,
   type FacturaActualizada,
+  type SplitActividad,
 } from "./gastos-actions"
 
 export type ActividadOpcion = {
@@ -189,6 +191,7 @@ export function GastosClient({
   const [reintentando, setReintentando] = useState<string | null>(null)
   const [editandoLinea, setEditandoLinea] = useState<{ lineaId: string; draft: LineaEditDraft } | null>(null)
   const [editandoHeader, setEditandoHeader] = useState<{ facturaId: string; lugar: string; fecha: string; referencia: string } | null>(null)
+  const [dividiendoLinea, setDividiendoLinea] = useState<{ facturaId: string; linea: LineaCostoReal } | null>(null)
   const [isPending, startTransition] = useTransition()
 
   useEffect(() => setFacturas(facturasIniciales), [facturasIniciales])
@@ -369,6 +372,22 @@ export function GastosClient({
     startTransition(async () => {
       const res = await eliminarLineaGasto(lineaId)
       if (res.error) alert(res.error)
+    })
+  }
+
+  // Reparte una línea entre varias actividades -- la línea original
+  // desaparece y en su lugar quedan N líneas nuevas, cada una con su
+  // propia actividad y su parte proporcional del monto. El total de la
+  // factura no cambia, solo cómo se reparte entre actividades.
+  const handleDividirLinea = (facturaId: string, splits: SplitActividad[]) => {
+    startTransition(async () => {
+      const res = await dividirLineaGasto(dividiendoLinea!.linea.id, splits)
+      if (res.error) {
+        alert(res.error)
+        return
+      }
+      setDividiendoLinea(null)
+      window.location.reload()
     })
   }
 
@@ -742,6 +761,13 @@ export function GastosClient({
                                             <button onClick={() => iniciarEdicionLinea(l)} className="text-slate-300 hover:text-slate-700">
                                               <Pencil className="h-3.5 w-3.5" />
                                             </button>
+                                            <button
+                                              onClick={() => setDividiendoLinea({ facturaId: f.id, linea: l })}
+                                              className="text-slate-300 hover:text-slate-700"
+                                              title="Dividir este gasto entre varias actividades"
+                                            >
+                                              <Scissors className="h-3.5 w-3.5" />
+                                            </button>
                                             <button onClick={() => handleEliminarLinea(f.id, l.id)} className="text-slate-300 hover:text-red-500">
                                               <Trash2 className="h-3.5 w-3.5" />
                                             </button>
@@ -803,6 +829,16 @@ export function GastosClient({
             handleFotoSubida(facturaId)
             setShowModalFoto(false)
           }}
+        />
+      )}
+
+      {dividiendoLinea && (
+        <ModalDividirLinea
+          linea={dividiendoLinea.linea}
+          actividadesOpciones={actividadesOpciones}
+          isPending={isPending}
+          onClose={() => setDividiendoLinea(null)}
+          onConfirmar={(splits) => handleDividirLinea(dividiendoLinea.facturaId, splits)}
         />
       )}
     </div>
@@ -935,6 +971,146 @@ function ModalSubirFoto({
             />
           </label>
         )}
+      </div>
+    </div>
+  )
+}
+
+// Reparte el monto de una línea entre varias actividades -- caso típico:
+// un material de la factura en realidad se usó en más de una actividad
+// (ej. un bulto de tornillos para dos cuartos distintos). El usuario
+// agrega renglones de "actividad + monto" y el total debe cuadrar
+// exactamente con el monto original de la línea antes de poder confirmar.
+function ModalDividirLinea({
+  linea,
+  actividadesOpciones,
+  isPending,
+  onClose,
+  onConfirmar,
+}: {
+  linea: LineaCostoReal
+  actividadesOpciones: ActividadOpcion[]
+  isPending: boolean
+  onClose: () => void
+  onConfirmar: (splits: SplitActividad[]) => void
+}) {
+  const [renglones, setRenglones] = useState<{ actividadId: string; monto: string }[]>([
+    { actividadId: linea.actividad_id ?? "", monto: "" },
+    { actividadId: "", monto: "" },
+  ])
+
+  const sumaActual = renglones.reduce((s, r) => s + (Number(r.monto) || 0), 0)
+  const diferencia = Math.round((linea.monto - sumaActual) * 100) / 100
+  const cuadra = Math.abs(diferencia) < 0.02
+
+  const actualizar = (idx: number, campo: "actividadId" | "monto", valor: string) => {
+    setRenglones((prev) => prev.map((r, i) => (i === idx ? { ...r, [campo]: valor } : r)))
+  }
+
+  const agregarRenglon = () => setRenglones((prev) => [...prev, { actividadId: "", monto: "" }])
+  const quitarRenglon = (idx: number) => setRenglones((prev) => prev.filter((_, i) => i !== idx))
+
+  const repartirIgual = () => {
+    const n = renglones.length
+    if (n === 0) return
+    const base = Math.floor((linea.monto / n) * 100) / 100
+    setRenglones((prev) =>
+      prev.map((r, i) => ({ ...r, monto: i === n - 1 ? (linea.monto - base * (n - 1)).toFixed(2) : base.toFixed(2) }))
+    )
+  }
+
+  const handleConfirmar = () => {
+    const splits: SplitActividad[] = renglones
+      .filter((r) => r.actividadId && Number(r.monto) > 0)
+      .map((r) => ({ actividadId: r.actividadId, monto: Math.round(Number(r.monto) * 100) / 100 }))
+
+    if (splits.length < 2) {
+      alert("Agrega al menos dos actividades con monto para dividir el gasto.")
+      return
+    }
+    if (!cuadra) {
+      alert(`La suma (${sumaActual.toFixed(2)}) debe ser igual al monto original (${linea.monto.toFixed(2)}).`)
+      return
+    }
+    onConfirmar(splits)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h3 className="font-semibold text-slate-900">Dividir gasto entre actividades</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="text-sm text-slate-600">
+            <p className="font-medium text-slate-800">{linea.descripcion}</p>
+            <p>Monto original: <span className="font-semibold">{formatoMoneda(linea.monto)}</span></p>
+            <p className="text-xs text-slate-400 mt-1">
+              Reparte este monto entre las actividades que realmente usaron este material/servicio. La línea original se reemplaza por una línea por cada actividad que elijas.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            {renglones.map((r, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <select
+                  value={r.actividadId}
+                  onChange={(e) => actualizar(idx, "actividadId", e.target.value)}
+                  className="flex-1 border border-slate-200 rounded-md px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
+                >
+                  <option value="">Elegir actividad…</option>
+                  {agruparPorDivision(actividadesOpciones).map((grupo) => (
+                    <optgroup key={grupo.etiqueta} label={grupo.etiqueta}>
+                      {grupo.items.map((a) => (
+                        <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Monto"
+                  value={r.monto}
+                  onChange={(e) => actualizar(idx, "monto", e.target.value)}
+                  className="w-24 border border-slate-200 rounded-md px-2 py-1.5 text-xs text-right"
+                />
+                <button
+                  onClick={() => quitarRenglon(idx)}
+                  disabled={renglones.length <= 2}
+                  className="text-slate-300 hover:text-red-500 disabled:opacity-30 disabled:hover:text-slate-300"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between">
+            <button onClick={agregarRenglon} className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1">
+              <Plus className="h-3.5 w-3.5" /> Agregar actividad
+            </button>
+            <button onClick={repartirIgual} className="text-xs text-slate-500 hover:text-slate-800">
+              Repartir en partes iguales
+            </button>
+          </div>
+
+          <div className={cn("text-xs rounded-md px-3 py-2", cuadra ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>
+            Suma: {formatoMoneda(sumaActual)} de {formatoMoneda(linea.monto)}
+            {!cuadra && ` · falta ${formatoMoneda(diferencia)}`}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-slate-100">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleConfirmar} disabled={isPending || !cuadra}>
+            {isPending ? "Dividiendo…" : "Confirmar división"}
+          </Button>
+        </div>
       </div>
     </div>
   )
