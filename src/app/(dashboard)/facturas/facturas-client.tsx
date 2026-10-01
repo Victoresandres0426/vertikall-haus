@@ -5,7 +5,8 @@ import { Plus, X, Check, CheckCircle2, ChevronDown, Receipt, Zap, Pencil, Trash2
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { PagosChart } from "@/app/portal-cliente/pagos-chart"
-import { FacturadoAvanceChart, construirSerieFacturadoAvance } from "@/app/portal-cliente/facturado-avance-chart"
+import { FacturadoAvanceChart } from "@/app/portal-cliente/facturado-avance-chart"
+import { construirSerieFacturadoAvance } from "@/app/portal-cliente/facturado-avance-series"
 import type { PuntoAvance } from "@/app/portal-cliente/avance-chart"
 import {
   crearFacturaCliente,

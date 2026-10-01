@@ -3,7 +3,8 @@ import { ChevronDown } from "lucide-react"
 import { PortalHeader } from "../portal-header"
 import { SinProyecto } from "../sin-proyecto"
 import { PagosChart } from "../pagos-chart"
-import { FacturadoAvanceChart, construirSerieFacturadoAvance } from "../facturado-avance-chart"
+import { FacturadoAvanceChart } from "../facturado-avance-chart"
+import { construirSerieFacturadoAvance } from "../facturado-avance-series"
 import {
   cargarSesionCliente,
   obtenerProyectoCliente,

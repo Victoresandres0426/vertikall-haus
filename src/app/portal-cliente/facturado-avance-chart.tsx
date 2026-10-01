@@ -8,12 +8,11 @@
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList,
 } from "recharts"
-
-export type PuntoFacturadoAvance = {
-  mes: string
-  facturadoAcumulado: number
-  avancePct: number | null
-}
+// La lógica de armado de la serie vive en un archivo aparte, sin "use
+// client" -- ver el comentario en facturado-avance-series.ts. Se
+// reexporta aquí para no romper los imports existentes.
+export { construirSerieFacturadoAvance, type PuntoFacturadoAvance } from "./facturado-avance-series"
+import type { PuntoFacturadoAvance } from "./facturado-avance-series"
 
 // Mismo formato corto que el gráfico de Pagos -- con decimales (ej.
 // "$3.3k") en vez de redondear a miles enteros.
@@ -31,53 +30,6 @@ function EtiquetaDentroDeBarra(props: any) {
       {formatoCortoMXN(value)}
     </text>
   )
-}
-
-// Junta, mes a mes, el facturado acumulado con el % de avance real más
-// reciente a esa fecha -- para responder "¿lo que se ha cobrado
-// corresponde a lo que de verdad se ha construido?". Se usa tanto en
-// el portal del cliente (histórico vía cliente_ver_avance_historico)
-// como en la vista interna de Facturas (histórico vía
-// proyecto_avance_historico) -- por eso recibe los datos ya resueltos
-// en vez de ir a buscarlos ella misma.
-export function construirSerieFacturadoAvance(
-  facturas: { fecha_emision: string | null; monto: number }[],
-  historico: { fecha: string; avance_pct: number }[],
-  en: boolean
-): PuntoFacturadoAvance[] {
-  const conFecha = facturas.filter((f) => f.fecha_emision)
-  if (conFecha.length === 0) return []
-
-  const claveMes = (iso: string) => {
-    const d = new Date(iso + "T00:00:00")
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
-  }
-
-  const meses = Array.from(new Set(conFecha.map((f) => claveMes(f.fecha_emision as string)))).sort()
-
-  const historicoOrdenado = [...historico]
-    .filter((h) => h.fecha)
-    .sort((a, b) => a.fecha.localeCompare(b.fecha))
-
-  return meses.map((clave) => {
-    const [anio, mes] = clave.split("-").map(Number)
-    const finDeMes = new Date(anio, mes, 0) // día 0 del mes siguiente = último día de "mes"
-    const finDeMesISO = finDeMes.toISOString().slice(0, 10)
-
-    const facturadoAcumulado = conFecha
-      .filter((f) => claveMes(f.fecha_emision as string) <= clave)
-      .reduce((s, f) => s + Number(f.monto ?? 0), 0)
-
-    let avancePct: number | null = null
-    for (const h of historicoOrdenado) {
-      if (h.fecha <= finDeMesISO) avancePct = Math.round(Number(h.avance_pct))
-      else break
-    }
-
-    const etiquetaMes = finDeMes.toLocaleDateString(en ? "en-US" : "es-MX", { month: "short", year: "2-digit" })
-
-    return { mes: etiquetaMes, facturadoAcumulado, avancePct }
-  })
 }
 
 export function FacturadoAvanceChart({
