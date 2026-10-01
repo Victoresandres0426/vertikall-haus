@@ -252,6 +252,11 @@ export type ActividadInput = {
   fecha_inicio_plan: string | null
   fecha_fin_plan: string | null
   es_critica: boolean
+  // Si un subcontratista hace la actividad y cobra material + mano de
+  // obra en una sola factura atada a % de avance -- al reportar avance
+  // en Reporte Diario se reconoce proporcionalmente también el
+  // presupuesto de material como Gastado (ver migración 138).
+  subcontratada: boolean
 }
 
 export async function crearActividad(
@@ -287,6 +292,7 @@ export async function crearActividad(
       fecha_inicio_plan: input.fecha_inicio_plan || null,
       fecha_fin_plan: input.fecha_fin_plan || null,
       es_critica: !!input.es_critica,
+      subcontratada: !!input.subcontratada,
     })
     .select("id")
     .single()
@@ -336,6 +342,7 @@ export async function actualizarActividad(
       fecha_inicio_plan: input.fecha_inicio_plan || null,
       fecha_fin_plan: input.fecha_fin_plan || null,
       es_critica: !!input.es_critica,
+      subcontratada: !!input.subcontratada,
     })
     .eq("id", actividadId)
     .select("proyecto_id")

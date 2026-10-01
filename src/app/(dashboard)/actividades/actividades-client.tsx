@@ -47,6 +47,9 @@ type Actividad = {
   activa?: boolean
   avance_porcentaje: number
   es_critica: boolean
+  // Si un subcontratista la hace y cobra material + mano de obra en
+  // una sola factura atada a % de avance -- ver migración 138.
+  subcontratada?: boolean
   riesgo_nivel: string
   disciplina: string | null
   fecha_inicio_plan: string | null
@@ -116,6 +119,7 @@ const actividadVacia: ActividadInput = {
   fecha_inicio_plan: null,
   fecha_fin_plan: null,
   es_critica: false,
+  subcontratada: false,
 }
 
 // Envuelve un input con su etiqueta arriba -- para que cualquiera que
@@ -308,6 +312,7 @@ export function ActividadesClient({
       fecha_inicio_plan: act.fecha_inicio_plan,
       fecha_fin_plan: act.fecha_fin_plan,
       es_critica: act.es_critica,
+      subcontratada: act.subcontratada ?? false,
     })
   }
 
@@ -559,6 +564,10 @@ export function ActividadesClient({
                                 <input type="checkbox" checked={draftActividad.es_critica} onChange={(e) => setDraftActividad({ ...draftActividad, es_critica: e.target.checked })} className="h-3.5 w-3.5" />
                                 Ruta crítica
                               </label>
+                              <label className="flex items-center gap-1 text-xs text-slate-500 shrink-0 pb-1.5" title="El subcontratista cobra material + mano de obra en una sola factura atada a % de avance -- al reportar avance en Reporte Diario se reconoce proporcionalmente también el presupuesto de material como Gastado">
+                                <input type="checkbox" checked={draftActividad.subcontratada} onChange={(e) => setDraftActividad({ ...draftActividad, subcontratada: e.target.checked })} className="h-3.5 w-3.5" />
+                                Subcontratada
+                              </label>
                             </div>
                             <div className="flex items-center gap-2 justify-end">
                               <button onClick={() => { setEditandoActividadId(null); setDraftActividad(null) }} disabled={isPending} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-slate-200 text-xs text-slate-600 hover:bg-slate-50">
@@ -587,6 +596,14 @@ export function ActividadesClient({
                                 )}
                                 {act.es_critica && (
                                   <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-medium">Crítica</span>
+                                )}
+                                {act.subcontratada && (
+                                  <span
+                                    className="text-xs bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded font-medium"
+                                    title="El avance reportado también reconoce proporcionalmente el presupuesto de material"
+                                  >
+                                    Subcontratada
+                                  </span>
                                 )}
                                 {act.riesgo_nivel === "rojo" && <AlertaBadge nivel="rojo" />}
                                 {act.riesgo_nivel === "amarillo" && <AlertaBadge nivel="amarillo" />}
