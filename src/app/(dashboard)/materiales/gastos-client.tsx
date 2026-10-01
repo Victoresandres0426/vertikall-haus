@@ -114,6 +114,10 @@ type LineaDraft = {
   cantidad: string
   precioUnitario: string
   tax: string
+  // Si dividirEntreActividades está activo, esta línea se reparte entre
+  // varias actividades al guardar (en vez de usar actividadId/partidaId).
+  dividirEntreActividades: boolean
+  splitsActividad: { actividadId: string; monto: string }[]
 }
 
 type LineaEditDraft = {
@@ -169,6 +173,8 @@ const lineaVacia: LineaDraft = {
   cantidad: "1",
   precioUnitario: "0",
   tax: "0",
+  dividirEntreActividades: false,
+  splitsActividad: [{ actividadId: "", monto: "" }, { actividadId: "", monto: "" }],
 }
 
 export function GastosClient({
@@ -1140,12 +1146,65 @@ function ModalRegistrarGasto({
   const agregarLinea = () => setLineas((prev) => [...prev, { ...lineaVacia }])
   const quitarLinea = (idx: number) => setLineas((prev) => prev.filter((_, i) => i !== idx))
 
-  const total = lineas.reduce((s, l) => s + (Number(l.cantidad) || 0) * (Number(l.precioUnitario) || 0) + (Number(l.tax) || 0), 0)
+  // Monto total de una línea (cantidad × precio unitario + tax) -- es el
+  // número contra el que debe cuadrar la suma de sus divisiones.
+  const montoDeLinea = (l: LineaDraft) => (Number(l.cantidad) || 0) * (Number(l.precioUnitario) || 0) + (Number(l.tax) || 0)
+
+  const toggleDividirLinea = (idx: number) => {
+    setLineas((prev) =>
+      prev.map((l, i) => (i === idx ? { ...l, dividirEntreActividades: !l.dividirEntreActividades, actividadId: "", partidaId: "" } : l))
+    )
+  }
+  const actualizarSplitActividad = (idx: number, splitIdx: number, campo: "actividadId" | "monto", valor: string) => {
+    setLineas((prev) =>
+      prev.map((l, i) =>
+        i === idx ? { ...l, splitsActividad: l.splitsActividad.map((s, si) => (si === splitIdx ? { ...s, [campo]: valor } : s)) } : l
+      )
+    )
+  }
+  const agregarSplitActividad = (idx: number) => {
+    setLineas((prev) => prev.map((l, i) => (i === idx ? { ...l, splitsActividad: [...l.splitsActividad, { actividadId: "", monto: "" }] } : l)))
+  }
+  const quitarSplitActividad = (idx: number, splitIdx: number) => {
+    setLineas((prev) =>
+      prev.map((l, i) => (i === idx ? { ...l, splitsActividad: l.splitsActividad.filter((_, si) => si !== splitIdx) } : l))
+    )
+  }
+  const repartirIgualLinea = (idx: number) => {
+    setLineas((prev) =>
+      prev.map((l, i) => {
+        if (i !== idx) return l
+        const monto = montoDeLinea(l)
+        const n = l.splitsActividad.length
+        if (n === 0) return l
+        const base = Math.floor((monto / n) * 100) / 100
+        return {
+          ...l,
+          splitsActividad: l.splitsActividad.map((s, si) => ({
+            ...s,
+            monto: si === n - 1 ? (monto - base * (n - 1)).toFixed(2) : base.toFixed(2),
+          })),
+        }
+      })
+    )
+  }
+
+  const total = lineas.reduce((s, l) => s + montoDeLinea(l), 0)
 
   const handleSubmit = () => {
     setError("")
     if (!lugar.trim()) return setError("El lugar de compra es obligatorio")
     if (lineas.some((l) => !l.descripcion.trim())) return setError("Todas las líneas necesitan descripción")
+
+    for (const l of lineas) {
+      if (!l.dividirEntreActividades) continue
+      const validos = l.splitsActividad.filter((s) => s.actividadId && Number(s.monto) > 0)
+      if (validos.length < 2) return setError(`"${l.descripcion || "una línea"}": agrega al menos dos actividades con monto para dividirla.`)
+      const suma = validos.reduce((s, x) => s + Number(x.monto), 0)
+      if (Math.abs(suma - montoDeLinea(l)) > 0.02) {
+        return setError(`"${l.descripcion || "una línea"}": la suma de la división (${suma.toFixed(2)}) no coincide con el monto de la línea (${montoDeLinea(l).toFixed(2)}).`)
+      }
+    }
 
     startTransition(async () => {
       const res = await crearFacturaGasto({
@@ -1155,14 +1214,19 @@ function ModalRegistrarGasto({
         referencia: referencia || null,
         fotoReferencia: null,
         lineas: lineas.map((l) => ({
-          actividadId: l.actividadId || null,
-          partidaId: l.actividadId ? null : l.partidaId || null,
+          actividadId: l.dividirEntreActividades ? null : l.actividadId || null,
+          partidaId: l.dividirEntreActividades ? null : l.actividadId ? null : l.partidaId || null,
           tipoRecurso: l.tipoRecurso,
           descripcion: l.descripcion,
           unidad: l.unidad || null,
           cantidad: Number(l.cantidad) || 0,
           precioUnitario: Number(l.precioUnitario) || 0,
           tax: Number(l.tax) || 0,
+          actividadesSplit: l.dividirEntreActividades
+            ? l.splitsActividad
+                .filter((s) => s.actividadId && Number(s.monto) > 0)
+                .map((s) => ({ actividadId: s.actividadId, monto: Math.round(Number(s.monto) * 100) / 100 }))
+            : undefined,
         })),
       })
       if (res.error) setError(res.error)
@@ -1239,24 +1303,26 @@ function ModalRegistrarGasto({
                 <label className="block text-[10px] text-slate-400 mb-0.5">Tax</label>
                 <input type="number" step="0.01" value={l.tax} onChange={(e) => actualizarLinea(idx, "tax", e.target.value)} className={inputCls} />
               </div>
-              <div className="col-span-4 sm:col-span-2">
-                <label className="block text-[10px] text-slate-400 mb-0.5">Actividad (opcional)</label>
-                <select value={l.actividadId} onChange={(e) => actualizarLinea(idx, "actividadId", e.target.value)} className={cn(inputCls, "bg-white")}>
-                  <option value="">Sin asignar</option>
-                  {agruparPorDivision(actividadesOpciones).map((grupo) => (
-                    <optgroup key={grupo.etiqueta} label={grupo.etiqueta}>
-                      {grupo.items.map((a) => (
-                        <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </div>
+              {!l.dividirEntreActividades && (
+                <div className="col-span-4 sm:col-span-2">
+                  <label className="block text-[10px] text-slate-400 mb-0.5">Actividad (opcional)</label>
+                  <select value={l.actividadId} onChange={(e) => actualizarLinea(idx, "actividadId", e.target.value)} className={cn(inputCls, "bg-white")}>
+                    <option value="">Sin asignar</option>
+                    {agruparPorDivision(actividadesOpciones).map((grupo) => (
+                      <optgroup key={grupo.etiqueta} label={grupo.etiqueta}>
+                        {grupo.items.map((a) => (
+                          <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+              )}
               {/* Solo aplica cuando no hay actividad -- gastos generales del
                   proyecto (herramienta menor, agua, etc.) que no corresponden
                   a ninguna tarea puntual, para que sí se descuenten de una
                   partida real en vez de quedar flotando. */}
-              {!l.actividadId && partidasIndirectasOpciones.length > 0 && (
+              {!l.dividirEntreActividades && !l.actividadId && partidasIndirectasOpciones.length > 0 && (
                 <div className="col-span-8 sm:col-span-2">
                   <label className="block text-[10px] text-slate-400 mb-0.5">Partida general (si no aplica a una actividad)</label>
                   <select value={l.partidaId} onChange={(e) => actualizarLinea(idx, "partidaId", e.target.value)} className={cn(inputCls, "bg-white")}>
@@ -1274,6 +1340,74 @@ function ModalRegistrarGasto({
                   </button>
                 )}
               </div>
+
+              <div className="col-span-12">
+                <button
+                  type="button"
+                  onClick={() => toggleDividirLinea(idx)}
+                  className="text-[11px] text-slate-500 hover:text-slate-800 flex items-center gap-1"
+                >
+                  <Scissors className="h-3 w-3" />
+                  {l.dividirEntreActividades ? "Cancelar división -- usar una sola actividad" : "Este artículo/servicio se usó en varias actividades -- dividir"}
+                </button>
+              </div>
+
+              {l.dividirEntreActividades && (
+                <div className="col-span-12 border border-slate-200 rounded-lg p-2.5 space-y-2 bg-slate-50/60">
+                  {l.splitsActividad.map((s, si) => (
+                    <div key={si} className="flex items-center gap-2">
+                      <select
+                        value={s.actividadId}
+                        onChange={(e) => actualizarSplitActividad(idx, si, "actividadId", e.target.value)}
+                        className={cn(inputCls, "bg-white flex-1")}
+                      >
+                        <option value="">Elegir actividad…</option>
+                        {agruparPorDivision(actividadesOpciones).map((grupo) => (
+                          <optgroup key={grupo.etiqueta} label={grupo.etiqueta}>
+                            {grupo.items.map((a) => (
+                              <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="Monto"
+                        value={s.monto}
+                        onChange={(e) => actualizarSplitActividad(idx, si, "monto", e.target.value)}
+                        className={cn(inputCls, "w-24")}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => quitarSplitActividad(idx, si)}
+                        disabled={l.splitsActividad.length <= 2}
+                        className="text-slate-300 hover:text-red-500 disabled:opacity-30 disabled:hover:text-slate-300"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between">
+                    <button type="button" onClick={() => agregarSplitActividad(idx)} className="text-[11px] text-slate-500 hover:text-slate-800 flex items-center gap-1">
+                      <Plus className="h-3 w-3" /> Agregar actividad
+                    </button>
+                    <button type="button" onClick={() => repartirIgualLinea(idx)} className="text-[11px] text-slate-500 hover:text-slate-800">
+                      Repartir en partes iguales
+                    </button>
+                  </div>
+                  {(() => {
+                    const monto = montoDeLinea(l)
+                    const suma = l.splitsActividad.reduce((s, x) => s + (Number(x.monto) || 0), 0)
+                    const cuadra = Math.abs(suma - monto) < 0.02
+                    return (
+                      <p className={cn("text-[11px]", cuadra ? "text-emerald-600" : "text-amber-600")}>
+                        Suma: {formatoMoneda(suma)} de {formatoMoneda(monto)}
+                      </p>
+                    )
+                  })()}
+                </div>
+              )}
             </div>
           ))}
           <button onClick={agregarLinea} className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1">

@@ -416,7 +416,27 @@ export function ReporteClient({
     setTrabajadores(
       baseTrabajadores.map((t) => {
         const guardado = borrador.trabajadores.find((x) => x.id === t.id)
-        if (guardado) return { ...t, asistencia: guardado.asistencia, horas: guardado.horas, extra: guardado.extra, splits: guardado.splits }
+        if (guardado) {
+          // El check-in QR de hoy es la fuente real de las horas -- si el
+          // borrador se guardó ANTES de que el trabajador marcara salida
+          // (o antes de que se cerrara el turno), quedó con un número
+          // viejo (ej. el default) que ya no coincide con el QR actual.
+          // Sin esto, el capataz veía la casilla con un valor viejo aunque
+          // el aviso de abajo ya mostrara el dato correcto del QR. Solo
+          // resincroniza si el borrador es de HOY (el QR de hoy no aplica
+          // a un reporte de otra fecha) y el trabajador sigue presente.
+          const qrActual = horasQrPorTrabajador[t.id]
+          const esBorradorDeHoy = borrador.fecha === fechaHoyISO()
+          if (esBorradorDeHoy && guardado.asistencia === "presente" && qrActual !== undefined && qrActual !== guardado.horas) {
+            const splits = guardado.splits.length <= 1
+              ? splitInicial(t, qrActual, actividadesPorProyecto[borrador.proyectoId] ?? [])
+              : t.requiere_qr
+                ? reconciliarPrimario(guardado.splits, qrActual)
+                : guardado.splits.map((s, i) => (i === 0 ? { ...s, horas: qrActual } : s))
+            return { ...t, asistencia: guardado.asistencia, horas: qrActual, extra: guardado.extra, splits }
+          }
+          return { ...t, asistencia: guardado.asistencia, horas: guardado.horas, extra: guardado.extra, splits: guardado.splits }
+        }
         const horas = horasIniciales(t)
         return { ...t, asistencia: "presente" as AsistenciaState, horas, extra: 0, splits: splitInicial(t, horas, actividadesPorProyecto[borrador.proyectoId] ?? []) }
       })

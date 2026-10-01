@@ -43,6 +43,13 @@ export type LineaGastoInput = {
   cantidad: number
   precioUnitario: number
   tax: number
+  // Si viene con 2+ elementos, esta línea se reparte entre esas
+  // actividades DESDE que se crea la factura (en vez de asignar una sola
+  // actividad): útil cuando ya sabes, al momento de capturar el gasto, que
+  // un mismo artículo/servicio sirvió para varias tareas. actividadId y
+  // partidaId se ignoran en ese caso -- ver dividirLineaGasto para el
+  // mismo mecanismo aplicado después, sobre una línea ya guardada.
+  actividadesSplit?: { actividadId: string; monto: number }[]
 }
 
 export type FacturaGastoInput = {
@@ -98,15 +105,40 @@ export async function crearFacturaGasto(input: FacturaGastoInput): Promise<{ err
     return { error: "No se pudo guardar la factura." }
   }
 
-  const { error: errLineas } = await supabase.from("costos_reales").insert(
-    input.lineas.map((l) => ({
+  const filas = input.lineas.flatMap((l) => {
+    const montoLinea = l.cantidad * l.precioUnitario + (l.tax || 0)
+
+    if (l.actividadesSplit && l.actividadesSplit.length >= 2) {
+      // Reparte esta línea entre varias actividades desde la captura --
+      // mismo criterio proporcional que dividirLineaGasto (cantidad/tax
+      // escalados por la fracción del monto que le toca a cada una).
+      const factor = (monto: number) => (montoLinea ? monto / montoLinea : 0)
+      return l.actividadesSplit.map((s) => ({
+        proyecto_id: input.proyectoId,
+        actividad_id: s.actividadId,
+        partida_id: null,
+        tipo_recurso: l.tipoRecurso,
+        descripcion: l.descripcion.trim(),
+        fecha: input.fecha,
+        monto: s.monto,
+        referencia: input.referencia?.trim() || null,
+        unidad: l.unidad?.trim() || null,
+        cantidad: Math.round(l.cantidad * factor(s.monto) * 1000) / 1000,
+        precio_unitario: l.precioUnitario,
+        tax: Math.round((l.tax || 0) * factor(s.monto) * 100) / 100,
+        factura_id: factura.id,
+        aprobado: true,
+      }))
+    }
+
+    return [{
       proyecto_id: input.proyectoId,
       actividad_id: l.actividadId || null,
       partida_id: l.actividadId ? null : l.partidaId || null,
       tipo_recurso: l.tipoRecurso,
       descripcion: l.descripcion.trim(),
       fecha: input.fecha,
-      monto: l.cantidad * l.precioUnitario + (l.tax || 0),
+      monto: montoLinea,
       referencia: input.referencia?.trim() || null,
       unidad: l.unidad?.trim() || null,
       cantidad: l.cantidad,
@@ -114,8 +146,10 @@ export async function crearFacturaGasto(input: FacturaGastoInput): Promise<{ err
       tax: l.tax || 0,
       factura_id: factura.id,
       aprobado: true,
-    }))
-  )
+    }]
+  })
+
+  const { error: errLineas } = await supabase.from("costos_reales").insert(filas)
 
   if (errLineas) {
     console.error("crearFacturaGasto - lineas:", errLineas)
