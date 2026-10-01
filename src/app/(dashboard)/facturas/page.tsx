@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/header"
 import { SelectorProyectoActivo } from "@/components/layout/selector-proyecto-activo"
 import { FacturasClient, type FacturaCliente, type FacturaProveedor, type ProyectoOpcion, type ProveedorOpcion } from "./facturas-client"
 import { getProyectoActivoId, resolverProyectoActivo } from "@/lib/proyecto-activo"
+import type { PuntoAvance } from "@/app/portal-cliente/avance-chart"
 
 const ROLES_FACTURAS = ["administrador", "dueno", "superadmin"]
 const ROLES_VEN_FACTURAS = ["administrador", "project_manager", "dueno", "superadmin"]
@@ -32,6 +33,10 @@ async function getData() {
 
   let facturasCliente: FacturaCliente[] = []
   let facturasProveedor: FacturaProveedor[] = []
+  // Histórico de avance real del proyecto, para cruzarlo con lo
+  // facturado (misma gráfica que ya existe en el portal del cliente --
+  // migración 110; si no existe todavía, simplemente no se muestra).
+  let historicoAvance: PuntoAvance[] = []
 
   if (proyectoActivo) {
     const [{ data: fc }, { data: fp }] = await Promise.all([
@@ -60,6 +65,11 @@ async function getData() {
     ])
     facturasCliente = (fc ?? []) as unknown as FacturaCliente[]
     facturasProveedor = (fp ?? []) as unknown as FacturaProveedor[]
+
+    try {
+      const { data: historicoData } = await supabase.rpc("proyecto_avance_historico", { p_proyecto_id: proyectoActivo.id })
+      historicoAvance = (historicoData ?? []) as PuntoAvance[]
+    } catch { /* migración 110 no aplicada aún */ }
   }
 
   return {
@@ -71,11 +81,12 @@ async function getData() {
     todosLosProyectos,
     proyectoActivoId: proyectoActivo?.id ?? null,
     proyectoActivoPresupuestoVenta: (proyectoActivo as { presupuesto_venta?: number } | null)?.presupuesto_venta ?? null,
+    historicoAvance,
   }
 }
 
 export default async function FacturasPage() {
-  const { facturasCliente, facturasProveedor, proyectos, proveedores, puedeCrear, todosLosProyectos, proyectoActivoId, proyectoActivoPresupuestoVenta } = await getData()
+  const { facturasCliente, facturasProveedor, proyectos, proveedores, puedeCrear, todosLosProyectos, proyectoActivoId, proyectoActivoPresupuestoVenta, historicoAvance } = await getData()
 
   const total = facturasCliente.length + facturasProveedor.length
 
@@ -101,6 +112,7 @@ export default async function FacturasPage() {
         proveedores={proveedores}
         puedeCrear={puedeCrear}
         proyectoActivoPresupuestoVenta={proyectoActivoPresupuestoVenta}
+        historicoAvance={historicoAvance}
       />
     </div>
   )

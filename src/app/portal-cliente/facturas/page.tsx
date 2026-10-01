@@ -3,6 +3,7 @@ import { ChevronDown } from "lucide-react"
 import { PortalHeader } from "../portal-header"
 import { SinProyecto } from "../sin-proyecto"
 import { PagosChart } from "../pagos-chart"
+import { FacturadoAvanceChart, construirSerieFacturadoAvance } from "../facturado-avance-chart"
 import {
   cargarSesionCliente,
   obtenerProyectoCliente,
@@ -33,6 +34,17 @@ export default async function FacturasClientePage() {
   const { data } = await supabase.rpc("cliente_ver_facturas")
   const facturas = (data ?? []) as Factura[]
 
+  // Mismo histórico de avance que ya se usa en Cronograma (migración
+  // 108) -- se reutiliza aquí para cruzarlo con lo facturado.
+  let historicoAvance: { fecha: string; avance_pct: number }[] = []
+  try {
+    const { data: historicoData } = await supabase.rpc("cliente_ver_avance_historico")
+    historicoAvance = (historicoData ?? []) as { fecha: string; avance_pct: number }[]
+  } catch (e) {
+    console.error("cliente_ver_avance_historico falló en Facturas:", e)
+  }
+  const serieFacturadoAvance = construirSerieFacturadoAvance(facturas, historicoAvance, facturaEnIngles)
+
   const totalCobrado = facturas.reduce((sum, f) => sum + Number(f.monto_cobrado ?? 0), 0)
   const facturasAnticipo = facturas.filter((f) => f.numero?.startsWith("ANT-"))
   const facturasAvance = facturas.filter((f) => f.numero?.startsWith("EST-"))
@@ -54,6 +66,11 @@ export default async function FacturasClientePage() {
 
       <main className="max-w-4xl mx-auto px-6 py-8">
         <PagosChart facturas={facturas} en={facturaEnIngles} label={facturaEnIngles ? "Payments over time" : "Pagos en el tiempo"} />
+        <FacturadoAvanceChart
+          datos={serieFacturadoAvance}
+          en={facturaEnIngles}
+          label={facturaEnIngles ? "Invoiced vs. actual progress" : "Facturado vs. % de avance real"}
+        />
 
         {facturas.length === 0 ? (
           <p className="text-sm text-slate-400 bg-white border border-slate-200 rounded-xl p-5">{tf.sinFacturas}</p>

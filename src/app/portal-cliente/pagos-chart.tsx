@@ -25,7 +25,22 @@ function agruparPorMes(facturas: Factura[], en: boolean) {
 
 export function PagosChart({ facturas, en, label }: { facturas: Factura[]; en: boolean; label: string }) {
   const datos = agruparPorMes(facturas, en)
-  if (datos.length < 2) return null
+
+  // Antes este gráfico se ocultaba del todo (return null) si había menos
+  // de 2 meses con facturas -- eso lo hacía "desaparecer" justo cuando
+  // un proyecto apenas arranca o cuando se reconstruyen facturas (como
+  // pasó con los Change Orders), que es precisamente cuando más se
+  // quiere ver esta relación. Ahora el panel siempre está presente: con
+  // 1 mes muestra esa única barra, y con 0 facturas muestra un estado
+  // vacío en vez de no renderizar nada.
+  if (datos.length === 0) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-4">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">{label}</p>
+        <p className="text-sm text-slate-400">{en ? "No invoices yet." : "Todavía no hay facturas registradas."}</p>
+      </div>
+    )
+  }
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-4">

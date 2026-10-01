@@ -4,6 +4,9 @@ import { Fragment, useState, useTransition } from "react"
 import { Plus, X, Check, CheckCircle2, ChevronDown, Receipt, Zap, Pencil, Trash2, Send } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { PagosChart } from "@/app/portal-cliente/pagos-chart"
+import { FacturadoAvanceChart, construirSerieFacturadoAvance } from "@/app/portal-cliente/facturado-avance-chart"
+import type { PuntoAvance } from "@/app/portal-cliente/avance-chart"
 import {
   crearFacturaCliente,
   crearFacturaProveedor,
@@ -126,6 +129,7 @@ export function FacturasClient({
   proveedores,
   puedeCrear,
   proyectoActivoPresupuestoVenta,
+  historicoAvance,
 }: {
   facturasClienteIniciales: FacturaCliente[]
   facturasProveedorIniciales: FacturaProveedor[]
@@ -133,6 +137,7 @@ export function FacturasClient({
   proveedores: ProveedorOpcion[]
   puedeCrear: boolean
   proyectoActivoPresupuestoVenta?: number | null
+  historicoAvance?: PuntoAvance[]
 }) {
   const [tab, setTab] = useState<"cliente" | "proveedor">("cliente")
   const [facturasCliente] = useState(facturasClienteIniciales)
@@ -175,8 +180,21 @@ export function FacturasClient({
   const totalPagado = facturasProveedor.reduce((s, f) => s + f.monto_pagado, 0)
   const totalCxP = Math.max(totalFacturadoProveedor - totalPagado, 0)
 
+  // Gráficas: facturado/cobrado en el tiempo + facturado vs % de avance
+  // real -- mismas gráficas que ya existen en el portal del cliente,
+  // reutilizadas aquí. Se calculan sobre facturasParaCxC (lo que ya es
+  // facturación real, no borradores sin aprobar todavía).
+  const serieFacturadoAvance = construirSerieFacturadoAvance(facturasParaCxC, historicoAvance ?? [], false)
+
   return (
     <div className="p-6 space-y-6">
+      {facturasParaCxC.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <PagosChart facturas={facturasParaCxC} en={false} label="Facturado vs. cobrado" />
+          <FacturadoAvanceChart datos={serieFacturadoAvance} en={false} label="Facturado vs. % de avance real" />
+        </div>
+      )}
+
       {borradores.length > 0 && (
         <PanelBorradores
           borradores={borradores}
