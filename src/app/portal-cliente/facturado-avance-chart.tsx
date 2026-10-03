@@ -1,15 +1,21 @@
 "use client"
 
-// Cada columna es UNA FACTURA real (no un mes agrupado), ubicada en el
-// eje X según su fecha de emisión real. Por factura se ve: cuánto del
-// anticipo ya cobrado se consumió en esa factura puntual (verde),
-// cuánto es dinero nuevo facturado -- o el anticipo cobrado, si es la
-// factura de anticipo -- (celeste/naranja), el total reconocido en esa
-// factura (arriba del todo), y el % de avance real de la obra al
-// momento de emitirla (punto morado punteado). Diseño pedido
-// explícitamente por el usuario via boceto a mano.
+// Barras ACUMULADAS -- cada columna sigue siendo una factura real
+// ubicada en el eje X según su fecha de emisión real, pero la ALTURA
+// de la barra es el total facturado acumulado hasta esa fecha (no
+// solo el monto de esa factura), para que las columnas se vean crecer
+// una sobre otra. Dentro de cada barra, de abajo a arriba: cuánto del
+// anticipo se ha consumido en total a la fecha (verde), el resto ya
+// facturado antes que todavía no se cuenta como consumido (celeste),
+// y lo nuevo que se facturó justo en esta factura (naranja, arriba
+// del todo). Una línea de referencia horizontal punteada marca
+// siempre el monto del anticipo original -- la "línea de partida" --
+// para que se vea de un vistazo cuánto se ha avanzado desde ahí.
+// Diseño pedido explícitamente por el usuario via boceto a mano
+// (segunda iteración, con barras acumulativas en vez de una barra por
+// factura aislada).
 import {
-  ComposedChart, Bar, Line, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList,
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList, ReferenceLine,
 } from "recharts"
 // La lógica de armado de los puntos vive en un archivo aparte, sin
 // "use client" -- ver el comentario en facturado-avance-series.ts. Se
@@ -17,7 +23,7 @@ import {
 export { construirPuntosPorFactura, type FacturaParaGrafico, type PuntoFacturaChart } from "./facturado-avance-series"
 import type { PuntoFacturaChart } from "./facturado-avance-series"
 
-const COLOR_ANTICIPO_COBRADO = "#38BDF8"
+const COLOR_BASE = "#38BDF8"
 const COLOR_ANTICIPO_CONSUMIDO = "#15803D"
 const COLOR_DINERO_NUEVO = "#F97316"
 const COLOR_AVANCE = "#7C3AED"
@@ -42,20 +48,20 @@ function crearEtiquetaSegmento(color: string) {
   }
 }
 
-// Total reconocido en ESA factura (anticipo consumido + valor
-// principal) -- se escribe arriba de toda la columna, no solo del
-// segmento superior. Se calcula del dato original por índice, no del
-// "value" que entrega recharts (que solo trae el del propio segmento).
-function crearEtiquetaTotal(datos: PuntoFacturaChart[]) {
+// Total acumulado -- se escribe arriba de toda la columna. "responsable"
+// decide, por fila, cuál de los dos Bars (el de arriba del todo en
+// cada caso) es el que de verdad está en la punta de la barra: para
+// la factura de anticipo es "baseAcumulada" (porque ahí no hay nada
+// arriba), para las demás es "incrementoNuevo". Así nunca dependemos
+// de que recharts dibuje una etiqueta sobre un segmento de valor 0.
+function crearEtiquetaTotalDesde(datos: PuntoFacturaChart[], responsable: (row: PuntoFacturaChart) => boolean) {
   return (props: any) => {
     const { x, y, width, index } = props
     const row = datos[index]
-    if (!row || x == null || y == null) return null
-    const total = row.anticipoConsumido + row.valorPrincipal
-    if (total <= 0) return null
+    if (!row || x == null || y == null || !responsable(row)) return null
     return (
       <text x={x + width / 2} y={y - 6} textAnchor="middle" fontSize={11} fontWeight={700} fill="#334155">
-        {formatoCortoMXN(total)}
+        {formatoCortoMXN(row.totalAcumulado)}
       </text>
     )
   }
@@ -78,27 +84,26 @@ function TooltipFactura({ active, payload, label, en }: any) {
   if (!active || !payload || payload.length === 0) return null
   const row = payload[0]?.payload as (PuntoFacturaChart & { avanceEquivDinero?: number | null }) | undefined
   if (!row) return null
-  const total = row.anticipoConsumido + row.valorPrincipal
 
   return (
     <div className="bg-white border border-slate-200 rounded-lg shadow-sm px-3 py-2 text-xs space-y-0.5">
       <p className="font-semibold text-slate-700">{row.numero ?? label}</p>
       <p className="text-slate-400 mb-1">{label}</p>
       {row.esAnticipo ? (
-        <p style={{ color: COLOR_ANTICIPO_COBRADO }}>
-          {en ? "Deposit collected" : "Anticipo cobrado"}: {formatoCortoMXN(row.valorPrincipal)}
+        <p style={{ color: COLOR_BASE }}>
+          {en ? "Deposit collected" : "Anticipo cobrado"}: {formatoCortoMXN(row.totalAcumulado)}
         </p>
       ) : (
         <>
-          {row.anticipoConsumido > 0 && (
+          <p style={{ color: COLOR_DINERO_NUEVO }}>
+            {en ? "New in this invoice" : "Nuevo en esta factura"}: {formatoCortoMXN(row.incrementoNuevo)}
+          </p>
+          {row.anticipoConsumidoAcumulado > 0 && (
             <p style={{ color: COLOR_ANTICIPO_CONSUMIDO }}>
-              {en ? "Deposit consumed" : "Anticipo consumido"}: {formatoCortoMXN(row.anticipoConsumido)}
+              {en ? "Deposit consumed (total so far)" : "Anticipo consumido (acumulado)"}: {formatoCortoMXN(row.anticipoConsumidoAcumulado)}
             </p>
           )}
-          <p style={{ color: COLOR_DINERO_NUEVO }}>
-            {en ? "New money invoiced" : "Dinero nuevo facturado"}: {formatoCortoMXN(row.valorPrincipal)}
-          </p>
-          <p className="text-slate-500">{en ? "Total this invoice" : "Total facturado"}: {formatoCortoMXN(total)}</p>
+          <p className="text-slate-500">{en ? "Total invoiced to date" : "Total facturado a la fecha"}: {formatoCortoMXN(row.totalAcumulado)}</p>
         </>
       )}
       {row.avancePct != null && (
@@ -133,6 +138,8 @@ export function FacturadoAvanceChart({
     )
   }
 
+  const anticipoMonto = datos[0]?.anticipoMonto ?? null
+
   const conEquivalente = datos.map((d) => ({
     ...d,
     avanceEquivDinero: presupuestoVenta != null && d.avancePct != null
@@ -145,9 +152,9 @@ export function FacturadoAvanceChart({
       <div className="flex items-center justify-between mb-3 flex-wrap gap-y-1">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
         <div className="flex items-center gap-3 text-[11px] text-slate-400 flex-wrap">
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_ANTICIPO_COBRADO }} /> {en ? "Deposit collected" : "Anticipo cobrado"}</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_ANTICIPO_CONSUMIDO }} /> {en ? "Deposit consumed" : "Anticipo consumido"}</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_DINERO_NUEVO }} /> {en ? "New money invoiced" : "Dinero nuevo facturado"}</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_BASE }} /> {en ? "Deposit / carried balance" : "Anticipo / saldo arrastrado"}</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_ANTICIPO_CONSUMIDO }} /> {en ? "Deposit consumed (cumulative)" : "Anticipo consumido (acumulado)"}</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_DINERO_NUEVO }} /> {en ? "New this invoice" : "Nuevo en esta factura"}</span>
           <span className="flex items-center gap-1"><span className="inline-block" style={{ borderTop: `2px dashed ${COLOR_AVANCE}`, width: 12 }} /> {en ? "Actual progress" : "Avance real"}</span>
         </div>
       </div>
@@ -171,15 +178,29 @@ export function FacturadoAvanceChart({
               tickFormatter={formatoCortoMXN}
             />
             <Tooltip content={<TooltipFactura en={en} />} />
-            <Bar dataKey="anticipoConsumido" stackId="factura" fill={COLOR_ANTICIPO_CONSUMIDO}>
-              <LabelList dataKey="anticipoConsumido" content={crearEtiquetaSegmento("#ffffff")} />
+            {anticipoMonto != null && (
+              <ReferenceLine
+                y={anticipoMonto}
+                stroke="#94a3b8"
+                strokeDasharray="4 4"
+                label={{
+                  value: `${en ? "Deposit" : "Anticipo"}: ${formatoCortoMXN(anticipoMonto)}`,
+                  position: "insideTopLeft",
+                  fontSize: 10,
+                  fill: "#94a3b8",
+                }}
+              />
+            )}
+            <Bar dataKey="anticipoConsumidoAcumulado" stackId="factura" fill={COLOR_ANTICIPO_CONSUMIDO}>
+              <LabelList dataKey="anticipoConsumidoAcumulado" content={crearEtiquetaSegmento("#ffffff")} />
             </Bar>
-            <Bar dataKey="valorPrincipal" stackId="factura" radius={[4, 4, 0, 0]}>
-              {conEquivalente.map((d, i) => (
-                <Cell key={i} fill={d.esAnticipo ? COLOR_ANTICIPO_COBRADO : COLOR_DINERO_NUEVO} />
-              ))}
-              <LabelList dataKey="valorPrincipal" content={crearEtiquetaSegmento("#ffffff")} />
-              <LabelList dataKey="valorPrincipal" content={crearEtiquetaTotal(conEquivalente)} />
+            <Bar dataKey="baseAcumulada" stackId="factura" fill={COLOR_BASE}>
+              <LabelList dataKey="baseAcumulada" content={crearEtiquetaSegmento("#ffffff")} />
+              <LabelList dataKey="baseAcumulada" content={crearEtiquetaTotalDesde(conEquivalente, (r) => r.esAnticipo)} />
+            </Bar>
+            <Bar dataKey="incrementoNuevo" stackId="factura" fill={COLOR_DINERO_NUEVO} radius={[4, 4, 0, 0]}>
+              <LabelList dataKey="incrementoNuevo" content={crearEtiquetaSegmento("#ffffff")} />
+              <LabelList dataKey="incrementoNuevo" content={crearEtiquetaTotalDesde(conEquivalente, (r) => !r.esAnticipo)} />
             </Bar>
             {presupuestoVenta != null && (
               <Line
