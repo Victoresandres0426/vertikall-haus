@@ -6,7 +6,7 @@
 // construido?" -- si la barra de facturado crece mucho más rápido que
 // la línea de avance, es una señal de alerta para el cliente.
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList,
+  ComposedChart, Bar, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList,
 } from "recharts"
 // La lógica de armado de la serie vive en un archivo aparte, sin "use
 // client" -- ver el comentario en facturado-avance-series.ts. Se
@@ -30,6 +30,22 @@ function EtiquetaDentroDeBarra(props: any) {
       {formatoCortoMXN(value)}
     </text>
   )
+}
+
+// Mismo recurso que usa el gráfico "Avance en el tiempo" de Cronograma
+// (avance-chart.tsx): el valor exacto se lee directo sobre el ÚLTIMO
+// punto de la línea, arriba de ella, en vez de solo intuirlo por dónde
+// cae el área.
+function crearEtiquetaUltimoPunto(totalPuntos: number) {
+  return (props: any) => {
+    const { x, y, index, value } = props
+    if (index !== totalPuntos - 1 || x == null || y == null || value == null) return null
+    return (
+      <text x={Number(x)} y={Number(y) - 10} textAnchor="middle" fontSize={12} fontWeight={700} fill="#B45309">
+        {value}%
+      </text>
+    )
+  }
 }
 
 export function FacturadoAvanceChart({
@@ -77,7 +93,13 @@ export function FacturadoAvanceChart({
       )}
       <div className="h-44">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={datos} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <ComposedChart data={datos} margin={{ top: 20, right: 8, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="gradAvanceFacturado" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#F59E0B" stopOpacity={0} />
+              </linearGradient>
+            </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="mes" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
             <YAxis
@@ -110,14 +132,16 @@ export function FacturadoAvanceChart({
             <Bar yAxisId="monto" dataKey="facturadoAcumulado" fill="#93b4ea" radius={[4, 4, 0, 0]}>
               <LabelList dataKey="facturadoAcumulado" content={EtiquetaDentroDeBarra} />
             </Bar>
-            <Line
+            <Area
               yAxisId="pct"
               type="monotone"
               dataKey="avancePct"
               stroke="#F59E0B"
+              fill="url(#gradAvanceFacturado)"
               strokeWidth={2}
               dot={{ r: 2.5, fill: "#F59E0B" }}
               connectNulls
+              label={crearEtiquetaUltimoPunto(datos.length)}
             />
           </ComposedChart>
         </ResponsiveContainer>
