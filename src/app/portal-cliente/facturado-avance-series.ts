@@ -57,7 +57,13 @@ export function construirSerieFacturadoAvance(
       else break
     }
 
-    const etiquetaMes = finDeMes.toLocaleDateString(en ? "en-US" : "es-MX", { month: "short", year: "2-digit" })
+    // "oct 26" (mes + año de 2 dígitos sin separador) se leía como "26
+    // de octubre" -- un día del mes que todavía no había llegado, no un
+    // año -- de ahí la confusión. Se agrega un apóstrofe antes del año
+    // ("oct '26") para que quede claro que es el año.
+    const mesCorto = finDeMes.toLocaleDateString(en ? "en-US" : "es-MX", { month: "short" })
+    const anioCorto = String(finDeMes.getFullYear()).slice(-2)
+    const etiquetaMes = `${mesCorto} '${anioCorto}`
 
     return { mes: etiquetaMes, facturadoAcumulado, avancePct }
   })

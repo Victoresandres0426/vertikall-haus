@@ -30,13 +30,24 @@ function EtiquetaDentroDeBarra(props: any) {
   )
 }
 
+// "oct 26" (mes + año de 2 dígitos sin separador) se leía como "26 de
+// octubre" -- un día del mes, no un año -- lo que confundía justo
+// cuando ese día calendario todavía no había llegado. Se le agrega un
+// apóstrofe antes del año ("oct '26") para que quede claro que es el
+// año, como la abreviatura de toda la vida.
+function formatoMesAnio(d: Date, en: boolean) {
+  const mes = d.toLocaleDateString(en ? "en-US" : "es-MX", { month: "short" })
+  const anio = String(d.getFullYear()).slice(-2)
+  return `${mes} '${anio}`
+}
+
 function agruparPorMes(facturas: Factura[], en: boolean) {
   const grupos = new Map<string, { mes: string; facturado: number; pagado: number; orden: string }>()
   for (const f of facturas) {
     if (!f.fecha_emision) continue
     const d = new Date(f.fecha_emision + "T00:00:00")
     const clave = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
-    const mes = d.toLocaleDateString(en ? "en-US" : "es-MX", { month: "short", year: "2-digit" })
+    const mes = formatoMesAnio(d, en)
     const actual = grupos.get(clave) ?? { mes, facturado: 0, pagado: 0, orden: clave }
     actual.facturado += Number(f.monto ?? 0)
     actual.pagado += Number(f.monto_cobrado ?? 0)
