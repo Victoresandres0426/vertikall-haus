@@ -4,7 +4,7 @@ import { PortalHeader } from "../portal-header"
 import { SinProyecto } from "../sin-proyecto"
 import { PagosChart } from "../pagos-chart"
 import { FacturadoAvanceChart } from "../facturado-avance-chart"
-import { construirSerieFacturadoAvance } from "../facturado-avance-series"
+import { construirPuntosPorFactura } from "../facturado-avance-series"
 import {
   cargarSesionCliente,
   obtenerProyectoCliente,
@@ -35,16 +35,11 @@ export default async function FacturasClientePage() {
   const { data } = await supabase.rpc("cliente_ver_facturas")
   const facturas = (data ?? []) as Factura[]
 
-  // Mismo histórico de avance que ya se usa en Cronograma (migración
-  // 108) -- se reutiliza aquí para cruzarlo con lo facturado.
-  let historicoAvance: { fecha: string; avance_pct: number }[] = []
-  try {
-    const { data: historicoData } = await supabase.rpc("cliente_ver_avance_historico")
-    historicoAvance = (historicoData ?? []) as { fecha: string; avance_pct: number }[]
-  } catch (e) {
-    console.error("cliente_ver_avance_historico falló en Facturas:", e)
-  }
-  const serieFacturadoAvance = construirSerieFacturadoAvance(facturas, historicoAvance, facturaEnIngles)
+  // Cada factura ya trae su propio avance_acumulado_pct guardado (el
+  // avance ponderado del proyecto en el momento en que se generó esa
+  // factura puntual -- ver generar_facturas_semanales), así que no hace
+  // falta ir a reconstruirlo de snapshots históricos por separado.
+  const puntosFactura = construirPuntosPorFactura(facturas, facturaEnIngles)
 
   const totalCobrado = facturas.reduce((sum, f) => sum + Number(f.monto_cobrado ?? 0), 0)
   const facturasAnticipo = facturas.filter((f) => f.numero?.startsWith("ANT-"))
@@ -68,7 +63,7 @@ export default async function FacturasClientePage() {
       <main className="max-w-4xl mx-auto px-6 py-8">
         <PagosChart facturas={facturas} en={facturaEnIngles} label={facturaEnIngles ? "Payments over time" : "Pagos en el tiempo"} />
         <FacturadoAvanceChart
-          datos={serieFacturadoAvance}
+          datos={puntosFactura}
           en={facturaEnIngles}
           label={facturaEnIngles ? "Invoiced vs. actual progress" : "Facturado vs. % de avance real"}
           presupuestoVenta={proyecto.presupuesto_venta}

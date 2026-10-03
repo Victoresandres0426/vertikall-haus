@@ -6,8 +6,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { PagosChart } from "@/app/portal-cliente/pagos-chart"
 import { FacturadoAvanceChart } from "@/app/portal-cliente/facturado-avance-chart"
-import { construirSerieFacturadoAvance } from "@/app/portal-cliente/facturado-avance-series"
-import type { PuntoAvance } from "@/app/portal-cliente/avance-chart"
+import { construirPuntosPorFactura } from "@/app/portal-cliente/facturado-avance-series"
 import {
   crearFacturaCliente,
   crearFacturaProveedor,
@@ -76,6 +75,11 @@ export type FacturaCliente = {
   fecha_cobro: string | null
   estado: string
   monto_cobrado: number
+  // % de avance ponderado del proyecto al momento de emitir esta
+  // factura -- usado por el gráfico "Facturado vs. % de avance real"
+  // (ver facturado-avance-series.ts). Ausente en facturas generadas
+  // antes de que esta columna existiera.
+  avance_acumulado_pct?: number | null
   proyectos: { nombre: string; codigo: string } | null
   // Presente solo si esta factura viene de un Change Order (migración
   // 134 -- se factura sola conforme avanza, sin anticipo). Se usa para
@@ -130,7 +134,6 @@ export function FacturasClient({
   proveedores,
   puedeCrear,
   proyectoActivoPresupuestoVenta,
-  historicoAvance,
 }: {
   facturasClienteIniciales: FacturaCliente[]
   facturasProveedorIniciales: FacturaProveedor[]
@@ -138,7 +141,6 @@ export function FacturasClient({
   proveedores: ProveedorOpcion[]
   puedeCrear: boolean
   proyectoActivoPresupuestoVenta?: number | null
-  historicoAvance?: PuntoAvance[]
 }) {
   const [tab, setTab] = useState<"cliente" | "proveedor">("cliente")
   const [facturasCliente] = useState(facturasClienteIniciales)
@@ -185,14 +187,14 @@ export function FacturasClient({
   // real -- mismas gráficas que ya existen en el portal del cliente,
   // reutilizadas aquí. Se calculan sobre facturasParaCxC (lo que ya es
   // facturación real, no borradores sin aprobar todavía).
-  const serieFacturadoAvance = construirSerieFacturadoAvance(facturasParaCxC, historicoAvance ?? [], false)
+  const puntosFactura = construirPuntosPorFactura(facturasParaCxC, false)
 
   return (
     <div className="p-6 space-y-6">
       {facturasParaCxC.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <PagosChart facturas={facturasParaCxC} en={false} label="Facturado vs. cobrado" />
-          <FacturadoAvanceChart datos={serieFacturadoAvance} en={false} label="Facturado vs. % de avance real" presupuestoVenta={proyectoActivoPresupuestoVenta} />
+          <FacturadoAvanceChart datos={puntosFactura} en={false} label="Facturado vs. % de avance real" presupuestoVenta={proyectoActivoPresupuestoVenta} />
         </div>
       )}
 
