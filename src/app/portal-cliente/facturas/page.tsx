@@ -71,6 +71,7 @@ export default async function FacturasClientePage() {
           datos={serieFacturadoAvance}
           en={facturaEnIngles}
           label={facturaEnIngles ? "Invoiced vs. actual progress" : "Facturado vs. % de avance real"}
+          presupuestoVenta={proyecto.presupuesto_venta}
         />
 
         {facturas.length === 0 ? (

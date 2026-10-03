@@ -36,10 +36,20 @@ export function FacturadoAvanceChart({
   datos,
   en,
   label,
+  presupuestoVenta,
 }: {
   datos: PuntoFacturadoAvance[]
   en: boolean
   label: string
+  // Monto total del contrato. Sin esto, el eje de dinero se autoescala
+  // al valor más alto de la serie (ej. "$146k") mientras que el eje de
+  // % de avance siempre va fijo de 0 a 100 -- dos escalas sin relación
+  // entre sí, que hacían ver la línea de avance "achatada" cerca del
+  // 0% aunque el facturado ya representara una porción grande del
+  // contrato. Con el total del contrato, el eje de dinero va de $0 al
+  // contrato completo (el "100%" de ese eje), igual que el eje de %, y
+  // ambas series quedan comparables a simple vista.
+  presupuestoVenta?: number | null
 }) {
   if (datos.length === 0) {
     return (
@@ -59,6 +69,12 @@ export function FacturadoAvanceChart({
           <span className="flex items-center gap-1"><span className="inline-block" style={{ borderTop: "2px solid #F59E0B", width: 12 }} /> {en ? "Actual progress" : "Avance real"}</span>
         </div>
       </div>
+      {presupuestoVenta != null && (
+        <p className="text-[10px] text-slate-400 -mt-2 mb-2">
+          {en ? "Both axes scaled to the full contract: " : "Ambos ejes escalados al contrato completo: "}
+          {presupuestoVenta.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}
+        </p>
+      )}
       <div className="h-44">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={datos} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -66,6 +82,7 @@ export function FacturadoAvanceChart({
             <XAxis dataKey="mes" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
             <YAxis
               yAxisId="monto"
+              domain={presupuestoVenta ? [0, presupuestoVenta] : undefined}
               tick={{ fontSize: 10, fill: "#94a3b8" }}
               axisLine={false}
               tickLine={false}

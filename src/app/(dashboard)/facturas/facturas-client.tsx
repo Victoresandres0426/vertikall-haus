@@ -192,7 +192,7 @@ export function FacturasClient({
       {facturasParaCxC.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <PagosChart facturas={facturasParaCxC} en={false} label="Facturado vs. cobrado" />
-          <FacturadoAvanceChart datos={serieFacturadoAvance} en={false} label="Facturado vs. % de avance real" />
+          <FacturadoAvanceChart datos={serieFacturadoAvance} en={false} label="Facturado vs. % de avance real" presupuestoVenta={proyectoActivoPresupuestoVenta} />
         </div>
       )}
 

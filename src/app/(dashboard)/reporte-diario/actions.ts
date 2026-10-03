@@ -51,31 +51,72 @@ export async function crearReporteDiario(input: {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "No autenticado" }
 
-  // Crear el reporte
-  const { data: reporte, error: errReporte } = await supabase
+  // reportes_diarios tiene un candado único por (proyecto_id, capataz_id,
+  // fecha) -- si el capataz ya guardó un reporte hoy (ej. llenó una parte
+  // en la mañana y vuelve a guardar más tarde con más actividades) y este
+  // flujo siempre intentaba un INSERT nuevo, reventaba con "duplicate key
+  // value violates unique constraint". Ahora se busca primero si ya existe
+  // uno para reutilizarlo (mismo patrón que actualizar_reporte_diario,
+  // migración 059/111, pero sin esa restricción de rol -- aquí el capataz
+  // está actualizando SU PROPIO reporte de HOY, no editando un día pasado).
+  const { data: existente } = await supabase
     .from("reportes_diarios")
-    .insert({
-      proyecto_id: input.proyecto_id,
-      capataz_id: user.id,
-      fecha: input.fecha,
-      clima: input.clima ?? null,
-      observaciones_generales: input.observaciones ?? null,
-    })
     .select("id")
-    .single()
+    .eq("proyecto_id", input.proyecto_id)
+    .eq("capataz_id", user.id)
+    .eq("fecha", input.fecha)
+    .maybeSingle()
 
-  if (errReporte) return { error: errReporte.message }
+  let reporteId: string
+
+  if (existente) {
+    reporteId = existente.id
+
+    // Limpia lo que este mismo reporte ya tenía calculado, para que un
+    // reenvío no deje costos/asistencia duplicados por actividad (el
+    // upsert de avance_diario de abajo ya reemplaza cada fila por
+    // actividad, así que esa tabla no hace falta borrarla entera).
+    await supabase.from("costos_reales").delete().eq("reporte_id", reporteId)
+    await supabase.from("asistencia_actividad_diaria").delete().eq("reporte_id", reporteId)
+    await supabase.from("asistencia_diaria").delete().eq("reporte_id", reporteId)
+
+    const { error: errUpdate } = await supabase
+      .from("reportes_diarios")
+      .update({
+        clima: input.clima ?? null,
+        observaciones_generales: input.observaciones ?? null,
+      })
+      .eq("id", reporteId)
+    if (errUpdate) return { error: errUpdate.message }
+  } else {
+    const { data: reporte, error: errReporte } = await supabase
+      .from("reportes_diarios")
+      .insert({
+        proyecto_id: input.proyecto_id,
+        capataz_id: user.id,
+        fecha: input.fecha,
+        clima: input.clima ?? null,
+        observaciones_generales: input.observaciones ?? null,
+      })
+      .select("id")
+      .single()
+
+    if (errReporte) return { error: errReporte.message }
+    reporteId = reporte.id
+  }
 
   // Insertar avances -- upsert (no insert) por (reporte_id, actividad_id):
   // nunca debería llegar la misma actividad dos veces en un mismo envío,
   // pero si por algún bug llegara a pasar, esto la reemplaza en vez de
   // duplicarla (migración 065 agrega el candado único a nivel de BD).
+  // También es lo que permite reenviar el reporte del mismo día sin
+  // duplicar el avance de actividades que ya se habían guardado antes.
   if (input.avances.length > 0) {
     const { error: errAvance } = await supabase
       .from("avance_diario")
       .upsert(
         input.avances.map((a) => ({
-          reporte_id: reporte.id,
+          reporte_id: reporteId,
           actividad_id: a.actividad_id,
           cantidad_ejecutada_dia: a.cantidad_ejecutada_dia,
           porcentaje_avance_total: a.porcentaje_avance_total,
@@ -93,7 +134,7 @@ export async function crearReporteDiario(input: {
       .from("asistencia_diaria")
       .insert(
         input.asistencia.map((a) => ({
-          reporte_id: reporte.id,
+          reporte_id: reporteId,
           trabajador_id: a.trabajador_id,
           presente: a.presente,
           horas_regulares: a.horas_regulares,
@@ -110,7 +151,7 @@ export async function crearReporteDiario(input: {
   if (input.horasPorActividad && input.horasPorActividad.length > 0) {
     try {
       const { error: errHoras } = await supabase.rpc("registrar_asistencia_actividad", {
-        p_reporte_id: reporte.id,
+        p_reporte_id: reporteId,
         p_entradas: input.horasPorActividad,
       })
       if (errHoras) console.error(`registrar_asistencia_actividad falló: ${errHoras.message}`)
@@ -145,7 +186,7 @@ export async function crearReporteDiario(input: {
   revalidatePath("/alertas")
   revalidatePath("/desempeno")
 
-  return { id: reporte.id }
+  return { id: reporteId }
 }
 
 // ── Editar un reporte YA enviado de un día anterior ──
