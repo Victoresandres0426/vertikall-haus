@@ -57,6 +57,38 @@ function TextoConHalo({ x, y, fill, fontSize, fontWeight, anchor, children }: {
   )
 }
 
+// Etiqueta con fondo blanco sólido (pastilla) -- a diferencia del
+// halo, esto TAPA lo que esté detrás (la línea punteada del anticipo,
+// otra etiqueta cercana, etc.) en vez de solo contrastar con un
+// borde. Se usa para las etiquetas "flotantes" fuera de las barras
+// (el total arriba de cada columna, el % de avance), que son las que
+// se encimaban con la línea de referencia y entre sí.
+function EtiquetaConFondo({ x, y, texto, fill, anchor, fontSize = 11, fontWeight = 700 }: {
+  x: number; y: number; texto: string; fill: string; anchor: "middle" | "start"; fontSize?: number; fontWeight?: number
+}) {
+  const anchoAprox = texto.length * fontSize * 0.62 + 10
+  const alto = fontSize + 8
+  const rectX = anchor === "middle" ? x - anchoAprox / 2 : x - 4
+  const textoX = anchor === "middle" ? x : x + 1
+  return (
+    <g>
+      <rect
+        x={rectX}
+        y={y - alto / 2}
+        width={anchor === "middle" ? anchoAprox : anchoAprox - 4}
+        height={alto}
+        rx={4}
+        fill="#ffffff"
+        stroke="#e2e8f0"
+        strokeWidth={1}
+      />
+      <text x={textoX} y={y} textAnchor={anchor} dominantBaseline="middle" fontSize={fontSize} fontWeight={fontWeight} fill={fill}>
+        {texto}
+      </text>
+    </g>
+  )
+}
+
 // Etiqueta dentro de un segmento del stack -- solo si mide lo
 // suficiente para que quepa el texto sin encimarse con el borde.
 function crearEtiquetaSegmento(color: string) {
@@ -84,9 +116,7 @@ function crearEtiquetaTotalDesde(datos: PuntoFacturaChart[], responsable: (row: 
     const row = datos[index]
     if (!row || x == null || y == null || !responsable(row)) return null
     return (
-      <TextoConHalo x={x + width / 2} y={y - 8} fill="#334155" fontSize={11} fontWeight={700} anchor="middle">
-        {formatoCortoMXN(row.totalAcumulado)}
-      </TextoConHalo>
+      <EtiquetaConFondo x={x + width / 2} y={y - 13} texto={formatoCortoMXN(row.totalAcumulado)} fill="#334155" anchor="middle" />
     )
   }
 }
@@ -100,9 +130,7 @@ function crearEtiquetaPct(datos: { avancePct: number | null }[]) {
     const pct = datos[index]?.avancePct
     if (pct == null || x == null || y == null) return null
     return (
-      <TextoConHalo x={Number(x) + 10} y={Number(y) + 4} fill={COLOR_AVANCE} fontSize={11} fontWeight={700} anchor="start">
-        {`${pct}%`}
-      </TextoConHalo>
+      <EtiquetaConFondo x={Number(x) + 10} y={Number(y)} texto={`${pct}%`} fill={COLOR_AVANCE} anchor="start" />
     )
   }
 }
