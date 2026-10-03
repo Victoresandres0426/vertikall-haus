@@ -35,8 +35,23 @@ function formatoCortoMXN(n: number) {
   return `$${Math.round(v)}`
 }
 
-// Texto con halo blanco detrás -- se lee bien sin importar sobre qué
-// color de barra caiga.
+// Texto plano, sin halo -- para las etiquetas DENTRO de un segmento
+// de color sólido (ya hay contraste de sobra entre el texto y el
+// fondo de la barra; agregarle un halo ahí solo lo emborronaba,
+// sobre todo cuando el texto ya era blanco sobre un halo blanco).
+function TextoSimple({ x, y, fill, fontSize, fontWeight, anchor, children }: {
+  x: number; y: number; fill: string; fontSize: number; fontWeight: number; anchor: "middle" | "start"; children: string
+}) {
+  return (
+    <text x={x} y={y} textAnchor={anchor} fontSize={fontSize} fontWeight={fontWeight} fill={fill}>
+      {children}
+    </text>
+  )
+}
+
+// Texto con halo blanco detrás -- para las etiquetas FLOTANTES fuera
+// de las barras (el total del último punto, el % de avance), que sí
+// pueden cruzarse con la línea punteada del anticipo o con la grilla.
 function TextoConHalo({ x, y, fill, fontSize, fontWeight, anchor, children }: {
   x: number; y: number; fill: string; fontSize: number; fontWeight: number; anchor: "middle" | "start"; children: string
 }) {
@@ -64,9 +79,9 @@ function crearEtiquetaSegmento(color: string) {
     const { x, y, width, height, value } = props
     if (!value || height == null || height < 18) return null
     return (
-      <TextoConHalo x={x + width / 2} y={y + height / 2 + 4} fill={color} fontSize={10} fontWeight={700} anchor="middle">
+      <TextoSimple x={x + width / 2} y={y + height / 2 + 4} fill={color} fontSize={10} fontWeight={700} anchor="middle">
         {formatoCortoMXN(value)}
-      </TextoConHalo>
+      </TextoSimple>
     )
   }
 }
