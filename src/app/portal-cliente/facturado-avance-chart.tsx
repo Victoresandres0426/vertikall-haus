@@ -125,7 +125,7 @@ function crearEtiquetaPct(datos: { avancePct: number | null }[]) {
     if (pct == null || x == null || y == null) return null
     return (
       <TextoConHalo x={Number(x) + 10} y={Number(y) + 4} fill={COLOR_AVANCE} fontSize={11} fontWeight={700} anchor="start">
-        {pct}%
+        {`${pct}%`}
       </TextoConHalo>
     )
   }
