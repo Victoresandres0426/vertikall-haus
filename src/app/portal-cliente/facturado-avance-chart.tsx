@@ -4,19 +4,17 @@
 // ubicada en el eje X según su fecha de emisión real, pero la ALTURA
 // de la barra es el total facturado acumulado hasta esa fecha (no
 // solo el monto de esa factura), para que las columnas se vean crecer
-// una sobre otra. Dentro de cada barra, de abajo a arriba: cuánto del
-// anticipo se ha consumido en total a la fecha (verde), el resto ya
-// facturado antes que todavía no se cuenta como consumido (azul), y
-// lo nuevo que se facturó justo en esta factura (ámbar, arriba del
-// todo). Una línea de referencia horizontal punteada marca siempre el
-// monto del anticipo original -- la "línea de partida" -- para que se
-// vea de un vistazo cuánto se ha avanzado desde ahí (el monto se
-// menciona aparte, en texto, para no encimarse con la barra del
-// anticipo que casi siempre toca esa misma altura).
-// Diseño pedido explícitamente por el usuario via boceto a mano
-// (segunda iteración, con barras acumulativas). Tercera iteración:
-// paleta de color más sobria + números con halo blanco y más
-// separados entre sí para que no se vean amontonados.
+// una sobre otra.
+//
+// Modelo de color (tercera iteración, descrito por el usuario): el
+// anticipo es un monto FIJO que ocupa una "franja" de 0 a ese monto
+// (azul claro) -- la primera barra, la del propio anticipo, es esa
+// franja completa. En las facturas siguientes, dentro de esa misma
+// franja se va llenando desde abajo la porción ya amortizada (azul
+// oscuro) conforme se consume; lo que todavía no se amortiza se ve
+// igual que la franja del anticipo. Por encima del monto del anticipo
+// se acumula, sin techo, el resto de lo facturado (verde claro). Una
+// línea de referencia punteada marca siempre el monto del anticipo.
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList, ReferenceLine,
 } from "recharts"
@@ -26,9 +24,9 @@ import {
 export { construirPuntosPorFactura, type FacturaParaGrafico, type PuntoFacturaChart } from "./facturado-avance-series"
 import type { PuntoFacturaChart } from "./facturado-avance-series"
 
-const COLOR_BASE = "#2563EB"
-const COLOR_ANTICIPO_CONSUMIDO = "#059669"
-const COLOR_DINERO_NUEVO = "#D97706"
+const COLOR_ANTICIPO_CLARO = "#93C5FD"
+const COLOR_AMORTIZACION = "#1D4ED8"
+const COLOR_COBRADO = "#34D399"
 const COLOR_AVANCE = "#7C3AED"
 
 function formatoCortoMXN(n: number) {
@@ -38,8 +36,7 @@ function formatoCortoMXN(n: number) {
 }
 
 // Texto con halo blanco detrás -- se lee bien sin importar sobre qué
-// color de barra caiga, en vez de depender de adivinar un solo color
-// de relleno que funcione en todos los casos.
+// color de barra caiga.
 function TextoConHalo({ x, y, fill, fontSize, fontWeight, anchor, children }: {
   x: number; y: number; fill: string; fontSize: number; fontWeight: number; anchor: "middle" | "start"; children: string
 }) {
@@ -60,9 +57,8 @@ function TextoConHalo({ x, y, fill, fontSize, fontWeight, anchor, children }: {
   )
 }
 
-// Etiqueta dentro de un segmento del stack (verde/ámbar) -- solo si
-// mide lo suficiente para que quepa el texto sin encimarse con el
-// borde.
+// Etiqueta dentro de un segmento del stack -- solo si mide lo
+// suficiente para que quepa el texto sin encimarse con el borde.
 function crearEtiquetaSegmento(color: string) {
   return (props: any) => {
     const { x, y, width, height, value } = props
@@ -75,31 +71,13 @@ function crearEtiquetaSegmento(color: string) {
   }
 }
 
-// Etiqueta del segmento celeste/azul (base) -- igual que la anterior,
-// pero se omite en la barra del anticipo: ahí la barra ENTERA es el
-// valor, y ya se escribe una sola vez arriba del todo (ver
-// crearEtiquetaTotalDesde) -- mostrarlo dos veces era justo parte de
-// lo que se veía amontonado.
-function crearEtiquetaBase(datos: PuntoFacturaChart[]) {
-  return (props: any) => {
-    const { x, y, width, height, value, index } = props
-    const row = datos[index]
-    if (!row || row.esAnticipo) return null
-    if (!value || height == null || height < 18) return null
-    return (
-      <TextoConHalo x={x + width / 2} y={y + height / 2 + 4} fill="#ffffff" fontSize={10} fontWeight={700} anchor="middle">
-        {formatoCortoMXN(value)}
-      </TextoConHalo>
-    )
-  }
-}
-
 // Total acumulado -- se escribe arriba de toda la columna. "responsable"
 // decide, por fila, cuál de los dos Bars (el de arriba del todo en
-// cada caso) es el que de verdad está en la punta de la barra: para
-// la factura de anticipo es "baseAcumulada" (porque ahí no hay nada
-// arriba), para las demás es "incrementoNuevo". Así nunca dependemos
-// de que recharts dibuje una etiqueta sobre un segmento de valor 0.
+// cada caso) es el que de verdad está en la punta de la barra: cuando
+// ya se superó el monto del anticipo es "cobradoSobreAnticipo", y
+// mientras no (solo la propia factura de anticipo) es
+// "baseSinConsumir". Así nunca dependemos de que recharts dibuje una
+// etiqueta sobre un segmento de valor 0.
 function crearEtiquetaTotalDesde(datos: PuntoFacturaChart[], responsable: (row: PuntoFacturaChart) => boolean) {
   return (props: any) => {
     const { x, y, width, index } = props
@@ -115,9 +93,7 @@ function crearEtiquetaTotalDesde(datos: PuntoFacturaChart[], responsable: (row: 
 
 // % de avance real -- se escribe a la DERECHA del punto (no arriba),
 // para no competir por el mismo espacio vertical que la etiqueta del
-// total acumulado, que casi siempre cae muy cerca en altura (el
-// avance en dinero equivalente y lo facturado suelen ser montos
-// parecidos).
+// total acumulado, que casi siempre cae muy cerca en altura.
 function crearEtiquetaPct(datos: { avancePct: number | null }[]) {
   return (props: any) => {
     const { x, y, index } = props
@@ -141,19 +117,17 @@ function TooltipFactura({ active, payload, label, en }: any) {
       <p className="font-semibold text-slate-700">{row.numero ?? label}</p>
       <p className="text-slate-400 mb-1">{label}</p>
       {row.esAnticipo ? (
-        <p style={{ color: COLOR_BASE }}>
+        <p style={{ color: COLOR_ANTICIPO_CLARO }}>
           {en ? "Deposit collected" : "Anticipo cobrado"}: {formatoCortoMXN(row.totalAcumulado)}
         </p>
       ) : (
         <>
-          <p style={{ color: COLOR_DINERO_NUEVO }}>
-            {en ? "New in this invoice" : "Nuevo en esta factura"}: {formatoCortoMXN(row.incrementoNuevo)}
+          <p style={{ color: COLOR_AMORTIZACION }}>
+            {en ? "Deposit amortized (cumulative)" : "Anticipo amortizado (acumulado)"}: {formatoCortoMXN(row.amortizacionAcumulada)}
           </p>
-          {row.anticipoConsumidoAcumulado > 0 && (
-            <p style={{ color: COLOR_ANTICIPO_CONSUMIDO }}>
-              {en ? "Deposit consumed (total so far)" : "Anticipo consumido (acumulado)"}: {formatoCortoMXN(row.anticipoConsumidoAcumulado)}
-            </p>
-          )}
+          <p style={{ color: COLOR_COBRADO }}>
+            {en ? "Billed above deposit (cumulative)" : "Cobrado sobre el anticipo (acumulado)"}: {formatoCortoMXN(row.cobradoSobreAnticipo)}
+          </p>
           <p className="text-slate-500">{en ? "Total invoiced to date" : "Total facturado a la fecha"}: {formatoCortoMXN(row.totalAcumulado)}</p>
         </>
       )}
@@ -203,27 +177,18 @@ export function FacturadoAvanceChart({
       <div className="flex items-center justify-between mb-3 flex-wrap gap-y-1">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
         <div className="flex items-center gap-3 text-[11px] text-slate-400 flex-wrap">
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_BASE }} /> {en ? "Deposit / carried balance" : "Anticipo / saldo arrastrado"}</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_ANTICIPO_CONSUMIDO }} /> {en ? "Deposit consumed (cumulative)" : "Anticipo consumido (acumulado)"}</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_DINERO_NUEVO }} /> {en ? "New this invoice" : "Nuevo en esta factura"}</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_ANTICIPO_CLARO }} /> {en ? "Deposit" : "Anticipo"}</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_AMORTIZACION }} /> {en ? "Deposit amortized (cumulative)" : "Anticipo amortizado (acumulado)"}</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_COBRADO }} /> {en ? "Billed above deposit" : "Cobrado sobre el anticipo"}</span>
           <span className="flex items-center gap-1"><span className="inline-block" style={{ borderTop: `2px dashed ${COLOR_AVANCE}`, width: 12 }} /> {en ? "Actual progress" : "Avance real"}</span>
         </div>
       </div>
-      <div className="flex items-center gap-3 text-[10px] text-slate-400 -mt-2 mb-2 flex-wrap">
-        {presupuestoVenta != null && (
-          <span>
-            {en ? "Scaled to the full contract: " : "Escalado al contrato completo: "}
-            {presupuestoVenta.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}
-          </span>
-        )}
-        {anticipoMonto != null && (
-          <span className="flex items-center gap-1">
-            <span className="inline-block" style={{ borderTop: "2px dashed #94a3b8", width: 10 }} />
-            {en ? "Deposit line: " : "Línea de anticipo: "}
-            {formatoCortoMXN(anticipoMonto)}
-          </span>
-        )}
-      </div>
+      {presupuestoVenta != null && (
+        <p className="text-[10px] text-slate-400 -mt-2 mb-2">
+          {en ? "Scaled to the full contract: " : "Escalado al contrato completo: "}
+          {presupuestoVenta.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}
+        </p>
+      )}
       <div className="h-60">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={conEquivalente} margin={{ top: 22, right: 20, left: 0, bottom: 0 }}>
@@ -239,18 +204,17 @@ export function FacturadoAvanceChart({
             />
             <Tooltip content={<TooltipFactura en={en} />} />
             {anticipoMonto != null && (
-              <ReferenceLine y={anticipoMonto} stroke="#94a3b8" strokeDasharray="4 4" />
+              <ReferenceLine y={anticipoMonto} stroke="#60A5FA" strokeDasharray="4 4" />
             )}
-            <Bar dataKey="anticipoConsumidoAcumulado" stackId="factura" fill={COLOR_ANTICIPO_CONSUMIDO}>
-              <LabelList dataKey="anticipoConsumidoAcumulado" content={crearEtiquetaSegmento("#ffffff")} />
+            <Bar dataKey="amortizacionAcumulada" stackId="factura" fill={COLOR_AMORTIZACION}>
+              <LabelList dataKey="amortizacionAcumulada" content={crearEtiquetaSegmento("#ffffff")} />
             </Bar>
-            <Bar dataKey="baseAcumulada" stackId="factura" fill={COLOR_BASE}>
-              <LabelList dataKey="baseAcumulada" content={crearEtiquetaBase(conEquivalente)} />
-              <LabelList dataKey="baseAcumulada" content={crearEtiquetaTotalDesde(conEquivalente, (r) => r.esAnticipo)} />
+            <Bar dataKey="baseSinConsumir" stackId="factura" fill={COLOR_ANTICIPO_CLARO}>
+              <LabelList dataKey="baseSinConsumir" content={crearEtiquetaTotalDesde(conEquivalente, (r) => r.cobradoSobreAnticipo === 0)} />
             </Bar>
-            <Bar dataKey="incrementoNuevo" stackId="factura" fill={COLOR_DINERO_NUEVO} radius={[4, 4, 0, 0]}>
-              <LabelList dataKey="incrementoNuevo" content={crearEtiquetaSegmento("#ffffff")} />
-              <LabelList dataKey="incrementoNuevo" content={crearEtiquetaTotalDesde(conEquivalente, (r) => !r.esAnticipo)} />
+            <Bar dataKey="cobradoSobreAnticipo" stackId="factura" fill={COLOR_COBRADO} radius={[4, 4, 0, 0]}>
+              <LabelList dataKey="cobradoSobreAnticipo" content={crearEtiquetaSegmento("#065F46")} />
+              <LabelList dataKey="cobradoSobreAnticipo" content={crearEtiquetaTotalDesde(conEquivalente, (r) => r.cobradoSobreAnticipo > 0)} />
             </Bar>
             {presupuestoVenta != null && (
               <Line

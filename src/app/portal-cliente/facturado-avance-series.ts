@@ -3,13 +3,23 @@
 // siendo una factura real, ubicada en el eje X según su fecha de
 // emisión, pero la ALTURA de la barra es el total facturado ACUMULADO
 // hasta esa fecha (no solo el monto de esa factura puntual), para que
-// las columnas se vean crecer una sobre otra -- diseño pedido
-// explícitamente por el usuario via boceto a mano (segunda
-// iteración). Se separó de facturado-avance-chart.tsx porque ese
-// archivo es "use client" -- y Next.js convierte TODOS los exports de
-// un módulo "use client" en referencias de cliente cuando se importan
-// desde un Server Component. Llamar una función así (no renderizarla
-// como JSX) directamente en un Server Component revienta en tiempo de
+// las columnas se vean crecer una sobre otra.
+//
+// Modelo de color (tercera iteración, descrito explícitamente por el
+// usuario): el anticipo es un monto FIJO (p.ej. $110,190) que se
+// dibuja como una "franja" de 0 hasta ese monto -- la primera barra
+// (la del propio anticipo) la ocupa POR COMPLETO. En cada factura
+// posterior, dentro de esa misma franja se va llenando desde abajo la
+// porción ya amortizada (más oscura) -- lo que todavía no se ha
+// amortizado se ve igual que la franja del anticipo (más claro) hasta
+// que se cubre por completo. Por ENCIMA del monto del anticipo se va
+// acumulando el resto de lo facturado (otro color), que no tiene techo.
+//
+// Se separó de facturado-avance-chart.tsx porque ese archivo es "use
+// client" -- y Next.js convierte TODOS los exports de un módulo "use
+// client" en referencias de cliente cuando se importan desde un
+// Server Component. Llamar una función así (no renderizarla como JSX)
+// directamente en un Server Component revienta en tiempo de
 // ejecución. Esta función, en un archivo sin la directiva, se puede
 // llamar tanto desde Server Components (portal cliente) como desde
 // Client Components (vista interna de Facturas).
@@ -37,26 +47,27 @@ export type PuntoFacturaChart = {
   fechaISO: string
   numero: string | null
   esAnticipo: boolean
-  // Barra en tres segmentos, de abajo a arriba:
-  // 1) anticipoConsumidoAcumulado (verde) -- cuánto del anticipo se ha
-  //    consumido EN TOTAL hasta esta factura (crece con cada factura).
-  // 2) baseAcumulada (celeste) -- el resto de lo ya facturado antes
-  //    que todavía no se cuenta como consumido. Para la factura de
-  //    anticipo, esta es la barra ENTERA (sirve de "línea de
-  //    partida"), ya que todavía no hay nada que marcar como nuevo.
-  // 3) incrementoNuevo (naranja) -- lo que se facturó de nuevo justo
-  //    en ESTA factura (0 para la propia factura de anticipo).
-  // La suma de los tres = totalAcumulado = todo lo facturado hasta la
-  // fecha de esta factura.
-  anticipoConsumidoAcumulado: number
-  baseAcumulada: number
-  incrementoNuevo: number
   totalAcumulado: number
+  // Barra en tres segmentos, de abajo a arriba:
+  // 1) amortizacionAcumulada -- cuánto del anticipo se ha amortizado
+  //    EN TOTAL hasta esta factura (crece con cada factura, pero
+  //    nunca más allá del propio monto del anticipo).
+  // 2) baseSinConsumir -- el resto de la "franja" del anticipo que
+  //    todavía no se ha amortizado (mismo color que la barra del
+  //    anticipo -- visualmente es la misma franja, solo que una parte
+  //    ya se pintó más oscura). Para la factura de anticipo, esto es
+  //    la barra ENTERA.
+  // 3) cobradoSobreAnticipo -- lo acumulado que excede el monto del
+  //    anticipo (no tiene techo, crece sin límite con cada factura
+  //    nueva una vez que el anticipo ya se cubrió por completo).
+  amortizacionAcumulada: number
+  baseSinConsumir: number
+  cobradoSobreAnticipo: number
   avancePct: number | null
   // Monto del anticipo original -- igual en todos los puntos. Se usa
   // para dibujar la línea de referencia horizontal ("línea de
   // partida del anticipo") que pidió el usuario, para que siempre se
-  // vea dónde arrancó, incluso cuando las barras ya la superaron.
+  // vea dónde está ese límite.
   anticipoMonto: number | null
 }
 
@@ -72,6 +83,7 @@ export function construirPuntosPorFactura(facturas: FacturaParaGrafico[], en: bo
     .sort((a, b) => (a.fecha_emision as string).localeCompare(b.fecha_emision as string))
 
   const anticipoMonto = ordenadas.find((f) => (f.numero ?? "").startsWith("ANT-"))?.monto ?? null
+  const anticipoSeguro = anticipoMonto ?? 0
 
   let acumuladoTotal = 0
   let acumuladoConsumido = 0
@@ -84,19 +96,24 @@ export function construirPuntosPorFactura(facturas: FacturaParaGrafico[], en: bo
     acumuladoTotal += montoFactura
     acumuladoConsumido += amortFactura
 
-    const incrementoNuevo = esAnticipo ? 0 : montoFactura
-    const anticipoConsumidoAcumulado = esAnticipo ? 0 : acumuladoConsumido
-    const baseAcumulada = Math.max(acumuladoTotal - anticipoConsumidoAcumulado - incrementoNuevo, 0)
+    // La franja del anticipo va de $0 a $anticipoSeguro. Lo ya
+    // amortizado llena esa franja desde abajo (sin poder pasarse del
+    // tope); lo que falta de esa misma franja se ve igual que la
+    // barra del anticipo; y lo que excede el tope es la parte "nueva"
+    // sin límite.
+    const amortizacionAcumulada = Math.min(acumuladoConsumido, anticipoSeguro)
+    const baseSinConsumir = Math.max(Math.min(acumuladoTotal, anticipoSeguro) - amortizacionAcumulada, 0)
+    const cobradoSobreAnticipo = Math.max(acumuladoTotal - anticipoSeguro, 0)
 
     return {
       etiqueta: formatoFechaCorta(f.fecha_emision as string, en),
       fechaISO: f.fecha_emision as string,
       numero: f.numero,
       esAnticipo,
-      anticipoConsumidoAcumulado,
-      baseAcumulada,
-      incrementoNuevo,
       totalAcumulado: acumuladoTotal,
+      amortizacionAcumulada,
+      baseSinConsumir,
+      cobradoSobreAnticipo,
       avancePct: f.avance_acumulado_pct ?? null,
       anticipoMonto,
     }
