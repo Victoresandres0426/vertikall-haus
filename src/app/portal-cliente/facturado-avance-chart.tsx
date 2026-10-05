@@ -111,11 +111,14 @@ function crearEtiquetaTotalUltimo(datos: PuntoFacturaChart[], responsable: (row:
 
 // % de avance real -- igual que arriba: solo en el último punto, a su
 // derecha (no arriba), para no competir con la etiqueta del total.
-function crearEtiquetaPctUltimo(datos: { avancePct: number | null }[]) {
+// Usa "avancePctMostrado" (ver más abajo), que para el último punto es
+// el avance REAL de hoy -- no el que tenía la obra cuando se generó la
+// última factura -- con su decimal real, igual que en Cronograma.
+function crearEtiquetaPctUltimo(datos: { avancePctMostrado: number | null }[]) {
   return (props: any) => {
     const { x, y, index } = props
     if (index !== datos.length - 1) return null
-    const pct = datos[index]?.avancePct
+    const pct = datos[index]?.avancePctMostrado
     if (pct == null || x == null || y == null) return null
     return (
       <TextoConHalo x={Number(x) + 10} y={Number(y) + 4} fill={COLOR_AVANCE} fontSize={11} fontWeight={700} anchor="start">
@@ -151,7 +154,7 @@ function TooltipFactura({ active, payload, label, en }: any) {
       )}
       {row.avancePct != null && (
         <p className="pt-0.5 mt-0.5 border-t border-slate-100" style={{ color: COLOR_AVANCE }}>
-          {en ? "Actual progress" : "Avance real"}: {row.avancePct}%
+          {en ? "Actual site progress" : "Avance real de la obra"}: {row.avancePct}%
         </p>
       )}
     </div>
@@ -163,6 +166,7 @@ export function FacturadoAvanceChart({
   en,
   label,
   presupuestoVenta,
+  avanceActualPct,
 }: {
   datos: PuntoFacturaChart[]
   en: boolean
@@ -171,6 +175,13 @@ export function FacturadoAvanceChart({
   // de avance en el mismo eje de dinero que las barras (avance_pct/100
   // × contrato). Sin esto, el punto de avance simplemente no se dibuja.
   presupuestoVenta?: number | null
+  // Avance REAL de la obra a día de hoy (mismo histórico que usa
+  // Cronograma) -- distinto de avance_acumulado_pct de la última
+  // factura, que es el avance que tenía la obra en el momento en que
+  // se generó esa factura (pudo haber sido antes de hoy). El ÚLTIMO
+  // punto del gráfico usa este valor si está disponible, para que
+  // siempre muestre el dato más actual, con su decimal real.
+  avanceActualPct?: number | null
 }) {
   if (datos.length === 0) {
     return (
@@ -183,12 +194,21 @@ export function FacturadoAvanceChart({
 
   const anticipoMonto = datos[0]?.anticipoMonto ?? null
 
-  const conEquivalente = datos.map((d) => ({
-    ...d,
-    avanceEquivDinero: presupuestoVenta != null && d.avancePct != null
-      ? (d.avancePct / 100) * presupuestoVenta
-      : null,
-  }))
+  const conEquivalente = datos.map((d, i) => {
+    // El último punto muestra el avance de HOY (avanceActualPct) si
+    // está disponible -- para todos los demás puntos (y como
+    // respaldo si no llegó el avance actual), se usa el avance que
+    // quedó guardado en la propia factura.
+    const esUltimo = i === datos.length - 1
+    const avancePctMostrado = esUltimo && avanceActualPct != null ? avanceActualPct : d.avancePct
+    return {
+      ...d,
+      avancePctMostrado,
+      avanceEquivDinero: presupuestoVenta != null && avancePctMostrado != null
+        ? (avancePctMostrado / 100) * presupuestoVenta
+        : null,
+    }
+  })
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-4">
@@ -198,7 +218,7 @@ export function FacturadoAvanceChart({
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_ANTICIPO_CLARO }} /> {en ? "Deposit" : "Anticipo"}</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_AMORTIZACION }} /> {en ? "Deposit amortized (cumulative)" : "Anticipo amortizado (acumulado)"}</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COLOR_COBRADO }} /> {en ? "Billed above deposit" : "Cobrado sobre el anticipo"}</span>
-          <span className="flex items-center gap-1"><span className="inline-block" style={{ borderTop: `2px dashed ${COLOR_AVANCE}`, width: 12 }} /> {en ? "Actual progress" : "Avance real"}</span>
+          <span className="flex items-center gap-1"><span className="inline-block" style={{ borderTop: `2px dashed ${COLOR_AVANCE}`, width: 12 }} /> {en ? "Actual site progress" : "Avance real de la obra"}</span>
         </div>
       </div>
       {presupuestoVenta != null && (

@@ -32,6 +32,11 @@ async function getData() {
 
   let facturasCliente: FacturaCliente[] = []
   let facturasProveedor: FacturaProveedor[] = []
+  // El gráfico "Facturado vs. % de avance real" debe mostrar en su
+  // último punto el avance REAL de HOY, no el que tenía la obra
+  // cuando se generó la última factura (pueden ser fechas distintas) --
+  // ver mismo histórico que usa Cronograma.
+  let avanceActualPct: number | null = null
 
   if (proyectoActivo) {
     const [{ data: fc }, { data: fp }] = await Promise.all([
@@ -60,6 +65,12 @@ async function getData() {
     ])
     facturasCliente = (fc ?? []) as unknown as FacturaCliente[]
     facturasProveedor = (fp ?? []) as unknown as FacturaProveedor[]
+
+    try {
+      const { data: historicoData } = await supabase.rpc("proyecto_avance_historico", { p_proyecto_id: proyectoActivo.id })
+      const historico = (historicoData ?? []) as { fecha: string; avance_pct: number }[]
+      avanceActualPct = historico.length > 0 ? historico[historico.length - 1].avance_pct : null
+    } catch { /* migración 110 no aplicada aún */ }
   }
 
   return {
@@ -71,11 +82,12 @@ async function getData() {
     todosLosProyectos,
     proyectoActivoId: proyectoActivo?.id ?? null,
     proyectoActivoPresupuestoVenta: (proyectoActivo as { presupuesto_venta?: number } | null)?.presupuesto_venta ?? null,
+    avanceActualPct,
   }
 }
 
 export default async function FacturasPage() {
-  const { facturasCliente, facturasProveedor, proyectos, proveedores, puedeCrear, todosLosProyectos, proyectoActivoId, proyectoActivoPresupuestoVenta } = await getData()
+  const { facturasCliente, facturasProveedor, proyectos, proveedores, puedeCrear, todosLosProyectos, proyectoActivoId, proyectoActivoPresupuestoVenta, avanceActualPct } = await getData()
 
   const total = facturasCliente.length + facturasProveedor.length
 
@@ -101,6 +113,7 @@ export default async function FacturasPage() {
         proveedores={proveedores}
         puedeCrear={puedeCrear}
         proyectoActivoPresupuestoVenta={proyectoActivoPresupuestoVenta}
+        avanceActualPct={avanceActualPct}
       />
     </div>
   )

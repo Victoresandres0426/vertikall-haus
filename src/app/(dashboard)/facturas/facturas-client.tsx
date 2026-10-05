@@ -134,6 +134,7 @@ export function FacturasClient({
   proveedores,
   puedeCrear,
   proyectoActivoPresupuestoVenta,
+  avanceActualPct,
 }: {
   facturasClienteIniciales: FacturaCliente[]
   facturasProveedorIniciales: FacturaProveedor[]
@@ -141,6 +142,7 @@ export function FacturasClient({
   proveedores: ProveedorOpcion[]
   puedeCrear: boolean
   proyectoActivoPresupuestoVenta?: number | null
+  avanceActualPct?: number | null
 }) {
   const [tab, setTab] = useState<"cliente" | "proveedor">("cliente")
   const [facturasCliente] = useState(facturasClienteIniciales)
@@ -194,7 +196,7 @@ export function FacturasClient({
       {facturasParaCxC.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <PagosChart facturas={facturasParaCxC} en={false} label="Facturado vs. cobrado" />
-          <FacturadoAvanceChart datos={puntosFactura} en={false} label="Facturado vs. % de avance real" presupuestoVenta={proyectoActivoPresupuestoVenta} />
+          <FacturadoAvanceChart datos={puntosFactura} en={false} label="Facturado vs. % de avance real" presupuestoVenta={proyectoActivoPresupuestoVenta} avanceActualPct={avanceActualPct} />
         </div>
       )}
 

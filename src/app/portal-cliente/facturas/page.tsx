@@ -38,8 +38,19 @@ export default async function FacturasClientePage() {
   // Cada factura ya trae su propio avance_acumulado_pct guardado (el
   // avance ponderado del proyecto en el momento en que se generó esa
   // factura puntual -- ver generar_facturas_semanales), así que no hace
-  // falta ir a reconstruirlo de snapshots históricos por separado.
+  // falta ir a reconstruirlo de snapshots históricos por separado para
+  // los puntos pasados. Pero el ÚLTIMO punto del gráfico debe reflejar
+  // el avance REAL de HOY, no el que tenía la obra cuando se generó la
+  // última factura (pueden ser fechas distintas) -- para eso sí hace
+  // falta el histórico, igual que en Cronograma.
   const puntosFactura = construirPuntosPorFactura(facturas, facturaEnIngles)
+
+  let avanceActualPct: number | null = null
+  try {
+    const { data: historicoData } = await supabase.rpc("cliente_ver_avance_historico")
+    const historico = (historicoData ?? []) as { fecha: string; avance_pct: number }[]
+    avanceActualPct = historico.length > 0 ? historico[historico.length - 1].avance_pct : null
+  } catch { /* migración 108 no aplicada aún */ }
 
   const totalCobrado = facturas.reduce((sum, f) => sum + Number(f.monto_cobrado ?? 0), 0)
   const facturasAnticipo = facturas.filter((f) => f.numero?.startsWith("ANT-"))
@@ -67,6 +78,7 @@ export default async function FacturasClientePage() {
           en={facturaEnIngles}
           label={facturaEnIngles ? "Invoiced vs. actual progress" : "Facturado vs. % de avance real"}
           presupuestoVenta={proyecto.presupuesto_venta}
+          avanceActualPct={avanceActualPct}
         />
 
         {facturas.length === 0 ? (
