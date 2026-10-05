@@ -27,7 +27,7 @@ import type { PuntoFacturaChart } from "./facturado-avance-series"
 const COLOR_ANTICIPO_CLARO = "#93C5FD"
 const COLOR_AMORTIZACION = "#1D4ED8"
 const COLOR_COBRADO = "#34D399"
-const COLOR_AVANCE = "#7C3AED"
+const COLOR_AVANCE = "#DB2777"
 
 function formatoCortoMXN(n: number) {
   const v = Number(n)
@@ -44,29 +44,6 @@ function TextoSimple({ x, y, fill, fontSize, fontWeight, anchor, children }: {
 }) {
   return (
     <text x={x} y={y} textAnchor={anchor} fontSize={fontSize} fontWeight={fontWeight} fill={fill}>
-      {children}
-    </text>
-  )
-}
-
-// Texto con halo blanco detrás -- para las etiquetas FLOTANTES fuera
-// de las barras (el total del último punto, el % de avance), que sí
-// pueden cruzarse con la línea punteada del anticipo o con la grilla.
-function TextoConHalo({ x, y, fill, fontSize, fontWeight, anchor, children }: {
-  x: number; y: number; fill: string; fontSize: number; fontWeight: number; anchor: "middle" | "start"; children: string
-}) {
-  return (
-    <text
-      x={x}
-      y={y}
-      textAnchor={anchor}
-      fontSize={fontSize}
-      fontWeight={fontWeight}
-      fill={fill}
-      stroke="#ffffff"
-      strokeWidth={3}
-      paintOrder="stroke"
-    >
       {children}
     </text>
   )
@@ -102,9 +79,9 @@ function crearEtiquetaTotalUltimo(datos: PuntoFacturaChart[], responsable: (row:
     const row = datos[index]
     if (!row || x == null || y == null || !responsable(row)) return null
     return (
-      <TextoConHalo x={x + width / 2} y={y - 8} fill="#334155" fontSize={12} fontWeight={700} anchor="middle">
+      <TextoSimple x={x + width / 2} y={y - 8} fill="#334155" fontSize={12} fontWeight={700} anchor="middle">
         {formatoCortoMXN(row.totalAcumulado)}
-      </TextoConHalo>
+      </TextoSimple>
     )
   }
 }
@@ -121,9 +98,9 @@ function crearEtiquetaPctUltimo(datos: { avancePctMostrado: number | null }[]) {
     const pct = datos[index]?.avancePctMostrado
     if (pct == null || x == null || y == null) return null
     return (
-      <TextoConHalo x={Number(x) + 10} y={Number(y) + 4} fill={COLOR_AVANCE} fontSize={11} fontWeight={700} anchor="start">
+      <TextoSimple x={Number(x) + 10} y={Number(y) + 4} fill={COLOR_AVANCE} fontSize={11} fontWeight={700} anchor="start">
         {`${pct}%`}
-      </TextoConHalo>
+      </TextoSimple>
     )
   }
 }
@@ -259,9 +236,9 @@ export function FacturadoAvanceChart({
                 type="monotone"
                 dataKey="avanceEquivDinero"
                 stroke={COLOR_AVANCE}
-                strokeWidth={2}
-                strokeDasharray="5 4"
-                dot={{ r: 4, fill: COLOR_AVANCE, strokeWidth: 0 }}
+                strokeWidth={1.25}
+                strokeDasharray="4 3"
+                dot={{ r: 3, fill: COLOR_AVANCE, strokeWidth: 0 }}
                 connectNulls
                 label={crearEtiquetaPctUltimo(conEquivalente)}
               />
