@@ -35,7 +35,7 @@ export function MargenCO({
         onClick={() => puedeEditar && setEditando(true)}
         disabled={!puedeEditar}
         className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 disabled:hover:text-slate-500 group"
-        title="Indirectos + Contingencia + Margen (Utilidad+OH) que se suman automáticamente al costo directo (material+mano de obra) al registrar un Change Order"
+        title="Indirectos + Contingencia + Margen (Utilidad+OH) calculados como % del precio total (directo ÷ (1 − %)) al registrar un Change Order"
       >
         <Percent className="h-3.5 w-3.5" />
         <span>Margen Change Orders: {margenInicial}%</span>
