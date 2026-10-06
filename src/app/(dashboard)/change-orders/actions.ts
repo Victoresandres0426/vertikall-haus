@@ -283,3 +283,66 @@ export async function enviarChangeOrderCliente(id: string): Promise<{ error?: st
   revalidatePath("/change-orders")
   return {}
 }
+
+export async function reabrirChangeOrder(id: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const chk = await verificarPermisoGestion(supabase)
+  if ("error" in chk) return { error: chk.error }
+
+  const { error } = await supabase.rpc("reabrir_change_order", { p_id: id })
+  if (error) {
+    console.error("reabrirChangeOrder error:", error)
+    if (error.message.includes("co_con_facturas"))
+      return { error: "Este CO ya tiene facturas emitidas; no se puede reabrir automáticamente." }
+    if (error.message.includes("co_con_avance"))
+      return { error: "Este CO ya tiene avance reportado en sus actividades; no se puede reabrir automáticamente." }
+    if (error.message.includes("change_order_no_reabrible"))
+      return { error: "Este CO no se puede reabrir." }
+    return { error: "Error al reabrir. ¿Corriste la migración 140?" }
+  }
+
+  revalidatePath("/change-orders")
+  return {}
+}
+
+// Corrige en sitio un CO ya aprobado (con avance/facturas): migración 141.
+export async function corregirChangeOrderAprobado(id: string, formData: FormData): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const chk = await verificarPermisoGestion(supabase)
+  if ("error" in chk) return { error: chk.error }
+
+  const titulo = formData.get("titulo") as string
+  if (!titulo?.trim()) return { error: "El título es requerido" }
+
+  const costoDirecto = parseFloat((formData.get("costo_directo") as string) || "0") || 0
+  const renglonesRaw = (() => {
+    try { return JSON.parse((formData.get("renglones") as string) || "[]") } catch { return [] }
+  })()
+  if (!Array.isArray(renglonesRaw) || renglonesRaw.length === 0) {
+    return { error: "Un CO aprobado debe conservar su desglose por actividad." }
+  }
+  const suma = renglonesRaw.reduce((s: number, r: { costo_material?: number; costo_mano_obra?: number }) =>
+    s + (Number(r.costo_material) || 0) + (Number(r.costo_mano_obra) || 0), 0)
+  if (Math.abs(suma - costoDirecto) > 0.01) {
+    return { error: `El desglose (${suma.toFixed(2)}) no coincide con el costo directo (${costoDirecto.toFixed(2)}).` }
+  }
+
+  const { error } = await supabase.rpc("corregir_change_order_aprobado", {
+    p_id: id,
+    p_titulo: titulo.trim(),
+    p_descripcion: (formData.get("descripcion") as string) || "",
+    p_numero: (formData.get("numero") as string) || "",
+    p_solicitado_por: (formData.get("solicitado_por") as string) || "",
+    p_impacto_dias: parseInt((formData.get("impacto_dias") as string) || "0", 10) || 0,
+    p_renglones: renglonesRaw,
+  })
+  if (error) {
+    console.error("corregirChangeOrderAprobado error:", error)
+    if (error.message.includes("renglon_con_avance"))
+      return { error: "No puedes quitar un renglón cuya actividad ya tiene avance." }
+    return { error: "Error al corregir. ¿Corriste la migración 141?" }
+  }
+
+  revalidatePath("/change-orders")
+  return {}
+}

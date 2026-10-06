@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { GitMerge, DollarSign, Clock, CheckCircle, XCircle, AlertCircle, Plus, X, Pencil, Send, ShieldCheck } from "lucide-react"
+import { GitMerge, DollarSign, Clock, CheckCircle, XCircle, AlertCircle, Plus, X, Pencil, Send, ShieldCheck, ChevronDown, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { crearChangeOrder, actualizarChangeOrder, validarChangeOrder, enviarChangeOrderCliente } from "./actions"
+import { crearChangeOrder, actualizarChangeOrder, validarChangeOrder, enviarChangeOrderCliente, reabrirChangeOrder, corregirChangeOrderAprobado } from "./actions"
 
 export type ChangeOrder = {
   id: string
@@ -91,6 +91,7 @@ export function ChangeOrdersClient({
   const [showModal, setShowModal] = useState(false)
   const [editCO, setEditCO] = useState<ChangeOrder | null>(null)
   const [pendingId, setPendingId] = useState<string | null>(null)
+  const [expandidoId, setExpandidoId] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   const ejecutar = (id: string, accion: () => Promise<{ error?: string }>) => {
@@ -169,7 +170,10 @@ export function ChangeOrdersClient({
               return (
                 <div key={co.id} className="bg-white border border-slate-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
                   <div className="flex items-start gap-4">
-                    <div className="flex-1 min-w-0">
+                    <div
+                      className="flex-1 min-w-0 cursor-pointer"
+                      onClick={() => setExpandidoId(expandidoId === co.id ? null : co.id)}
+                    >
                       <div className="flex items-center gap-2 flex-wrap mb-1">
                         {co.numero && (
                           <span className="font-mono text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
@@ -195,7 +199,7 @@ export function ChangeOrdersClient({
                         <p className="text-xs text-slate-400 mt-0.5">{co.proyectos.nombre}</p>
                       )}
                       {co.descripcion && (
-                        <p className="text-xs text-slate-500 mt-1 line-clamp-2">{co.descripcion}</p>
+                        <p className={cn("text-xs text-slate-500 mt-1", expandidoId !== co.id && "line-clamp-2")}>{co.descripcion}</p>
                       )}
                       {co.solicitado_por && (
                         <p className="text-xs text-slate-400 mt-1">Solicitado por: {co.solicitado_por}</p>
@@ -212,8 +216,53 @@ export function ChangeOrdersClient({
                       {co.estado === "enviado_cliente" && (
                         <p className="text-xs text-amber-600 mt-1">Esperando decisión del cliente</p>
                       )}
+                      {expandidoId === co.id && (
+                        <div className="mt-3 border-t border-slate-100 pt-3 space-y-2 cursor-default" onClick={(e) => e.stopPropagation()}>
+                          {(co.change_order_renglones ?? []).length > 0 ? (
+                            <div className="space-y-1">
+                              <p className="text-[11px] font-semibold text-slate-500 uppercase">Desglose interno</p>
+                              {[...(co.change_order_renglones ?? [])].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0)).map((r, i) => (
+                                <div key={r.id ?? i} className="flex justify-between gap-3 text-xs text-slate-600">
+                                  <span className="truncate">{r.nombre}{r.cantidad_objetivo ? ` · ${r.cantidad_objetivo} ${r.unidad ?? ""}` : ""} · {r.duracion_dias}d</span>
+                                  <span className="shrink-0">Mat. {formatMonto(Number(r.costo_material))} · M.O. {formatMonto(Number(r.costo_mano_obra))}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-slate-400">Sin desglose por renglones.</p>
+                          )}
+                          <p className="text-xs text-slate-400">
+                            Creado {new Date(co.created_at).toLocaleDateString("es-MX")}
+                            {co.aprobado_at ? ` · Aprobado ${new Date(co.aprobado_at).toLocaleDateString("es-MX")}` : ""}
+                          </p>
+                        </div>
+                      )}
+                      <ChevronDown className={cn("h-3.5 w-3.5 text-slate-300 mt-1 transition-transform", expandidoId === co.id && "rotate-180")} />
+                      {puedeCrear && co.estado === "aprobado" && (
+                        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => setEditCO(co)}
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50 mr-3"
+                          >
+                            <Pencil className="h-3 w-3" /> Corregir (conserva avance y facturas)
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => {
+                              if (confirm("Reabrir este CO revierte sus actividades, partidas y prorrateo de indirectos, y lo deja En estimación para editarlo y reenviarlo al cliente. ¿Continuar?"))
+                                ejecutar(co.id, () => reabrirChangeOrder(co.id))
+                            }}
+                            className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 disabled:opacity-50"
+                          >
+                            <RotateCcw className="h-3 w-3" /> {pendingId === co.id ? "Reabriendo..." : "Reabrir para editar"}
+                          </button>
+                        </div>
+                      )}
                       {puedeCrear && ["detectado", "en_estimacion"].includes(co.estado) && (
-                        <div className="flex gap-2 mt-2">
+                        <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             onClick={() => setEditCO(co)}
@@ -340,7 +389,9 @@ function ModalRegistrarChangeOrder({
 
     startTransition(async () => {
       const result = editCO
-        ? await actualizarChangeOrder(editCO.id, formData)
+        ? (editCO.estado === "aprobado" || editCO.estado === "facturado"
+            ? await corregirChangeOrderAprobado(editCO.id, formData)
+            : await actualizarChangeOrder(editCO.id, formData))
         : await crearChangeOrder(formData)
       if (result.error) {
         setError(result.error)

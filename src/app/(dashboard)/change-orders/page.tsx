@@ -39,7 +39,7 @@ async function getData() {
         costo_directo, margen_pct_aplicado, costo_margen, motivo_rechazo,
         facturado, cobrado, created_at, aprobado_at, proyecto_id,
         proyectos ( nombre, codigo ),
-        change_order_renglones ( id, proceso_id, nombre, descripcion, costo_material, costo_mano_obra, duracion_dias, orden )
+        change_order_renglones ( id, proceso_id, nombre, descripcion, costo_material, costo_mano_obra, duracion_dias, cantidad_objetivo, unidad, orden )
       `)
       .eq("proyecto_id", proyectoActivo.id)
       .order("created_at", { ascending: false })
