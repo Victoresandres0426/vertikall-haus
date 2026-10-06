@@ -360,7 +360,8 @@ function ModalRegistrarChangeOrder({
   const proyectoSel = proyectos.find((p) => p.id === proyectoId)
   const margenPct = proyectoSel?.margen_co_pct ?? 0
   const directoNum = parseFloat(costoDirecto) || 0
-  const margenNum = directoNum * (margenPct / 100)
+  // El % es sobre el precio total (no sobre el costo directo): total = directo / (1 - %)
+  const margenNum = margenPct >= 100 ? 0 : directoNum / (1 - margenPct / 100) - directoNum
   const totalNum = directoNum + margenNum
   const procesos = procesosPorProyecto[proyectoId] ?? []
   const sumaRenglones = renglones.reduce((s, r) => s + (r.costo_material || 0) + (r.costo_mano_obra || 0), 0)

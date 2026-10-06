@@ -110,7 +110,7 @@ export async function crearChangeOrder(formData: FormData): Promise<{ error?: st
     .single()
 
   const margen_pct_aplicado = proyecto?.margen_co_pct ?? 0
-  const costo_margen = isNaN(costo_directo) ? 0 : Math.round(costo_directo * (margen_pct_aplicado / 100) * 100) / 100
+  const costo_margen = isNaN(costo_directo) ? 0 : margen_pct_aplicado >= 100 ? 0 : Math.round((costo_directo / (1 - margen_pct_aplicado / 100) - costo_directo) * 100) / 100
   const impacto_costo = (isNaN(costo_directo) ? 0 : costo_directo) + costo_margen
 
   const impactoDiasRaw = formData.get("impacto_dias") as string
@@ -198,7 +198,7 @@ export async function actualizarChangeOrder(id: string, formData: FormData): Pro
     .single()
 
   const margen_pct_aplicado = proyecto?.margen_co_pct ?? 0
-  const costo_margen = isNaN(costo_directo) ? 0 : Math.round(costo_directo * (margen_pct_aplicado / 100) * 100) / 100
+  const costo_margen = isNaN(costo_directo) ? 0 : margen_pct_aplicado >= 100 ? 0 : Math.round((costo_directo / (1 - margen_pct_aplicado / 100) - costo_directo) * 100) / 100
   const impacto_costo = (isNaN(costo_directo) ? 0 : costo_directo) + costo_margen
 
   const impactoDiasRaw = formData.get("impacto_dias") as string

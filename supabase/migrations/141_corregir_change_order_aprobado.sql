@@ -1,3 +1,4 @@
+-- 141: (margen = % sobre el precio total: total = directo / (1 - %))
 -- 141: Corregir en sitio un Change Order YA aprobado (con avance/facturas).
 -- Actualiza renglones, actividades y partidas existentes conservando
 -- avance y facturas emitidas (las facturas ya emitidas no cambian; el
@@ -174,7 +175,7 @@ BEGIN
   END IF;
 
   SELECT COALESCE(margen_co_pct, 0) INTO v_margen FROM proyectos WHERE id = v_co.proyecto_id;
-  v_nuevo_costo_margen := ROUND(v_nuevo_directo * (v_margen / 100), 2);
+  v_nuevo_costo_margen := CASE WHEN v_margen >= 100 THEN 0 ELSE ROUND(v_nuevo_directo / (1 - v_margen / 100) - v_nuevo_directo, 2) END;
 
   UPDATE change_orders SET
     titulo = p_titulo, descripcion = NULLIF(p_descripcion, ''), numero = NULLIF(p_numero, ''),
