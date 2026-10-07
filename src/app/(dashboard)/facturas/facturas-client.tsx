@@ -470,7 +470,12 @@ function PanelAprobadas({
 // ver de nuevo el desglose).
 function TablaDesglose({ f }: { f: FacturaCliente }) {
   if (!f.desglose_actividades || f.desglose_actividades.length === 0) {
-    return <p className="mt-2 text-[10px] text-slate-400 italic">Sin desglose por actividad (esta estimación se generó antes de que existiera ese detalle).</p>
+    return (
+      <div className="mt-2 flex items-center justify-between">
+        <p className="text-[10px] text-slate-400 italic">Sin desglose por actividad (esta estimación se generó antes de que existiera ese detalle).</p>
+        <a href={`/imprimir/factura/${f.id}`} target="_blank" rel="noreferrer" className="text-[11px] font-medium text-blue-600 hover:text-blue-800">Descargar PDF</a>
+      </div>
+    )
   }
 
   const bruto = f.monto + f.amortizacion_anticipo
@@ -479,7 +484,13 @@ function TablaDesglose({ f }: { f: FacturaCliente }) {
   const totalACobrarTabla = f.desglose_actividades.reduce((s, d) => s + (d.monto_neto ?? d.monto_bruto), 0) || f.monto
 
   return (
-    <div className="mt-2 bg-slate-50 border border-slate-200 rounded-md overflow-hidden">
+    <div className="mt-2">
+    <div className="flex justify-end mb-1">
+      <a href={`/imprimir/factura/${f.id}`} target="_blank" rel="noreferrer" className="text-[11px] font-medium text-blue-600 hover:text-blue-800">
+        Descargar PDF
+      </a>
+    </div>
+    <div className="bg-slate-50 border border-slate-200 rounded-md overflow-hidden">
       <table className="w-full text-[11px]">
         <thead className="bg-slate-100">
           <tr className="text-slate-500">
@@ -557,6 +568,7 @@ function TablaDesglose({ f }: { f: FacturaCliente }) {
           </tr>
         </tfoot>
       </table>
+    </div>
     </div>
   )
 }

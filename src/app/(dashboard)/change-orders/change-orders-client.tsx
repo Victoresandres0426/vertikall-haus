@@ -231,6 +231,9 @@ export function ChangeOrdersClient({
                           ) : (
                             <p className="text-xs text-slate-400">Sin desglose por renglones.</p>
                           )}
+                          <a href={`/imprimir/change-order/${co.id}`} target="_blank" rel="noreferrer" className="inline-block text-xs font-medium text-blue-600 hover:text-blue-800">
+                            Descargar PDF
+                          </a>
                           <p className="text-xs text-slate-400">
                             Creado {new Date(co.created_at).toLocaleDateString("es-MX")}
                             {co.aprobado_at ? ` · Aprobado ${new Date(co.aprobado_at).toLocaleDateString("es-MX")}` : ""}
