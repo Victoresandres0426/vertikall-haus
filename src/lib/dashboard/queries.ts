@@ -258,12 +258,11 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
     activa?: boolean | null
     excluir_de_avance?: boolean | null
   }
-  // excluir_de_avance (migración 137): actividades administrativas (ej.
-  // "Supervisión") que solo existen para llevar horas/costo real en
-  // Reporte Diario, pero no representan avance físico -- se excluyen
-  // del promedio igual que en el portal cliente y el gráfico histórico.
+  // Desde la migración 143 las actividades administrativas (ej.
+  // "Supervisión") SÍ cuentan en el avance; excluir_de_avance solo evita
+  // que se facturen como trabajo de contrato.
   const soloActivas = (acts: ActividadParaAvance[] | null | undefined) =>
-    (acts ?? []).filter((a) => a.activa !== false && a.excluir_de_avance !== true)
+    (acts ?? []).filter((a) => a.activa !== false)
 
   // Avance ponderado: mezcla en partes iguales costo_presupuesto (peso
   // económico) y duracion_plan_dias (peso en cronograma), para que una
