@@ -16,6 +16,8 @@ async function getProyectosConActividades(): Promise<{
 }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+  // Actividades continuas (ej. Supervisión) avanzan solas con el tiempo (migración 143)
+  try { await supabase.rpc("refrescar_avance_por_tiempo") } catch { /* migración 143 no aplicada aún */ }
   if (!user) redirect("/login")
 
   const [{ data: proyectosActivos }, { data: perfil }] = await Promise.all([

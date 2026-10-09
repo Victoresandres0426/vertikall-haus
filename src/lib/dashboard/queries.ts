@@ -78,6 +78,7 @@ export async function getProyectos(): Promise<Proyecto[]> {
  */
 export async function getDashboardData(proyectoId: string | null): Promise<DashboardData> {
   const supabase = await createClient()
+  try { await supabase.rpc("refrescar_avance_por_tiempo") } catch { /* migración 143 no aplicada aún */ }
 
   const empty: DashboardData = {
     proyecto: null,
