@@ -52,6 +52,17 @@ export default async function FacturasClientePage() {
     avanceActualPct = historico.length > 0 ? historico[historico.length - 1].avance_pct : null
   } catch { /* migración 108 no aplicada aún */ }
 
+  // Change Orders ya aprobados suman al monto contratado (sus facturas
+  // entran en "facturas" arriba, así que el saldo debe incluirlos).
+  let totalCO = 0
+  try {
+    const { data: coData } = await supabase.rpc("portal_ver_change_orders")
+    totalCO = ((coData ?? []) as { estado: string; impacto_costo: number | null }[])
+      .filter((c) => ["aprobado", "facturado", "cobrado"].includes(c.estado))
+      .reduce((sum, c) => sum + Number(c.impacto_costo ?? 0), 0)
+  } catch { /* migración 127 no aplicada aún */ }
+  const contratadoTotal = (proyecto.presupuesto_venta ?? 0) + totalCO
+
   const totalCobrado = facturas.reduce((sum, f) => sum + Number(f.monto_cobrado ?? 0), 0)
   const facturasAnticipo = facturas.filter((f) => f.numero?.startsWith("ANT-"))
   const facturasAvance = facturas.filter((f) => f.numero?.startsWith("EST-"))
@@ -59,7 +70,7 @@ export default async function FacturasClientePage() {
   const anticipoPagado = facturasAnticipo.reduce((s, f) => s + Number(f.monto_cobrado ?? 0), 0)
   const avanceFacturado = facturasAvance.reduce((s, f) => s + Number(f.monto ?? 0), 0)
   const avancePagado = facturasAvance.reduce((s, f) => s + Number(f.monto_cobrado ?? 0), 0)
-  const saldoPendienteContrato = Math.max((proyecto.presupuesto_venta ?? 0) - totalCobrado, 0)
+  const saldoPendienteContrato = Math.max(contratadoTotal - totalCobrado, 0)
 
   return (
     <div className="min-h-screen bg-[#F7F9FC]">
@@ -113,7 +124,7 @@ export default async function FacturasClientePage() {
               <div>
                 <p className="text-xs text-slate-400">{tf.saldoPendiente}</p>
                 <p className="text-sm font-semibold text-amber-600">{formatoMoneda(saldoPendienteContrato)}</p>
-                <p className="text-[11px] text-slate-400">{tf.deContratado} {formatoMoneda(proyecto.presupuesto_venta)} {tf.contratado}</p>
+                <p className="text-[11px] text-slate-400">{tf.deContratado} {formatoMoneda(contratadoTotal)} {tf.contratado}</p>
               </div>
             </div>
             <div className="divide-y divide-slate-50">

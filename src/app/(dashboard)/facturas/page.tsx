@@ -37,6 +37,8 @@ async function getData() {
   // cuando se generó la última factura (pueden ser fechas distintas) --
   // ver mismo histórico que usa Cronograma.
   let avanceActualPct: number | null = null
+  // Change Orders ya aprobados suman al monto contratado
+  let totalChangeOrders = 0
 
   if (proyectoActivo) {
     const [{ data: fc }, { data: fp }] = await Promise.all([
@@ -67,6 +69,15 @@ async function getData() {
     facturasProveedor = (fp ?? []) as unknown as FacturaProveedor[]
 
     try {
+      const { data: coRows } = await supabase
+        .from("change_orders")
+        .select("impacto_costo")
+        .eq("proyecto_id", proyectoActivo.id)
+        .in("estado", ["aprobado", "facturado", "cobrado"])
+      totalChangeOrders = (coRows ?? []).reduce((s, c) => s + Number(c.impacto_costo ?? 0), 0)
+    } catch { /* sin acceso a change_orders */ }
+
+    try {
       const { data: historicoData } = await supabase.rpc("proyecto_avance_historico", { p_proyecto_id: proyectoActivo.id })
       const historico = (historicoData ?? []) as { fecha: string; avance_pct: number }[]
       avanceActualPct = historico.length > 0 ? historico[historico.length - 1].avance_pct : null
@@ -83,11 +94,12 @@ async function getData() {
     proyectoActivoId: proyectoActivo?.id ?? null,
     proyectoActivoPresupuestoVenta: (proyectoActivo as { presupuesto_venta?: number } | null)?.presupuesto_venta ?? null,
     avanceActualPct,
+    totalChangeOrders,
   }
 }
 
 export default async function FacturasPage() {
-  const { facturasCliente, facturasProveedor, proyectos, proveedores, puedeCrear, todosLosProyectos, proyectoActivoId, proyectoActivoPresupuestoVenta, avanceActualPct } = await getData()
+  const { facturasCliente, facturasProveedor, proyectos, proveedores, puedeCrear, todosLosProyectos, proyectoActivoId, proyectoActivoPresupuestoVenta, avanceActualPct, totalChangeOrders } = await getData()
 
   const total = facturasCliente.length + facturasProveedor.length
 
@@ -114,6 +126,7 @@ export default async function FacturasPage() {
         puedeCrear={puedeCrear}
         proyectoActivoPresupuestoVenta={proyectoActivoPresupuestoVenta}
         avanceActualPct={avanceActualPct}
+        totalChangeOrders={totalChangeOrders}
       />
     </div>
   )

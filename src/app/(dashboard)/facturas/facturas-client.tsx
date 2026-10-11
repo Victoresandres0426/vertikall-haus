@@ -135,6 +135,7 @@ export function FacturasClient({
   puedeCrear,
   proyectoActivoPresupuestoVenta,
   avanceActualPct,
+  totalChangeOrders,
 }: {
   facturasClienteIniciales: FacturaCliente[]
   facturasProveedorIniciales: FacturaProveedor[]
@@ -143,6 +144,7 @@ export function FacturasClient({
   puedeCrear: boolean
   proyectoActivoPresupuestoVenta?: number | null
   avanceActualPct?: number | null
+  totalChangeOrders?: number
 }) {
   const [tab, setTab] = useState<"cliente" | "proveedor">("cliente")
   const [facturasCliente] = useState(facturasClienteIniciales)
@@ -191,6 +193,12 @@ export function FacturasClient({
   // facturación real, no borradores sin aprobar todavía).
   const puntosFactura = construirPuntosPorFactura(facturasParaCxC, false)
 
+  // Monto contratado = presupuesto base + Change Orders aprobados (las
+  // facturas de CO ya entran en el facturado acumulado).
+  const contratadoTotal = proyectoActivoPresupuestoVenta != null
+    ? proyectoActivoPresupuestoVenta + (totalChangeOrders ?? 0)
+    : null
+
   return (
     <div className="p-6 space-y-6">
       {facturasParaCxC.length > 0 && (
@@ -204,7 +212,7 @@ export function FacturasClient({
         <PanelBorradores
           borradores={borradores}
           totalYaFacturado={totalFacturadoAntesDePendientes}
-          presupuestoVenta={proyectoActivoPresupuestoVenta ?? null}
+          presupuestoVenta={contratadoTotal}
         />
       )}
 
@@ -226,7 +234,7 @@ export function FacturasClient({
         <PanelAprobadas
           aprobadas={aprobadas}
           totalYaFacturado={totalFacturadoAntesDePendientes}
-          presupuestoVenta={proyectoActivoPresupuestoVenta ?? null}
+          presupuestoVenta={contratadoTotal}
         />
       )}
 
@@ -697,7 +705,7 @@ function TarjetaBorrador({
         <>
           <div className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-500 max-w-[220px] space-y-0.5">
             <div className="flex items-center justify-between">
-              <span>Contratado</span>
+              <span>Contratado (incl. CO)</span>
               <span className="text-slate-700 font-medium">{presupuestoVenta != null ? formatExacto(presupuestoVenta) : "—"}</span>
             </div>
             <div className="flex items-center justify-between">
