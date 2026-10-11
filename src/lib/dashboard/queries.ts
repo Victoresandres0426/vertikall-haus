@@ -261,10 +261,10 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
     excluir_de_avance?: boolean | null
     avance_por_tiempo?: boolean | null
   }
-  // Supervisión y Limpieza continua (migración 144) no cuentan en el avance
-  // real: avanzan solas con el tiempo y se facturan aparte.
+  // Todas las actividades activas cuentan en el avance (migración 146);
+  // Supervisión avanza sola con el tiempo (avance_por_tiempo).
   const soloActivas = (acts: ActividadParaAvance[] | null | undefined) =>
-    (acts ?? []).filter((a) => a.activa !== false && a.excluir_de_avance !== true && a.avance_por_tiempo !== true)
+    (acts ?? []).filter((a) => a.activa !== false)
 
   // Avance ponderado: mezcla en partes iguales costo_presupuesto (peso
   // económico) y duracion_plan_dias (peso en cronograma), para que una
