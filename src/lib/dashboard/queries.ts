@@ -78,7 +78,7 @@ export async function getProyectos(): Promise<Proyecto[]> {
  */
 export async function getDashboardData(proyectoId: string | null): Promise<DashboardData> {
   const supabase = await createClient()
-  try { await supabase.rpc("refrescar_avance_por_tiempo") } catch { /* migración 143 no aplicada aún */ }
+  try { await supabase.rpc("refrescar_avance_por_tiempo") } catch { /* migración 144 no aplicada aún */ }
 
   const empty: DashboardData = {
     proyecto: null,
@@ -234,7 +234,8 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
         costo_presupuesto,
         duracion_plan_dias,
         activa,
-        excluir_de_avance
+        excluir_de_avance,
+        avance_por_tiempo
       )
     `)
     .eq("proyecto_id", pid)
@@ -258,12 +259,12 @@ export async function getDashboardData(proyectoId: string | null): Promise<Dashb
     duracion_plan_dias: number | null
     activa?: boolean | null
     excluir_de_avance?: boolean | null
+    avance_por_tiempo?: boolean | null
   }
-  // Desde la migración 143 las actividades administrativas (ej.
-  // "Supervisión") SÍ cuentan en el avance; excluir_de_avance solo evita
-  // que se facturen como trabajo de contrato.
+  // Supervisión y Limpieza continua (migración 144) no cuentan en el avance
+  // real: avanzan solas con el tiempo y se facturan aparte.
   const soloActivas = (acts: ActividadParaAvance[] | null | undefined) =>
-    (acts ?? []).filter((a) => a.activa !== false)
+    (acts ?? []).filter((a) => a.activa !== false && a.excluir_de_avance !== true && a.avance_por_tiempo !== true)
 
   // Avance ponderado: mezcla en partes iguales costo_presupuesto (peso
   // económico) y duracion_plan_dias (peso en cronograma), para que una

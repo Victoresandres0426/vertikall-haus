@@ -301,6 +301,8 @@ export async function generarFacturacionAutomatica(): Promise<{ error?: string; 
   const acceso = await verificarAcceso(supabase)
   if (!acceso.ok) return { error: acceso.error }
 
+  // Supervisión/Limpieza continua facturan por avance en el tiempo (migración 144)
+  await supabase.rpc("refrescar_avance_por_tiempo")
   const { data, error } = await supabase.rpc("generar_facturas_semanales")
 
   if (error) {

@@ -29,7 +29,7 @@ async function getProyectos(): Promise<{ proyectos: ProyectoFromDB[]; esDueno: b
                         horas_equivalentes_plan_dia, fecha ),
       alertas ( nivel, estado ),
       actividades ( avance_porcentaje, costo_real, costo_presupuesto,
-                    fecha_inicio_plan, fecha_fin_plan, duracion_plan_dias, activa, excluir_de_avance )
+                    fecha_inicio_plan, fecha_fin_plan, duracion_plan_dias, activa, excluir_de_avance, avance_por_tiempo )
     `
       )
       .eq("activo", true)
