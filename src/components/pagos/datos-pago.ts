@@ -6,6 +6,7 @@ export type DatosPago = {
   routing?: string
   cuenta?: string
   swift?: string
+  zelle?: string
   direccion_banco?: string
   notas_es?: string
   notas_en?: string
@@ -15,5 +16,5 @@ export type DatosPago = {
 
 export function tieneDatosPago(d: DatosPago | null | undefined): boolean {
   if (!d) return false
-  return Boolean(d.cuenta || d.routing || d.link_url || d.beneficiario)
+  return Boolean(d.cuenta || d.routing || d.link_url || d.beneficiario || d.zelle)
 }

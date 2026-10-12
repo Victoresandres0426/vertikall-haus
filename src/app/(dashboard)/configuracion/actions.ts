@@ -281,7 +281,7 @@ export async function guardarDatosPago(datos: Record<string, string>): Promise<{
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "No autenticado" }
 
-  const permitidos = ["beneficiario", "banco", "tipo_cuenta", "routing", "cuenta", "swift", "direccion_banco", "notas_es", "notas_en", "link_url", "link_etiqueta"]
+  const permitidos = ["beneficiario", "banco", "tipo_cuenta", "routing", "cuenta", "swift", "zelle", "direccion_banco", "notas_es", "notas_en", "link_url", "link_etiqueta"]
   const limpio: Record<string, string> = {}
   for (const k of permitidos) {
     const v = (datos[k] ?? "").trim()

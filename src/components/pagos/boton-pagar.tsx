@@ -50,8 +50,8 @@ export function BotonPagar({
   const hayWire = Boolean(d.cuenta || d.routing || d.beneficiario || d.banco)
 
   const t = en
-    ? { pagar: "Pay", titulo: "How to pay", ref: "Payment reference", refAviso: "Include this invoice number in your transfer so we can match your payment.", wire: "Wire / ACH transfer", beneficiario: "Beneficiary", banco: "Bank", tipo: "Account type", routing: "Routing number", cuenta: "Account number", swift: "SWIFT / BIC", dir: "Bank address", link: "Pay online", monto: "Amount" }
-    : { pagar: "Pagar", titulo: "Cómo pagar", ref: "Referencia de pago", refAviso: "Incluye este número de factura en tu transferencia para identificar tu pago.", wire: "Transferencia wire / ACH", beneficiario: "Beneficiario", banco: "Banco", tipo: "Tipo de cuenta", routing: "Routing number", cuenta: "Número de cuenta", swift: "SWIFT / BIC", dir: "Dirección del banco", link: "Pagar en línea", monto: "Monto" }
+    ? { pagar: "Pay", titulo: "How to pay", ref: "Payment reference", refAviso: "Include this invoice number in your transfer so we can match your payment.", wire: "Wire / ACH transfer", zelle: "Zelle (send to)", zelleAviso: "In your bank app, send the payment with Zelle to this email or phone and add the invoice number in the memo.", beneficiario: "Beneficiary", banco: "Bank", tipo: "Account type", routing: "Routing number", cuenta: "Account number", swift: "SWIFT / BIC", dir: "Bank address", link: "Pay online", monto: "Amount" }
+    : { pagar: "Pagar", titulo: "Cómo pagar", ref: "Referencia de pago", refAviso: "Incluye este número de factura en tu transferencia para identificar tu pago.", wire: "Transferencia wire / ACH", zelle: "Zelle (enviar a)", zelleAviso: "Desde la app de tu banco, envía el pago por Zelle a este correo o teléfono e incluye el número de factura en la nota.", beneficiario: "Beneficiario", banco: "Banco", tipo: "Tipo de cuenta", routing: "Routing number", cuenta: "Número de cuenta", swift: "SWIFT / BIC", dir: "Dirección del banco", link: "Pagar en línea", monto: "Monto" }
 
   return (
     <>
@@ -93,6 +93,16 @@ export function BotonPagar({
                   <Fila etiqueta={t.swift} valor={d.swift} />
                   <Fila etiqueta={t.dir} valor={d.direccion_banco} />
                 </div>
+              </div>
+            )}
+
+            {d.zelle && (
+              <div className="mb-4">
+                <p className="text-xs font-semibold text-slate-600 mb-1">Zelle</p>
+                <div className="rounded-lg border border-slate-200 px-3">
+                  <Fila etiqueta={t.zelle} valor={d.zelle} />
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">{t.zelleAviso}</p>
               </div>
             )}
 

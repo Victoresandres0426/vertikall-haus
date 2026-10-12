@@ -15,6 +15,7 @@ const CAMPOS: { key: keyof DatosPago; label: string; placeholder?: string }[] = 
   { key: "cuenta", label: "Número de cuenta" },
   { key: "swift", label: "SWIFT / BIC (wires internacionales)" },
   { key: "direccion_banco", label: "Dirección del banco" },
+  { key: "zelle", label: "Zelle (correo o teléfono para recibir)", placeholder: "pagos@tuempresa.com" },
   { key: "link_url", label: "Enlace de pago (opcional)", placeholder: "https://..." },
   { key: "link_etiqueta", label: "Texto del botón del enlace", placeholder: "Pay online" },
 ]
