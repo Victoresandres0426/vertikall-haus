@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils"
 import { InvitarUsuarioButton, InvitacionesPendientes } from "./invitar-client"
 import { EquipoLista } from "./equipo-client"
 import { RespaldoButton } from "./respaldo-client"
+import { DatosPagoForm } from "./datos-pago-client"
+import type { DatosPago } from "@/components/pagos/datos-pago"
 import { DatabaseBackup } from "lucide-react"
 
 type Empresa = {
@@ -203,11 +205,11 @@ export default async function ConfiguracionPage() {
               </div>
 
               {/* Configuración / umbrales */}
-              {Object.keys(empresa.configuracion ?? {}).length > 0 && (
+              {Object.keys(empresa.configuracion ?? {}).filter((k) => k !== "datos_pago").length > 0 && (
                 <div className="pt-3 border-t border-slate-100">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Umbrales configurados</p>
                   <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(empresa.configuracion).map(([key, val]) => (
+                    {Object.entries(empresa.configuracion).filter(([key]) => key !== "datos_pago").map(([key, val]) => (
                       <div key={key} className="bg-slate-50 rounded-lg px-3 py-2">
                         <p className="text-xs text-slate-400 capitalize">{key.replace(/_/g, " ")}</p>
                         <p className="text-sm font-medium text-slate-700">{String(val)}</p>
@@ -221,6 +223,20 @@ export default async function ConfiguracionPage() {
                 Para modificar datos de la empresa, contacta a soporte o usa la API de administración.
               </p>
             </div>
+          </section>
+        )}
+
+        {/* ── Datos de pago (portal del cliente) ── */}
+        {["dueno", "superadmin", "administrador"].includes(perfil.rol) && (
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <Building2 className="h-4 w-4 text-slate-400" />
+              <h2 className="text-sm font-semibold text-slate-700">Datos de pago para clientes</h2>
+            </div>
+            <DatosPagoForm
+              inicial={((empresa?.configuracion as Record<string, unknown> | undefined)?.datos_pago ?? {}) as DatosPago}
+              puedeEditar
+            />
           </section>
         )}
 

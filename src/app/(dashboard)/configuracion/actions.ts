@@ -274,3 +274,30 @@ export async function cambiarActivoUsuario(usuarioId: string, activo: boolean): 
   revalidatePath("/configuracion")
   return {}
 }
+
+// Datos de pago de la empresa (wire/ACH + enlace opcional) -- migración 147.
+export async function guardarDatosPago(datos: Record<string, string>): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" }
+
+  const permitidos = ["beneficiario", "banco", "tipo_cuenta", "routing", "cuenta", "swift", "direccion_banco", "notas_es", "notas_en", "link_url", "link_etiqueta"]
+  const limpio: Record<string, string> = {}
+  for (const k of permitidos) {
+    const v = (datos[k] ?? "").trim()
+    if (v) limpio[k] = v
+  }
+  if (limpio.link_url && !/^https:\/\//i.test(limpio.link_url)) {
+    return { error: "El enlace de pago debe empezar con https://" }
+  }
+
+  const { error } = await supabase.rpc("guardar_datos_pago", { p_datos: limpio })
+  if (error) {
+    console.error("guardarDatosPago error:", error)
+    if (error.message?.includes("sin_permisos")) return { error: "No tienes permisos para editar los datos de pago" }
+    return { error: "No se pudo guardar. ¿Corriste la migración 147?" }
+  }
+
+  revalidatePath("/configuracion")
+  return {}
+}

@@ -1,3 +1,5 @@
+import { BotonPagar } from "@/components/pagos/boton-pagar"
+import type { DatosPago } from "@/components/pagos/datos-pago"
 import { Fragment } from "react"
 import { ChevronDown } from "lucide-react"
 import { PortalHeader } from "../portal-header"
@@ -51,6 +53,12 @@ export default async function FacturasClientePage() {
     const historico = (historicoData ?? []) as { fecha: string; avance_pct: number }[]
     avanceActualPct = historico.length > 0 ? historico[historico.length - 1].avance_pct : null
   } catch { /* migración 108 no aplicada aún */ }
+
+  let datosPago: DatosPago | null = null
+  try {
+    const { data: dp } = await supabase.rpc("cliente_ver_datos_pago")
+    datosPago = (dp ?? null) as DatosPago | null
+  } catch { /* migración 147 no aplicada aún */ }
 
   // Change Orders ya aprobados suman al monto contratado (sus facturas
   // entran en "facturas" arriba, así que el saldo debe incluirlos).
@@ -147,6 +155,9 @@ export default async function FacturasClientePage() {
                             </p>
                           </div>
                           <span className="text-sm font-semibold text-slate-800 shrink-0">{formatoMoneda(f.monto)}</span>
+                          {f.estado !== "pagada" && f.estado !== "borrador" && (
+                            <BotonPagar datos={datosPago} referencia={f.numero ?? tf.sinNumero} monto={formatoMoneda(f.monto - Number(f.monto_cobrado ?? 0))} en={facturaEnIngles} />
+                          )}
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${estadoFacturaColor[f.estado] ?? "bg-slate-100 text-slate-600"}`}>
                             {(facturaEnIngles ? estadoFacturaLabelEn : estadoFacturaLabel)[f.estado] ?? f.estado}
                           </span>
