@@ -63,13 +63,25 @@ function compararCodigos(a: string | null, b: string | null): number {
   if (!a && !b) return 0
   if (!a) return 1
   if (!b) return -1
-  const segsA = a.split(".").map(Number)
-  const segsB = b.split(".").map(Number)
-  for (let i = 0; i < Math.max(segsA.length, segsB.length); i++) {
-    const diff = (segsA[i] ?? 0) - (segsB[i] ?? 0)
-    if (diff !== 0 && !Number.isNaN(diff)) return diff
-  }
-  return a.localeCompare(b)
+  // Orden natural: "01.02" < "01.10", "03.03a" < "03.03b", y los códigos
+  // con letras (P-A, H-B1, ADM.01) quedan después de los numéricos.
+  return a.localeCompare(b, "es", { numeric: true, sensitivity: "base" })
+}
+
+// Dentro de una misma actividad: primero Material y debajo Mano de obra
+// (luego equipo, subcontrato e indirectos).
+const ORDEN_TIPO_RECURSO: Record<string, number> = {
+  material: 0,
+  mano_obra: 1,
+  equipo: 2,
+  subcontrato: 3,
+  indirecto: 4,
+}
+
+function compararPartidas(a: Partida, b: Partida): number {
+  const porCodigo = compararCodigos(a.codigo, b.codigo)
+  if (porCodigo !== 0) return porCodigo
+  return (ORDEN_TIPO_RECURSO[a.tipo_recurso] ?? 9) - (ORDEN_TIPO_RECURSO[b.tipo_recurso] ?? 9)
 }
 
 // Agrupa las partidas por división/proceso (mismo criterio que
@@ -253,7 +265,7 @@ export function PresupuestoClient({
                     ? pres.partidas
                         .filter((p) => (p.monto_ejercido ?? 0) > 0)
                         .sort((a, b) => (b.monto_ejercido ?? 0) - (a.monto_ejercido ?? 0))
-                    : [...pres.partidas].sort((a, b) => compararCodigos(a.codigo, b.codigo))
+                    : [...pres.partidas].sort(compararPartidas)
                   const visibles = expandidos[pres.id] || filtroActivo ? partidasBase : partidasBase.slice(0, 10)
                   const grupos = agruparPorDivision(visibles)
                   return (
