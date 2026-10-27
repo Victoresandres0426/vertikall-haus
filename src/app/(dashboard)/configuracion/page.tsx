@@ -205,14 +205,14 @@ export default async function ConfiguracionPage() {
               </div>
 
               {/* Configuración / umbrales */}
-              {Object.keys(empresa.configuracion ?? {}).filter((k) => k !== "datos_pago").length > 0 && (
+              {puedeInvitar && Object.keys(empresa.configuracion ?? {}).filter((k) => k !== "datos_pago").length > 0 && (
                 <div className="pt-3 border-t border-slate-100">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Umbrales configurados</p>
                   <div className="grid grid-cols-2 gap-2">
                     {Object.entries(empresa.configuracion).filter(([key]) => key !== "datos_pago").map(([key, val]) => (
                       <div key={key} className="bg-slate-50 rounded-lg px-3 py-2">
                         <p className="text-xs text-slate-400 capitalize">{key.replace(/_/g, " ")}</p>
-                        <p className="text-sm font-medium text-slate-700">{String(val)}</p>
+                        <p className="text-sm font-medium text-slate-700">{typeof val === "object" && val !== null ? JSON.stringify(val) : String(val)}</p>
                       </div>
                     ))}
                   </div>
@@ -240,7 +240,8 @@ export default async function ConfiguracionPage() {
           </section>
         )}
 
-        {/* ── Equipo ── */}
+        {/* ── Equipo (solo dueño / administración) ── */}
+        {puedeInvitar && (
         <section>
           <div className="flex items-center gap-2 mb-3">
             <Users className="h-4 w-4 text-slate-400" />
@@ -267,6 +268,7 @@ export default async function ConfiguracionPage() {
             </div>
           )}
         </section>
+        )}
 
         {/* ── Respaldo de datos ── */}
         {["dueno", "superadmin"].includes(perfil.rol) && (
