@@ -78,7 +78,7 @@ export function AccesoProyecto({ proyectoId, asignados: initialAsignados, dispon
 
       <div className="bg-white border border-slate-200 rounded-xl p-5">
         <p className="text-xs text-slate-400 mb-3">
-          Solo los capataces y project managers asignados aquí pueden ver y operar este proyecto. Dueño, administrador y superadmin siempre tienen acceso completo.
+          Solo los capataces y project managers asignados aquí pueden ver y operar este proyecto.
         </p>
 
         {asignados.length === 0 ? (
