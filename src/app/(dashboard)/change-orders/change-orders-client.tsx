@@ -80,11 +80,13 @@ export function ChangeOrdersClient({
   changeOrdersIniciales,
   proyectos,
   puedeCrear,
+  puedeAprobar,
   procesosPorProyecto,
 }: {
   changeOrdersIniciales: ChangeOrder[]
   proyectos: ProyectoOpcion[]
   puedeCrear: boolean
+  puedeAprobar: boolean
   procesosPorProyecto: Record<string, ProcesoOpcion[]>
 }) {
   const [changeOrders] = useState<ChangeOrder[]>(changeOrdersIniciales)
@@ -241,7 +243,7 @@ export function ChangeOrdersClient({
                         </div>
                       )}
                       <ChevronDown className={cn("h-3.5 w-3.5 text-slate-300 mt-1 transition-transform", expandidoId === co.id && "rotate-180")} />
-                      {puedeCrear && co.estado === "aprobado" && (
+                      {puedeAprobar && co.estado === "aprobado" && (
                         <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
@@ -274,7 +276,7 @@ export function ChangeOrdersClient({
                           >
                             <Pencil className="h-3 w-3" /> Modificar
                           </button>
-                          {co.estado === "detectado" && (
+                          {puedeAprobar && co.estado === "detectado" && (
                             <button
                               type="button"
                               onClick={() => ejecutar(co.id, () => validarChangeOrder(co.id))}
@@ -284,7 +286,7 @@ export function ChangeOrdersClient({
                               <ShieldCheck className="h-3 w-3" /> {pendingId === co.id ? "Validando..." : "Validar"}
                             </button>
                           )}
-                          {co.estado === "en_estimacion" && (
+                          {puedeAprobar && co.estado === "en_estimacion" && (
                             <button
                               type="button"
                               onClick={() => ejecutar(co.id, () => enviarChangeOrderCliente(co.id))}

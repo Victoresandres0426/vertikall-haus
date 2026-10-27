@@ -66,6 +66,7 @@ async function getData() {
     changeOrders,
     proyectos: (proyectos ?? []) as ProyectoOpcion[],
     puedeCrear: !!perfil && ROLES_GESTION.includes(perfil.rol),
+    puedeAprobar: !!perfil && ["dueno", "superadmin"].includes(perfil.rol),
     todosLosProyectos,
     proyectoActivoId: proyectoActivo?.id ?? null,
     procesosPorProyecto,
@@ -73,7 +74,7 @@ async function getData() {
 }
 
 export default async function ChangeOrdersPage() {
-  const { changeOrders, proyectos, puedeCrear, todosLosProyectos, proyectoActivoId, procesosPorProyecto } = await getData()
+  const { changeOrders, proyectos, puedeCrear, puedeAprobar, todosLosProyectos, proyectoActivoId, procesosPorProyecto } = await getData()
 
   return (
     <div>
@@ -94,6 +95,7 @@ export default async function ChangeOrdersPage() {
         changeOrdersIniciales={changeOrders}
         proyectos={proyectos}
         puedeCrear={puedeCrear}
+        puedeAprobar={puedeAprobar}
         procesosPorProyecto={procesosPorProyecto}
       />
     </div>

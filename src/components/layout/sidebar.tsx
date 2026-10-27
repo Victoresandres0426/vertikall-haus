@@ -49,7 +49,7 @@ const navItems: { grupo: string; items: NavItem[] }[] = [
       { href: "/reporte-diario", label: "Reporte Diario", icon: ClipboardList },
       { href: "/actividades", label: "Actividades", icon: Wrench },
       { href: "/bitacora", label: "Bitácora de obra", icon: NotebookPen },
-      { href: "/personal", label: "Personal", icon: UserCheck, ocultoPara: ["capataz"] },
+      { href: "/personal", label: "Personal", icon: UserCheck, ocultoPara: ["capataz", "project_manager"] },
       { href: "/recursos", label: "Recursos", icon: Users },
       { href: "/materiales", label: "Materiales", icon: Package },
     ],
@@ -61,7 +61,7 @@ const navItems: { grupo: string; items: NavItem[] }[] = [
       { href: "/change-orders", label: "Change Orders", icon: FileText, ocultoPara: ["capataz"] },
       { href: "/facturas", label: "Facturas", icon: Receipt, ocultoPara: ["capataz"] },
       { href: "/flujo-caja", label: "Flujo de Caja", icon: TrendingUp, ocultoPara: ["capataz"] },
-      { href: "/nomina", label: "Nómina", icon: Wallet, ocultoPara: ["capataz", "project_manager"] },
+      { href: "/nomina", label: "Nómina", icon: Wallet, ocultoPara: ["capataz"] },
     ],
   },
   {

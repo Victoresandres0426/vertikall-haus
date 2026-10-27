@@ -166,6 +166,18 @@ async function verificarPermisoGestion(supabase: Awaited<ReturnType<typeof creat
   return { perfil } as const
 }
 
+// Validar, enviar al cliente, reabrir y corregir un CO ya aprobado son
+// decisiones exclusivas del dueño (el PM solo registra y modifica borradores).
+const ROLES_APRUEBAN = ["dueno", "superadmin"]
+async function verificarPermisoDueno(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const chk = await verificarPermisoGestion(supabase)
+  if ("error" in chk) return chk
+  if (!ROLES_APRUEBAN.includes(chk.perfil.rol)) {
+    return { error: "Solo el dueño puede validar, enviar al cliente o corregir un Change Order aprobado" } as const
+  }
+  return chk
+}
+
 // modificar: solo mientras el CO sigue siendo borrador interno
 // (detectado o en_estimacion) -- una vez enviado al cliente ya no se
 // puede tocar, igual que una factura enviada.
@@ -243,7 +255,7 @@ export async function actualizarChangeOrder(id: string, formData: FormData): Pro
 // listo para mandar al cliente cuando se decida).
 export async function validarChangeOrder(id: string): Promise<{ error?: string }> {
   const supabase = await createClient()
-  const chk = await verificarPermisoGestion(supabase)
+  const chk = await verificarPermisoDueno(supabase)
   if ("error" in chk) return { error: chk.error }
 
   const { error } = await supabase
@@ -266,7 +278,7 @@ export async function validarChangeOrder(id: string): Promise<{ error?: string }
 // cliente puede aprobarlo o rechazarlo (RPC decidir_change_order).
 export async function enviarChangeOrderCliente(id: string): Promise<{ error?: string }> {
   const supabase = await createClient()
-  const chk = await verificarPermisoGestion(supabase)
+  const chk = await verificarPermisoDueno(supabase)
   if ("error" in chk) return { error: chk.error }
 
   const { error } = await supabase
@@ -286,7 +298,7 @@ export async function enviarChangeOrderCliente(id: string): Promise<{ error?: st
 
 export async function reabrirChangeOrder(id: string): Promise<{ error?: string }> {
   const supabase = await createClient()
-  const chk = await verificarPermisoGestion(supabase)
+  const chk = await verificarPermisoDueno(supabase)
   if ("error" in chk) return { error: chk.error }
 
   const { error } = await supabase.rpc("reabrir_change_order", { p_id: id })
@@ -308,7 +320,7 @@ export async function reabrirChangeOrder(id: string): Promise<{ error?: string }
 // Corrige en sitio un CO ya aprobado (con avance/facturas): migración 141.
 export async function corregirChangeOrderAprobado(id: string, formData: FormData): Promise<{ error?: string }> {
   const supabase = await createClient()
-  const chk = await verificarPermisoGestion(supabase)
+  const chk = await verificarPermisoDueno(supabase)
   if ("error" in chk) return { error: chk.error }
 
   const titulo = formData.get("titulo") as string

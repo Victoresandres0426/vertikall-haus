@@ -20,7 +20,7 @@ export async function crearTrabajador(
 
   if (!perfil) return { error: "Perfil no encontrado" }
 
-  const rolesPermitidos = ["dueno", "superadmin", "administrador", "project_manager"]
+  const rolesPermitidos = ["dueno", "superadmin", "administrador"]
   if (!rolesPermitidos.includes(perfil.rol)) {
     return { error: "No tienes permisos para agregar trabajadores" }
   }
@@ -120,7 +120,7 @@ export async function actualizarTrabajador(
 
   if (!perfil) return { error: "Perfil no encontrado" }
 
-  const rolesPermitidos = ["dueno", "superadmin", "administrador", "project_manager"]
+  const rolesPermitidos = ["dueno", "superadmin", "administrador"]
   if (!rolesPermitidos.includes(perfil.rol)) {
     return { error: "No tienes permisos para editar trabajadores" }
   }
@@ -164,7 +164,7 @@ export async function actualizarTrabajador(
   return { trabajador: data }
 }
 
-const ROLES_TARIFAS = ["dueno", "superadmin", "administrador", "project_manager"]
+const ROLES_TARIFAS = ["dueno", "superadmin", "administrador"]
 
 // Tarifa específica de un trabajador para un rol/tipo de trabajo -- se usa
 // cuando la misma persona gana distinto según la actividad que hace (ver

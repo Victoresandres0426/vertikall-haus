@@ -24,7 +24,7 @@ export default async function PersonalPage({
 
   if (!perfil) redirect("/sin-acceso")
 
-  const ROLES_VEN_PERSONAL = ["dueno", "superadmin", "administrador", "project_manager"]
+  const ROLES_VEN_PERSONAL = ["dueno", "superadmin", "administrador"]
   if (!ROLES_VEN_PERSONAL.includes(perfil.rol)) redirect("/sin-acceso")
 
   // Ganancias del día: qué ganó cada trabajador en una fecha puntual
@@ -75,7 +75,7 @@ export default async function PersonalPage({
       .eq("reportes_diarios.fecha", fechaGanancias),
   ])
 
-  const puedeEditar = ["dueno", "superadmin", "administrador", "project_manager"].includes(perfil.rol)
+  const puedeEditar = ["dueno", "superadmin", "administrador"].includes(perfil.rol)
 
   const tarifasPorTrabajador: Record<string, { id: string; rol_obra: string; tarifa_hora: number | null }[]> = {}
   for (const t of tarifasRaw ?? []) {

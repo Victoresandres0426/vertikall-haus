@@ -160,11 +160,13 @@ export function NominaClient({
   lineasIniciales,
   trabajadores,
   proyectos,
+  soloLectura = false,
 }: {
   periodosIniciales: PeriodoNomina[]
   lineasIniciales: LineaNomina[]
   trabajadores: TrabajadorOpcion[]
   proyectos: ProyectoOpcion[]
+  soloLectura?: boolean
 }) {
   const router = useRouter()
   const [periodoId, setPeriodoId] = useState<string | undefined>(periodosIniciales[0]?.id)
@@ -212,9 +214,9 @@ export function NominaClient({
         <div className="text-center py-12 border border-dashed border-slate-200 rounded-xl text-slate-400">
           <Wallet className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p className="font-medium">Todavía no hay periodos de nómina</p>
-          <p className="text-sm mt-1">Crea el primero para empezar a calcular sueldos</p>
+          {!soloLectura && <p className="text-sm mt-1">Crea el primero para empezar a calcular sueldos</p>}
         </div>
-        <NuevoPeriodoForm onCreated={() => router.refresh()} />
+        {!soloLectura && <NuevoPeriodoForm onCreated={() => router.refresh()} />}
       </div>
     )
   }
@@ -235,22 +237,22 @@ export function NominaClient({
           ))}
         </select>
         <div className="ml-auto flex items-center gap-2">
-          <NuevoPeriodoForm onCreated={(id) => { setPeriodoId(id); router.refresh() }} />
+          {!soloLectura && <NuevoPeriodoForm onCreated={(id) => { setPeriodoId(id); router.refresh() }} />}
         </div>
       </div>
 
       {periodoActual && (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <button
+            {!soloLectura && <button
               onClick={handleRecalcular}
               disabled={isPending || periodoActual.estado === "pagado"}
               className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors disabled:opacity-50"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", isPending && "animate-spin")} />
               Calcular / recalcular nómina
-            </button>
-            {periodoActual.estado !== "pagado" && lineasPeriodo.length > 0 && (
+            </button>}
+            {!soloLectura && periodoActual.estado !== "pagado" && lineasPeriodo.length > 0 && (
               <button
                 onClick={handleMarcarPagado}
                 disabled={isPending}
@@ -297,7 +299,7 @@ export function NominaClient({
                     {lineasPeriodo.map((l) => {
                       const trabajador = trabajadorPorId.get(l.trabajador_id)
                       const distribucion = l.distribucion_proyectos ?? []
-                      const pagado = periodoActual.estado === "pagado"
+                      const pagado = periodoActual.estado === "pagado" || soloLectura
                       return (
                         <Fragment key={l.id}>
                           <tr className="hover:bg-slate-50/50">

@@ -9,7 +9,9 @@ import {
   type ProyectoOpcion,
 } from "./nomina-client"
 
-const ROLES_NOMINA = ["dueno", "superadmin", "administrador"]
+// project_manager puede VER la nómina (solo lectura); crear/calcular/editar/pagar
+// sigue siendo exclusivo de dueño/superadmin/administrador (ver actions.ts).
+const ROLES_NOMINA = ["dueno", "superadmin", "administrador", "project_manager"]
 
 async function getData() {
   const supabase = await createClient()
@@ -57,6 +59,7 @@ async function getData() {
   }
 
   return {
+    soloLectura: perfil.rol === "project_manager",
     periodos,
     lineas,
     trabajadores: (trabajadoresRaw ?? []) as TrabajadorOpcion[],
@@ -65,7 +68,7 @@ async function getData() {
 }
 
 export default async function NominaPage() {
-  const { periodos, lineas, trabajadores, proyectos } = await getData()
+  const { soloLectura, periodos, lineas, trabajadores, proyectos } = await getData()
 
   return (
     <div>
@@ -78,6 +81,7 @@ export default async function NominaPage() {
         lineasIniciales={lineas}
         trabajadores={trabajadores}
         proyectos={proyectos}
+        soloLectura={soloLectura}
       />
     </div>
   )
