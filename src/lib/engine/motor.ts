@@ -310,6 +310,10 @@ export async function ejecutarMotorDiario(
     .select("id, actividad_id, tipo, estado")
     .eq("proyecto_id", proyectoId)
     .in("estado", ["activa", "en_revision"])
+    // Las alertas de materiales (sobreconsumo / compras) las gestiona su
+    // propio evaluador (lib/materiales/alertas.ts) -- el motor no debe
+    // resolverlas por no ser suyas.
+    .not("tipo", "like", "material_%")
 
   const alertasActivas = (alertasActivasRaw ?? []) as any[]
   const clave = (actividadId: string, tipo: string) => `${actividadId}::${tipo}`

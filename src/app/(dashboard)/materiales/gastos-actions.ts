@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { sugerirMaterialesParaFactura } from "@/lib/materiales/sugerir"
 
 const ROLES_GESTION = ["project_manager", "administrador", "dueno", "superadmin"]
 
@@ -158,6 +159,10 @@ export async function crearFacturaGasto(input: FacturaGastoInput): Promise<{ err
     await supabase.from("facturas_gasto").delete().eq("id", factura.id)
     return { error: "No se pudieron guardar los artículos de la factura." }
   }
+
+  // Propone a qué material presupuestado corresponde cada línea de material
+  // (queda como "sugerido" hasta que el usuario lo confirme).
+  await sugerirMaterialesParaFactura(supabase, input.proyectoId, factura.id)
 
   revalidarTodo()
   return { id: factura.id }
@@ -624,6 +629,8 @@ async function aplicarAnalisisAFactura(
         .update({ subtotal, tax_total: taxTotal, total: totalFinal })
         .eq("id", facturaId)
 
+      await sugerirMaterialesParaFactura(supabase, proyectoId, facturaId)
+
       // ── Aviso de posible duplicado por CONTENIDO ──
       // El hash de la foto (077) solo detecta cuando se sube el MISMO
       // archivo dos veces. Si el usuario toma dos fotos distintas del
@@ -795,6 +802,8 @@ export type LineaFacturaActualizada = {
   factura_id: string | null
   actividad_id: string | null
   partida_id: string | null
+  material_presupuestado_id: string | null
+  material_sugerido: boolean | null
   tipo_recurso: string
   descripcion: string
   unidad: string | null
@@ -871,7 +880,7 @@ export async function reintentarAnalisisFactura(facturaId: string): Promise<{ er
 
   const { data: lineasFinal } = await supabase
     .from("costos_reales")
-    .select("id, factura_id, actividad_id, partida_id, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, actividades ( codigo, nombre )")
+    .select("id, factura_id, actividad_id, partida_id, material_presupuestado_id, material_sugerido, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, actividades ( codigo, nombre )")
     .eq("factura_id", facturaId)
 
   revalidarTodo()

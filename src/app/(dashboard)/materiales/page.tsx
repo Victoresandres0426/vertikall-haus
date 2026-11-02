@@ -2,8 +2,10 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { SelectorProyectoActivo } from "@/components/layout/selector-proyecto-activo"
-import { MaterialesClient, type MaterialCatalogo, type MaterialActividad } from "./materiales-client"
-import type { FacturaGasto, ActividadOpcion, PartidaOpcion } from "./gastos-client"
+import { MaterialesClient } from "./materiales-client"
+import type { FacturaGasto, ActividadOpcion, PartidaOpcion, MaterialOpcion } from "./gastos-client"
+import { cargarDatosMateriales, type DatosMateriales } from "@/lib/materiales/datos"
+import { evaluarAlertasMateriales } from "@/lib/materiales/alertas"
 import { getProyectoActivoId, resolverProyectoActivo } from "@/lib/proyecto-activo"
 
 // El análisis de la foto del recibo con IA (gastos-actions.ts) puede tardar
@@ -27,33 +29,32 @@ async function getData() {
   const cookieId = await getProyectoActivoId()
   const proyectoActivo = resolverProyectoActivo(todosLosProyectos, cookieId)
 
-  // El catálogo de materiales es de toda la empresa (no pertenece a un solo
-  // proyecto), así que se muestra completo -- lo que sí se filtra por el
-  // proyecto activo son las asignaciones/consumo por actividad.
-  const { data: catalogo } = await supabase
-    .from("materiales_catalogo")
-    .select("id, codigo, nombre, descripcion, unidad, categoria, precio_unitario, stock_actual, stock_minimo")
-    .order("categoria")
-    .order("nombre")
+  const puedeCrear = !!perfil && ROLES_GESTION.includes(perfil.rol)
 
-  let asignados: MaterialActividad[] = []
+  let datosMateriales: DatosMateriales | null = null
+  let materialesOpciones: MaterialOpcion[] = []
   let facturas: FacturaGasto[] = []
   let actividadesOpciones: ActividadOpcion[] = []
   let partidasIndirectasOpciones: PartidaOpcion[] = []
   if (proyectoActivo) {
-    const [{ data }, { data: facturasRaw }, { data: lineasRaw }, { data: actividadesRaw }, { data: presupuestoActivo }] = await Promise.all([
-      supabase
-        .from("materiales_actividad")
-        .select(`
-          id, cantidad_plan, cantidad_recibida, cantidad_en_transito,
-          costo_unitario:precio_unitario,
-          material_id,
-          actividades!inner ( nombre, codigo, proyecto_id ),
-          materiales_catalogo ( nombre, unidad )
-        `)
-        .eq("actividades.proyecto_id", proyectoActivo.id)
-        .order("created_at", { ascending: false })
-        .limit(20),
+    // Mantiene al día las alertas de sobreconsumo / compra anticipada cada vez
+    // que se abre la página (solo quien gestiona; nunca debe tumbar la página).
+    if (puedeCrear) {
+      try {
+        await evaluarAlertasMateriales(supabase, proyectoActivo.id)
+      } catch (err) {
+        console.error("evaluarAlertasMateriales:", err)
+      }
+    }
+    datosMateriales = await cargarDatosMateriales(supabase, proyectoActivo.id)
+    materialesOpciones = datosMateriales.comparativo.map((m) => ({
+      id: m.id,
+      descripcion: m.descripcion,
+      unidad: m.unidad,
+      seccion: m.proceso_id ? datosMateriales?.nombreProceso.get(m.proceso_id) ?? m.seccion : m.seccion,
+    }))
+
+    const [{ data: facturasRaw }, { data: lineasRaw }, { data: actividadesRaw }, { data: presupuestoActivo }] = await Promise.all([
       supabase
         .from("facturas_gasto")
         .select("id, fecha, lugar, referencia, foto_referencia, subtotal, tax_total, total, estado_analisis, posible_duplicado_nota")
@@ -61,7 +62,7 @@ async function getData() {
         .order("fecha", { ascending: false }),
       supabase
         .from("costos_reales")
-        .select("id, factura_id, actividad_id, partida_id, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, actividades ( codigo, nombre )")
+        .select("id, factura_id, actividad_id, partida_id, material_presupuestado_id, material_sugerido, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, actividades ( codigo, nombre )")
         .eq("proyecto_id", proyectoActivo.id)
         .not("factura_id", "is", null),
       supabase
@@ -77,7 +78,6 @@ async function getData() {
         .eq("es_baseline_actual", true)
         .maybeSingle(),
     ])
-    asignados = (data ?? []) as unknown as MaterialActividad[]
     const partidasBaseline = (presupuestoActivo as unknown as { partidas: PartidaOpcion[] } | null)?.partidas ?? []
     partidasIndirectasOpciones = partidasBaseline.filter((p) => !p.actividad_id)
 
@@ -148,34 +148,37 @@ async function getData() {
   }
 
   return {
-    catalogo: (catalogo ?? []) as MaterialCatalogo[],
-    asignados,
+    datosMateriales,
+    materialesOpciones,
     facturas,
     actividadesOpciones,
     partidasIndirectasOpciones,
-    puedeCrear: !!perfil && ROLES_GESTION.includes(perfil.rol),
+    puedeCrear,
     todosLosProyectos,
     proyectoActivoId: proyectoActivo?.id ?? null,
   }
 }
 
 export default async function MaterialesPage() {
-  const { catalogo, asignados, facturas, actividadesOpciones, partidasIndirectasOpciones, puedeCrear, todosLosProyectos, proyectoActivoId } = await getData()
+  const { datosMateriales, materialesOpciones, facturas, actividadesOpciones, partidasIndirectasOpciones, puedeCrear, todosLosProyectos, proyectoActivoId } = await getData()
 
-  const categorias = Array.from(new Set(catalogo.map((m) => m.categoria ?? "Sin categoría")))
-  const bajoStock = catalogo.filter(
-    (m) => m.stock_minimo != null && m.stock_actual != null && m.stock_actual <= m.stock_minimo
-  )
+  const comparativo = datosMateriales?.comparativo ?? []
+  const compras = datosMateriales?.compras ?? []
+  const sobre = comparativo.filter((m) => m.estado === "sobreconsumo").length
+  const aviso = comparativo.filter((m) => m.estado === "aviso").length
+  const porComprar = compras.filter((c) => c.estado_compra === "vencida" || c.estado_compra === "comprar_ya").length
+  const partesSubtitulo = [
+    comparativo.length === 0 ? "Sin materiales presupuestados" : `${comparativo.length} materiales presupuestados`,
+    sobre > 0 ? `⚠ ${sobre} con sobreconsumo` : null,
+    aviso > 0 ? `${aviso} cerca del límite` : null,
+    porComprar > 0 ? `${porComprar} por comprar` : null,
+  ].filter(Boolean)
 
   return (
     <div>
       <Header
         titulo="Materiales"
-        subtitulo={
-          catalogo.length === 0
-            ? "Catálogo vacío"
-            : `${catalogo.length} materiales · ${categorias.length} categorías${bajoStock.length > 0 ? ` · ⚠ ${bajoStock.length} bajo stock mínimo` : ""}`
-        }
+        subtitulo={partesSubtitulo.join(" · ")}
         acciones={
           todosLosProyectos.length > 0 ? (
             <SelectorProyectoActivo proyectos={todosLosProyectos} proyectoActualId={proyectoActivoId} />
@@ -183,12 +186,16 @@ export default async function MaterialesPage() {
         }
       />
       <MaterialesClient
-        catalogoInicial={catalogo}
-        asignados={asignados}
+        comparativo={comparativo}
+        compras={compras}
+        nombreProceso={Object.fromEntries(datosMateriales?.nombreProceso ?? [])}
+        lineasPorConfirmar={datosMateriales?.lineasPorConfirmar ?? 0}
+        hoy={datosMateriales?.hoy ?? new Date().toISOString().slice(0, 10)}
         puedeCrear={puedeCrear}
         facturasIniciales={facturas}
         actividadesOpciones={actividadesOpciones}
         partidasIndirectasOpciones={partidasIndirectasOpciones}
+        materialesOpciones={materialesOpciones}
         proyectoActivoId={proyectoActivoId}
       />
     </div>

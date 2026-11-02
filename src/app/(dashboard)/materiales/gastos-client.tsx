@@ -20,6 +20,31 @@ import {
   type FacturaActualizada,
   type SplitActividad,
 } from "./gastos-actions"
+import { asignarMaterialLinea, confirmarSugerencias } from "./presupuesto-actions"
+
+// Material del presupuesto (hoja S2) al que se puede ligar una línea de gasto.
+export type MaterialOpcion = {
+  id: string
+  descripcion: string
+  unidad: string | null
+  seccion: string | null
+}
+
+function agruparMaterialesPorSeccion(materiales: MaterialOpcion[]): { etiqueta: string; items: MaterialOpcion[] }[] {
+  const grupos: { etiqueta: string; items: MaterialOpcion[] }[] = []
+  const idxPorEtiqueta = new Map<string, number>()
+  for (const m of materiales) {
+    const etiqueta = m.seccion || "Sin división"
+    let idx = idxPorEtiqueta.get(etiqueta)
+    if (idx === undefined) {
+      idx = grupos.length
+      idxPorEtiqueta.set(etiqueta, idx)
+      grupos.push({ etiqueta, items: [] })
+    }
+    grupos[idx].items.push(m)
+  }
+  return grupos
+}
 
 export type ActividadOpcion = {
   id: string
@@ -65,6 +90,8 @@ export type LineaCostoReal = {
   factura_id: string | null
   actividad_id: string | null
   partida_id?: string | null
+  material_presupuestado_id?: string | null
+  material_sugerido?: boolean | null
   tipo_recurso: string
   descripcion: string
   unidad: string | null
@@ -181,12 +208,14 @@ export function GastosClient({
   facturasIniciales,
   actividadesOpciones,
   partidasIndirectasOpciones,
+  materialesOpciones,
   puedeCrear,
   proyectoActivoId,
 }: {
   facturasIniciales: FacturaGasto[]
   actividadesOpciones: ActividadOpcion[]
   partidasIndirectasOpciones: PartidaOpcion[]
+  materialesOpciones: MaterialOpcion[]
   puedeCrear: boolean
   proyectoActivoId: string | null
 }) {
@@ -299,6 +328,39 @@ export function GastosClient({
     )
     startTransition(async () => {
       const res = await asignarPartidaLinea(lineaId, valor)
+      if (res.error) alert(res.error)
+    })
+  }
+
+  // Liga la línea a un material del presupuesto (S2). Al elegirlo a mano queda
+  // confirmada y empieza a contar en la comparación presupuesto vs. comprado.
+  const handleAsignarMaterial = (lineaId: string, materialId: string) => {
+    const valor = materialId || null
+    setFacturas((prev) =>
+      prev.map((f) => ({
+        ...f,
+        lineas: f.lineas.map((l) =>
+          l.id === lineaId ? { ...l, material_presupuestado_id: valor, material_sugerido: false } : l
+        ),
+      }))
+    )
+    startTransition(async () => {
+      const res = await asignarMaterialLinea(lineaId, valor)
+      if (res.error) alert(res.error)
+    })
+  }
+
+  const handleConfirmarSugerencias = (facturaId: string) => {
+    if (!proyectoActivoId) return
+    setFacturas((prev) =>
+      prev.map((f) =>
+        f.id === facturaId
+          ? { ...f, lineas: f.lineas.map((l) => (l.material_sugerido ? { ...l, material_sugerido: false } : l)) }
+          : f
+      )
+    )
+    startTransition(async () => {
+      const res = await confirmarSugerencias(proyectoActivoId, facturaId)
       if (res.error) alert(res.error)
     })
   }
@@ -605,6 +667,21 @@ export function GastosClient({
                       </div>
                     )}
 
+                    {puedeCrear && f.lineas.some((l) => l.material_sugerido && l.material_presupuestado_id) && (
+                      <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                        <span>
+                          {f.lineas.filter((l) => l.material_sugerido && l.material_presupuestado_id).length} material(es)
+                          sugerido(s) por IA. No cuentan en la comparación hasta que los confirmes.
+                        </span>
+                        <button
+                          onClick={() => handleConfirmarSugerencias(f.id)}
+                          className="shrink-0 rounded-md bg-sky-600 px-2.5 py-1 font-medium text-white hover:bg-sky-700"
+                        >
+                          Confirmar todos
+                        </button>
+                      </div>
+                    )}
+
                     {f.lineas.length === 0 ? (
                       <p className="text-xs text-slate-400 italic">
                         {f.estado_analisis === "pendiente" ? "La IA todavía está leyendo esta foto…" : "Sin artículos todavía."}
@@ -749,6 +826,35 @@ export function GastosClient({
                                                   <option key={p.id} value={p.id}>{p.codigo} — {p.descripcion}</option>
                                                 ))}
                                               </select>
+                                            )}
+                                            {l.tipo_recurso === "material" && materialesOpciones.length > 0 && (
+                                              <select
+                                                value={l.material_presupuestado_id ?? ""}
+                                                onChange={(e) => handleAsignarMaterial(l.id, e.target.value)}
+                                                title="Material del presupuesto con el que se compara esta compra"
+                                                className={cn(
+                                                  "text-xs border rounded-md px-1.5 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 max-w-[260px]",
+                                                  l.material_presupuestado_id && l.material_sugerido
+                                                    ? "border-sky-300 text-sky-700 bg-sky-50"
+                                                    : l.material_presupuestado_id
+                                                      ? "border-slate-200 text-slate-700"
+                                                      : "border-slate-200 text-slate-400"
+                                                )}
+                                              >
+                                                <option value="">Sin material del presupuesto</option>
+                                                {agruparMaterialesPorSeccion(materialesOpciones).map((grupo) => (
+                                                  <optgroup key={grupo.etiqueta} label={grupo.etiqueta}>
+                                                    {grupo.items.map((m) => (
+                                                      <option key={m.id} value={m.id}>
+                                                        {m.descripcion}{m.unidad ? ` (${m.unidad})` : ""}
+                                                      </option>
+                                                    ))}
+                                                  </optgroup>
+                                                ))}
+                                              </select>
+                                            )}
+                                            {l.material_presupuestado_id && l.material_sugerido && (
+                                              <span className="text-[10px] text-sky-600">Sugerido por IA — elige otro o confirma</span>
                                             )}
                                           </div>
                                         ) : (

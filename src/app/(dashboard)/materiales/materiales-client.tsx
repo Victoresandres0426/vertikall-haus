@@ -1,410 +1,459 @@
 "use client"
 
-import { useState, useTransition } from "react"
-import { Package, Ruler, FolderOpen, AlertCircle, Plus, X, Receipt } from "lucide-react"
+import { useMemo, useState, useTransition } from "react"
+import { Ruler, Receipt, CalendarClock, AlertTriangle, CheckCircle2, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { crearMaterial } from "./actions"
-import { GastosClient, type FacturaGasto, type ActividadOpcion, type PartidaOpcion } from "./gastos-client"
+import {
+  GastosClient,
+  type FacturaGasto,
+  type ActividadOpcion,
+  type PartidaOpcion,
+  type MaterialOpcion,
+} from "./gastos-client"
+import { actualizarDiasAnticipacion } from "./presupuesto-actions"
+import { formatoPct, type CompraMaterial, type ComparativoMaterial, type EstadoCompra } from "@/lib/materiales/comparativo"
 
-export type MaterialCatalogo = {
-  id: string
-  codigo: string | null
-  nombre: string
-  descripcion: string | null
-  unidad: string
-  categoria: string | null
-  precio_unitario: number | null
-  stock_actual: number | null
-  stock_minimo: number | null
-}
+type Tab = "asignacion" | "gastos" | "comprar"
 
-export type MaterialActividad = {
-  id: string
-  cantidad_plan: number
-  cantidad_recibida: number
-  cantidad_en_transito: number
-  costo_unitario: number | null
-  material_id: string
-  actividades: { nombre: string; codigo: string } | null
-  materiales_catalogo: { nombre: string; unidad: string } | null
-}
+const money = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`
+const num = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 })
 
-const categoriaColor: Record<string, string> = {
-  concreto: "bg-slate-100 text-slate-700",
-  acero: "bg-blue-100 text-blue-700",
-  madera: "bg-amber-100 text-amber-700",
-  instalaciones: "bg-purple-100 text-purple-700",
-  acabados: "bg-pink-100 text-pink-700",
-  herramienta: "bg-orange-100 text-orange-700",
+function formatoFecha(iso: string | null) {
+  if (!iso) return "—"
+  const [y, m, d] = iso.split("-")
+  return `${d}/${m}/${y}`
 }
 
 export function MaterialesClient({
-  catalogoInicial,
-  asignados,
+  comparativo,
+  compras,
+  nombreProceso,
+  lineasPorConfirmar,
+  hoy,
   puedeCrear,
   facturasIniciales,
   actividadesOpciones,
   partidasIndirectasOpciones,
+  materialesOpciones,
   proyectoActivoId,
 }: {
-  catalogoInicial: MaterialCatalogo[]
-  asignados: MaterialActividad[]
+  comparativo: ComparativoMaterial[]
+  compras: CompraMaterial[]
+  nombreProceso: Record<string, string>
+  lineasPorConfirmar: number
+  hoy: string
   puedeCrear: boolean
   facturasIniciales: FacturaGasto[]
   actividadesOpciones: ActividadOpcion[]
   partidasIndirectasOpciones: PartidaOpcion[]
+  materialesOpciones: MaterialOpcion[]
   proyectoActivoId: string | null
 }) {
-  const [catalogo] = useState<MaterialCatalogo[]>(catalogoInicial)
-  const [showModal, setShowModal] = useState(false)
-  const [tab, setTab] = useState<"catalogo" | "gastos">("catalogo")
+  const [tab, setTab] = useState<Tab>("asignacion")
 
-  const categorias = Array.from(new Set(catalogo.map((m) => m.categoria ?? "Sin categoría")))
-  const bajoStock = catalogo.filter(
-    (m) => m.stock_minimo != null && m.stock_actual != null && m.stock_actual <= m.stock_minimo
-  )
+  const sobre = comparativo.filter((m) => m.estado === "sobreconsumo").length
+  const aviso = comparativo.filter((m) => m.estado === "aviso").length
+  const porComprar = compras.filter((c) => c.estado_compra === "vencida" || c.estado_compra === "comprar_ya").length
+
+  const tabs: { id: Tab; label: string; icon: typeof Ruler; badge?: number; badgeColor?: string }[] = [
+    { id: "asignacion", label: "Asignación", icon: Ruler, badge: sobre + aviso, badgeColor: sobre > 0 ? "bg-red-500" : "bg-amber-500" },
+    { id: "gastos", label: "Gastos", icon: Receipt, badge: lineasPorConfirmar, badgeColor: "bg-sky-500" },
+    { id: "comprar", label: "Cuándo comprar", icon: CalendarClock, badge: porComprar, badgeColor: "bg-amber-500" },
+  ]
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="inline-flex bg-slate-100 rounded-lg p-1 gap-1">
+      <div className="inline-flex bg-slate-100 rounded-lg p-1 gap-1">
+        {tabs.map((t) => (
           <button
-            onClick={() => setTab("catalogo")}
+            key={t.id}
+            onClick={() => setTab(t.id)}
             className={cn(
               "flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md transition-colors",
-              tab === "catalogo" ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-700"
+              tab === t.id ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-700"
             )}
           >
-            <Package className="h-3.5 w-3.5" /> Catálogo
-          </button>
-          <button
-            onClick={() => setTab("gastos")}
-            className={cn(
-              "flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md transition-colors",
-              tab === "gastos" ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-700"
+            <t.icon className="h-3.5 w-3.5" /> {t.label}
+            {!!t.badge && t.badge > 0 && (
+              <span className={cn("ml-0.5 rounded-full px-1.5 text-[10px] font-semibold text-white", t.badgeColor)}>
+                {t.badge}
+              </span>
             )}
-          >
-            <Receipt className="h-3.5 w-3.5" /> Gastos
           </button>
-        </div>
-        {tab === "catalogo" && puedeCrear && (
-          <Button onClick={() => setShowModal(true)}>
-            <Plus className="h-4 w-4 mr-1" /> Agregar material
-          </Button>
-        )}
+        ))}
       </div>
 
-      {tab === "gastos" ? (
+      {tab === "gastos" && (
         <GastosClient
           facturasIniciales={facturasIniciales}
           actividadesOpciones={actividadesOpciones}
           partidasIndirectasOpciones={partidasIndirectasOpciones}
+          materialesOpciones={materialesOpciones}
           puedeCrear={puedeCrear}
           proyectoActivoId={proyectoActivoId}
         />
-      ) : catalogo.length === 0 ? (
-        <div className="space-y-6">
-          <div className="text-center py-16 border border-dashed border-slate-200 rounded-xl text-slate-400">
-            <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p className="text-lg font-medium">Catálogo vacío</p>
-            <p className="text-sm mt-1 max-w-sm mx-auto">
-              El catálogo de materiales se alimenta al cargar un presupuesto o manualmente.
-              Pronto podrás importar desde Excel.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            {[
-              { icon: Package, label: "Catálogo", desc: "Gestiona precios y stock de todos los materiales" },
-              { icon: Ruler, label: "Asignación", desc: "Vincula materiales a actividades con cantidades" },
-              { icon: AlertCircle, label: "Alertas stock", desc: "Recibe notificaciones cuando el stock baja del mínimo" },
-            ].map((item) => (
-              <div key={item.label} className="bg-white border border-slate-200 rounded-xl p-5 text-center">
-                <item.icon className="h-8 w-8 mx-auto text-slate-400 mb-2" />
-                <p className="text-sm font-semibold text-slate-700">{item.label}</p>
-                <p className="text-xs text-slate-400 mt-1">{item.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <>
-          {bajoStock.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
-              <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-semibold text-amber-800">
-                  {bajoStock.length} material{bajoStock.length !== 1 ? "es" : ""} bajo stock mínimo
-                </p>
-                <p className="text-xs text-amber-700 mt-0.5">
-                  {bajoStock.map((m) => m.nombre).join(", ")}
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-4 gap-3">
-            {[
-              { label: "Total materiales", val: catalogo.length, color: "text-slate-900" },
-              { label: "Categorías", val: categorias.length, color: "text-blue-600" },
-              { label: "Bajo stock mínimo", val: bajoStock.length, color: "text-amber-600" },
-              { label: "En asignaciones", val: asignados.length, color: "text-emerald-600" },
-            ].map((s) => (
-              <div key={s.label} className="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                <p className={cn("text-2xl font-bold", s.color)}>{s.val}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
-              </div>
-            ))}
-          </div>
-
-          {categorias.map((cat) => {
-            const items = catalogo.filter((m) => (m.categoria ?? "Sin categoría") === cat)
-            return (
-              <div key={cat}>
-                <div className="flex items-center gap-2 mb-3">
-                  <FolderOpen className="h-4 w-4 text-slate-400" />
-                  <h2 className="text-sm font-semibold text-slate-700 capitalize">{cat}</h2>
-                  <span className="text-xs text-slate-400">· {items.length}</span>
-                </div>
-                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="divide-y divide-slate-50">
-                    {items.map((m) => {
-                      const bajStock = m.stock_minimo != null && m.stock_actual != null && m.stock_actual <= m.stock_minimo
-                      return (
-                        <div key={m.id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              {m.codigo && (
-                                <span className="font-mono text-xs text-slate-400">{m.codigo}</span>
-                              )}
-                              <span className="text-sm font-medium text-slate-800 truncate">{m.nombre}</span>
-                              {m.categoria && (
-                                <span className={cn("text-xs px-1.5 py-0.5 rounded hidden sm:inline", categoriaColor[m.categoria] ?? "bg-slate-100 text-slate-600")}>
-                                  {m.categoria}
-                                </span>
-                              )}
-                              {bajStock && (
-                                <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                              )}
-                            </div>
-                            {m.descripcion && (
-                              <p className="text-xs text-slate-400 mt-0.5 truncate">{m.descripcion}</p>
-                            )}
-                          </div>
-                          <div className="shrink-0 flex items-center gap-6 text-right text-xs">
-                            <div>
-                              <p className="text-slate-400">Unidad</p>
-                              <p className="font-mono font-medium text-slate-700">{m.unidad}</p>
-                            </div>
-                            {m.precio_unitario != null && (
-                              <div>
-                                <p className="text-slate-400">Precio unit.</p>
-                                <p className="font-medium text-slate-900">${m.precio_unitario.toLocaleString()}</p>
-                              </div>
-                            )}
-                            {m.stock_actual != null && (
-                              <div>
-                                <p className="text-slate-400">Stock</p>
-                                <p className={cn("font-bold", bajStock ? "text-amber-600" : "text-emerald-600")}>
-                                  {m.stock_actual} {m.unidad}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-
-          {asignados.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold text-slate-700 mb-3">Asignaciones recientes</h2>
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                <div className="divide-y divide-slate-50">
-                  {asignados.map((a) => {
-                    const pctRecibido = a.cantidad_plan > 0
-                      ? Math.round((a.cantidad_recibida / a.cantidad_plan) * 100)
-                      : 0
-                    return (
-                      <div key={a.id} className="flex items-center gap-3 px-4 py-3">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-800">
-                            {a.materiales_catalogo?.nombre ?? "—"}
-                          </p>
-                          {a.actividades && (
-                            <p className="text-xs text-slate-400">
-                              {a.actividades.codigo} · {a.actividades.nombre}
-                            </p>
-                          )}
-                        </div>
-                        <div className="text-xs text-right shrink-0">
-                          <p className="text-slate-500">
-                            {a.cantidad_recibida} / {a.cantidad_plan} {a.materiales_catalogo?.unidad ?? ""}
-                          </p>
-                          <p className={cn("font-medium", pctRecibido >= 100 ? "text-emerald-600" : pctRecibido > 0 ? "text-blue-600" : "text-slate-400")}>
-                            {pctRecibido}% recibido
-                          </p>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-        </>
       )}
-
-      {showModal && <ModalAgregarMaterial onClose={() => setShowModal(false)} />}
+      {tab === "asignacion" && (
+        <AsignacionTab comparativo={comparativo} nombreProceso={nombreProceso} lineasPorConfirmar={lineasPorConfirmar} onIrAGastos={() => setTab("gastos")} />
+      )}
+      {tab === "comprar" && (
+        <ComprarTab compras={compras} nombreProceso={nombreProceso} hoy={hoy} puedeCrear={puedeCrear} />
+      )}
     </div>
   )
 }
 
-function ModalAgregarMaterial({ onClose }: { onClose: () => void }) {
+// ── Asignación: hoja S2 + comparación contra lo comprado ─────────────
+
+function barraColor(estado: ComparativoMaterial["estado"]) {
+  if (estado === "sobreconsumo") return "bg-red-500"
+  if (estado === "aviso") return "bg-amber-500"
+  if (estado === "normal") return "bg-emerald-500"
+  return "bg-slate-200"
+}
+
+function AsignacionTab({
+  comparativo,
+  nombreProceso,
+  lineasPorConfirmar,
+  onIrAGastos,
+}: {
+  comparativo: ComparativoMaterial[]
+  nombreProceso: Record<string, string>
+  lineasPorConfirmar: number
+  onIrAGastos: () => void
+}) {
+  const [busqueda, setBusqueda] = useState("")
+  const [soloAlertas, setSoloAlertas] = useState(false)
+
+  const totalPresupuesto = comparativo.reduce((s, m) => s + m.costo_total, 0)
+  const totalComprado = comparativo.reduce((s, m) => s + m.comprado_monto, 0)
+  const sobre = comparativo.filter((m) => m.estado === "sobreconsumo").length
+  const aviso = comparativo.filter((m) => m.estado === "aviso").length
+
+  const grupos = useMemo(() => {
+    const q = busqueda.trim().toLowerCase()
+    const mapa = new Map<string, ComparativoMaterial[]>()
+    for (const m of comparativo) {
+      if (soloAlertas && m.estado !== "aviso" && m.estado !== "sobreconsumo") continue
+      if (q && !`${m.descripcion} ${m.codigo ?? ""} ${m.proveedor ?? ""}`.toLowerCase().includes(q)) continue
+      const clave = m.proceso_id ? nombreProceso[m.proceso_id] ?? m.seccion ?? "Sin división" : m.seccion ?? "Sin división"
+      const arr = mapa.get(clave) ?? []
+      arr.push(m)
+      mapa.set(clave, arr)
+    }
+    return Array.from(mapa.entries())
+  }, [comparativo, busqueda, soloAlertas, nombreProceso])
+
+  if (comparativo.length === 0) {
+    return (
+      <div className="text-center py-16 border border-dashed border-slate-200 rounded-xl text-slate-400">
+        <Ruler className="h-12 w-12 mx-auto mb-3 opacity-30" />
+        <p className="text-lg font-medium">Este proyecto no tiene materiales presupuestados</p>
+        <p className="text-sm mt-1 max-w-md mx-auto">
+          Aquí aparece el cómputo de materiales (hoja S2 del presupuesto) y se compara contra lo que registras en Gastos.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: "Materiales presupuestados", val: money(totalPresupuesto), sub: `${comparativo.length} líneas`, color: "text-slate-900" },
+          { label: "Comprado (confirmado)", val: money(totalComprado), sub: formatoPct(totalPresupuesto ? totalComprado / totalPresupuesto : 0) + " del total", color: "text-blue-600" },
+          { label: "Cerca del límite (≥90%)", val: String(aviso), sub: "materiales", color: "text-amber-600" },
+          { label: "Sobreconsumo (>100%)", val: String(sobre), sub: "materiales", color: "text-red-600" },
+        ].map((s) => (
+          <div key={s.label} className="bg-white border border-slate-200 rounded-xl p-4 text-center">
+            <p className={cn("text-2xl font-bold", s.color)}>{s.val}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
+            <p className="text-[11px] text-slate-400">{s.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {lineasPorConfirmar > 0 && (
+        <button
+          onClick={onIrAGastos}
+          className="w-full text-left bg-sky-50 border border-sky-200 rounded-xl p-3 text-sm text-sky-800 hover:bg-sky-100"
+        >
+          Hay {lineasPorConfirmar} línea(s) de gastos con material sugerido por la IA pendientes de confirmar. No cuentan en esta
+          comparación hasta que las confirmes → ir a Gastos
+        </button>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar material, código o proveedor"
+            className="pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg w-72 focus:outline-none focus:ring-2 focus:ring-slate-900"
+          />
+        </div>
+        <label className="flex items-center gap-1.5 text-sm text-slate-600 cursor-pointer">
+          <input type="checkbox" checked={soloAlertas} onChange={(e) => setSoloAlertas(e.target.checked)} />
+          Solo con aviso o sobreconsumo
+        </label>
+      </div>
+
+      {grupos.length === 0 && <p className="text-sm text-slate-400 italic">Ningún material coincide con el filtro.</p>}
+
+      {grupos.map(([division, items]) => {
+        const presupuesto = items.reduce((s, m) => s + m.costo_total, 0)
+        const comprado = items.reduce((s, m) => s + m.comprado_monto, 0)
+        return (
+          <div key={division} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-700">{division}</h3>
+              <p className="text-xs text-slate-500">
+                {items.length} materiales · presupuesto {money(presupuesto)} · comprado {money(comprado)}
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-400 uppercase tracking-wide">
+                    <th className="px-3 py-2 font-medium">Código</th>
+                    <th className="px-3 py-2 font-medium">Material</th>
+                    <th className="px-3 py-2 font-medium">UM</th>
+                    <th className="px-3 py-2 font-medium text-right">Cant. neta</th>
+                    <th className="px-3 py-2 font-medium text-right">Desp.</th>
+                    <th className="px-3 py-2 font-medium text-right">Cant. total</th>
+                    <th className="px-3 py-2 font-medium text-right">P. unit.</th>
+                    <th className="px-3 py-2 font-medium text-right">Costo</th>
+                    <th className="px-3 py-2 font-medium">Plano</th>
+                    <th className="px-3 py-2 font-medium">Proveedor</th>
+                    <th className="px-3 py-2 font-medium text-right">Comprado</th>
+                    <th className="px-3 py-2 font-medium w-32">Consumo</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {items.map((m) => (
+                    <tr
+                      key={m.id}
+                      className={cn(
+                        m.estado === "sobreconsumo" && "bg-red-50/60",
+                        m.estado === "aviso" && "bg-amber-50/60"
+                      )}
+                    >
+                      <td className="px-3 py-1.5 font-mono text-slate-400">{m.codigo ?? "—"}</td>
+                      <td className="px-3 py-1.5 text-slate-800 min-w-[220px]">{m.descripcion}</td>
+                      <td className="px-3 py-1.5 text-slate-500">{m.unidad ?? "—"}</td>
+                      <td className="px-3 py-1.5 text-right text-slate-600">{num(m.cantidad_neta)}</td>
+                      <td className="px-3 py-1.5 text-right text-slate-500">{m.desperdicio_pct ? `${num(m.desperdicio_pct)}%` : "—"}</td>
+                      <td className="px-3 py-1.5 text-right text-slate-700">{num(m.cantidad_total)}</td>
+                      <td className="px-3 py-1.5 text-right text-slate-600">${num(m.precio_unitario)}</td>
+                      <td className="px-3 py-1.5 text-right font-medium text-slate-900">{money(m.costo_total)}</td>
+                      <td className="px-3 py-1.5 text-slate-500">{m.estado_plano ?? "—"}</td>
+                      <td className="px-3 py-1.5 text-slate-500">{m.proveedor ?? "—"}</td>
+                      <td className="px-3 py-1.5 text-right text-slate-700">
+                        {m.lineas === 0 ? (
+                          <span className="text-slate-300">—</span>
+                        ) : (
+                          <>
+                            {money(m.comprado_monto)}
+                            {m.pct_cantidad !== null && (
+                              <span className="block text-[10px] text-slate-400">
+                                {num(m.comprado_cantidad)} {m.unidad ?? ""}
+                              </span>
+                            )}
+                            {m.unidades_distintas && (
+                              <span className="block text-[10px] text-amber-600">unidad distinta</span>
+                            )}
+                          </>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <div className="h-1.5 flex-1 rounded-full bg-slate-100 overflow-hidden">
+                            <div className={cn("h-full", barraColor(m.estado))} style={{ width: `${Math.min(100, m.pct * 100)}%` }} />
+                          </div>
+                          <span
+                            className={cn(
+                              "w-9 text-right font-medium",
+                              m.estado === "sobreconsumo" ? "text-red-600" : m.estado === "aviso" ? "text-amber-600" : "text-slate-500"
+                            )}
+                          >
+                            {m.lineas === 0 ? "" : formatoPct(m.pct)}
+                          </span>
+                          {m.estado === "sobreconsumo" && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Cuándo comprar ───────────────────────────────────────────────────
+
+const GRUPOS_COMPRA: { estado: EstadoCompra; titulo: string; descripcion: string; color: string }[] = [
+  { estado: "vencida", titulo: "Ya debió comprarse", descripcion: "La división ya inició y el material no está comprado.", color: "border-red-200 bg-red-50 text-red-800" },
+  { estado: "comprar_ya", titulo: "Comprar ahora", descripcion: "Con la anticipación configurada, ya toca pedirlo.", color: "border-amber-200 bg-amber-50 text-amber-800" },
+  { estado: "proxima", titulo: "Próximas 2 semanas", descripcion: "Se acerca la fecha de compra.", color: "border-sky-200 bg-sky-50 text-sky-800" },
+  { estado: "futura", titulo: "Más adelante", descripcion: "Todavía hay tiempo.", color: "border-slate-200 bg-slate-50 text-slate-700" },
+  { estado: "sin_fecha", titulo: "Sin fecha en el cronograma", descripcion: "La división no tiene actividades con fecha de inicio planificada.", color: "border-slate-200 bg-slate-50 text-slate-600" },
+]
+
+function ComprarTab({
+  compras,
+  nombreProceso,
+  hoy,
+  puedeCrear,
+}: {
+  compras: CompraMaterial[]
+  nombreProceso: Record<string, string>
+  hoy: string
+  puedeCrear: boolean
+}) {
+  const [verComprados, setVerComprados] = useState(false)
+  const comprados = compras.filter((c) => c.estado_compra === "comprado")
+
+  if (compras.length === 0) {
+    return (
+      <div className="text-center py-16 border border-dashed border-slate-200 rounded-xl text-slate-400">
+        <CalendarClock className="h-12 w-12 mx-auto mb-3 opacity-30" />
+        <p className="text-lg font-medium">Sin materiales presupuestados</p>
+        <p className="text-sm mt-1">Cuando el proyecto tenga su cómputo de materiales, aquí verás cuándo comprar cada uno.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      <p className="text-sm text-slate-500">
+        Fecha de compra = inicio de la división en el cronograma − días de anticipación (7 por defecto, editable por material).
+        Un material se considera comprado al registrar ≥90% de lo presupuestado. Hoy: {formatoFecha(hoy)}.
+      </p>
+
+      {GRUPOS_COMPRA.map((g) => {
+        const items = compras
+          .filter((c) => c.estado_compra === g.estado)
+          .sort((a, b) => (a.fecha_compra ?? "9999").localeCompare(b.fecha_compra ?? "9999"))
+        if (items.length === 0) return null
+        return (
+          <FilaGrupo key={g.estado} titulo={g.titulo} descripcion={g.descripcion} color={g.color} items={items} nombreProceso={nombreProceso} puedeCrear={puedeCrear} />
+        )
+      })}
+
+      {comprados.length > 0 && (
+        <div>
+          <button onClick={() => setVerComprados(!verComprados)} className="flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-900">
+            <CheckCircle2 className="h-4 w-4" /> {comprados.length} material(es) ya comprados {verComprados ? "(ocultar)" : "(ver)"}
+          </button>
+          {verComprados && (
+            <div className="mt-2">
+              <FilaGrupo titulo="Comprados" descripcion="" color="border-emerald-200 bg-emerald-50 text-emerald-800" items={comprados} nombreProceso={nombreProceso} puedeCrear={puedeCrear} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FilaGrupo({
+  titulo,
+  descripcion,
+  color,
+  items,
+  nombreProceso,
+  puedeCrear,
+}: {
+  titulo: string
+  descripcion: string
+  color: string
+  items: CompraMaterial[]
+  nombreProceso: Record<string, string>
+  puedeCrear: boolean
+}) {
   const [isPending, startTransition] = useTransition()
-  const [error, setError] = useState("")
+  const [dias, setDias] = useState<Record<string, string>>({})
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setError("")
-    const formData = new FormData(e.currentTarget)
-
+  const guardar = (id: string, original: number) => {
+    const valor = dias[id]
+    if (valor === undefined || valor === String(original)) return
+    const n = Number(valor)
+    if (!Number.isFinite(n) || n < 0 || n > 365) {
+      alert("Días inválidos (0 a 365)")
+      return
+    }
     startTransition(async () => {
-      const result = await crearMaterial(formData)
-      if (result.error) {
-        setError(result.error)
-      } else {
-        onClose()
-        window.location.reload()
-      }
+      const res = await actualizarDiasAnticipacion(id, n)
+      if (res.error) alert(res.error)
     })
   }
 
   return (
-    <div
-      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget && !isPending) onClose() }}
-    >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">
-        <button
-          className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 disabled:opacity-50"
-          onClick={onClose}
-          disabled={isPending}
-        >
-          <X className="h-5 w-5" />
-        </button>
-
-        <h3 className="text-lg font-semibold text-slate-900 mb-5">Agregar material</h3>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Nombre *</label>
-            <input
-              name="nombre"
-              required
-              placeholder="Ej. Cemento gris 50kg"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Código</label>
-              <input
-                name="codigo"
-                placeholder="Ej. MAT-001"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Unidad *</label>
-              <input
-                name="unidad"
-                required
-                placeholder="Ej. saco, m3, kg"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Categoría</label>
-            <select
-              name="categoria"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
-            >
-              <option value="">Sin categoría</option>
-              <option value="concreto">Concreto</option>
-              <option value="acero">Acero</option>
-              <option value="madera">Madera</option>
-              <option value="instalaciones">Instalaciones</option>
-              <option value="acabados">Acabados</option>
-              <option value="herramienta">Herramienta</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Descripción</label>
-            <textarea
-              name="descripcion"
-              rows={2}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 resize-none"
-            />
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Precio unit.</label>
-              <input
-                name="precio_unitario"
-                type="number"
-                min="0"
-                step="0.01"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Stock actual</label>
-              <input
-                name="stock_actual"
-                type="number"
-                min="0"
-                step="0.01"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Stock mín.</label>
-              <input
-                name="stock_minimo"
-                type="number"
-                min="0"
-                step="0.01"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
-              />
-            </div>
-          </div>
-
-          {error && (
-            <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-600">
-              {error}
-            </div>
-          )}
-
-          <div className="flex gap-3 pt-1">
-            <Button type="button" variant="outline" className="flex-1" onClick={onClose} disabled={isPending}>
-              Cancelar
-            </Button>
-            <Button type="submit" className="flex-1" isLoading={isPending}>
-              Agregar
-            </Button>
-          </div>
-        </form>
+    <div className={cn("border rounded-xl overflow-hidden", isPending && "opacity-70")}>
+      <div className={cn("px-4 py-2 border-b", color)}>
+        <p className="text-sm font-semibold">
+          {titulo} <span className="font-normal opacity-70">· {items.length}</span>
+        </p>
+        {descripcion && <p className="text-xs opacity-80">{descripcion}</p>}
+      </div>
+      <div className="bg-white overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-slate-400 uppercase tracking-wide">
+              <th className="px-3 py-2 font-medium">Material</th>
+              <th className="px-3 py-2 font-medium">División</th>
+              <th className="px-3 py-2 font-medium text-right">Costo</th>
+              <th className="px-3 py-2 font-medium">Inicio división</th>
+              <th className="px-3 py-2 font-medium text-right">Anticipación (días)</th>
+              <th className="px-3 py-2 font-medium">Comprar el</th>
+              <th className="px-3 py-2 font-medium text-right">Faltan</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {items.map((c) => (
+              <tr key={c.id}>
+                <td className="px-3 py-1.5 text-slate-800 min-w-[220px]">{c.descripcion}</td>
+                <td className="px-3 py-1.5 text-slate-500">{c.proceso_id ? nombreProceso[c.proceso_id] ?? c.seccion ?? "—" : c.seccion ?? "—"}</td>
+                <td className="px-3 py-1.5 text-right text-slate-700">{money(c.costo_total)}</td>
+                <td className="px-3 py-1.5 text-slate-600">{formatoFecha(c.fecha_inicio)}</td>
+                <td className="px-3 py-1.5 text-right">
+                  {puedeCrear ? (
+                    <input
+                      type="number"
+                      min={0}
+                      max={365}
+                      value={dias[c.id] ?? String(c.dias_anticipacion)}
+                      onChange={(e) => setDias((p) => ({ ...p, [c.id]: e.target.value }))}
+                      onBlur={() => guardar(c.id, c.dias_anticipacion)}
+                      className="w-16 border border-slate-200 rounded-md px-1.5 py-0.5 text-right text-xs"
+                    />
+                  ) : (
+                    c.dias_anticipacion
+                  )}
+                </td>
+                <td className="px-3 py-1.5 font-medium text-slate-800">{formatoFecha(c.fecha_compra)}</td>
+                <td
+                  className={cn(
+                    "px-3 py-1.5 text-right font-medium",
+                    c.dias_para_comprar === null ? "text-slate-300" : c.dias_para_comprar <= 0 ? "text-red-600" : "text-slate-600"
+                  )}
+                >
+                  {c.dias_para_comprar === null
+                    ? "—"
+                    : c.dias_para_comprar <= 0
+                      ? `${Math.abs(c.dias_para_comprar)} d de atraso`
+                      : `${c.dias_para_comprar} d`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )
