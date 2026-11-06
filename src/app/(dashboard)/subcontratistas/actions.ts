@@ -233,6 +233,71 @@ export async function eliminarSubcontrato(id: string): Promise<{ error?: string 
   return {}
 }
 
+export type TipoDocumento = "seguro" | "licencia" | "w9" | "workers_comp" | "contrato" | "otro"
+
+// El archivo ya se subió al almacenamiento desde el navegador; aquí se registra.
+export async function registrarDocumentoSubcontratista(input: {
+  subcontratistaId: string
+  tipo: TipoDocumento
+  nombreArchivo: string
+  storagePath: string
+  fechaVence: string | null
+  notas: string | null
+}): Promise<{ error?: string; id?: string }> {
+  const a = await acceso()
+  if (!a.ok) return { error: a.error }
+
+  // La ruta debe pertenecer a la empresa y al subcontratista indicados
+  if (!input.storagePath.startsWith(`${a.empresaId}/${input.subcontratistaId}/`)) {
+    return { error: "Ruta de archivo inválida." }
+  }
+
+  const { data: { user } } = await a.supabase.auth.getUser()
+  const { data, error } = await a.supabase
+    .from("subcontratista_documentos")
+    .insert({
+      subcontratista_id: input.subcontratistaId,
+      tipo: input.tipo,
+      nombre_archivo: input.nombreArchivo,
+      storage_path: input.storagePath,
+      fecha_vence: input.fechaVence || null,
+      notas: input.notas?.trim() || null,
+      subido_por: user?.id ?? null,
+    })
+    .select("id")
+    .single()
+  if (error || !data) {
+    console.error("registrarDocumentoSubcontratista:", error)
+    // No dejar el archivo huérfano en el almacenamiento
+    await a.supabase.storage.from("subcontratistas-docs").remove([input.storagePath])
+    return { error: "No se pudo registrar el documento." }
+  }
+  revalidar()
+  return { id: data.id }
+}
+
+export async function eliminarDocumentoSubcontratista(id: string): Promise<{ error?: string }> {
+  const a = await acceso()
+  if (!a.ok) return { error: a.error }
+  if (!ROLES_BORRAN.includes(a.rol)) return { error: "Solo el dueño puede borrar documentos." }
+
+  const { data: doc } = await a.supabase
+    .from("subcontratista_documentos")
+    .select("storage_path")
+    .eq("id", id)
+    .single()
+  if (!doc) return { error: "No se encontró el documento." }
+
+  const { error } = await a.supabase.from("subcontratista_documentos").delete().eq("id", id)
+  if (error) {
+    console.error("eliminarDocumentoSubcontratista:", error)
+    return { error: "No se pudo borrar el documento." }
+  }
+  await a.supabase.storage.from("subcontratistas-docs").remove([doc.storage_path])
+  revalidar()
+  return {}
+}
+
 async function asignarActividades(
   supabase: Awaited<ReturnType<typeof createClient>>,
   subcontratoId: string,

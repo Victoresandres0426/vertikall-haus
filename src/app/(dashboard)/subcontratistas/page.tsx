@@ -7,6 +7,7 @@ import {
   type Subcontrato,
   type ProyectoOpcion,
   type ActividadOpcion,
+  type DocumentoSub,
 } from "./subcontratistas-client"
 
 const ROLES_GESTION = ["project_manager", "administrador", "dueno", "superadmin"]
@@ -24,7 +25,7 @@ export default async function SubcontratistasPage() {
     .single()
   if (!perfil || !ROLES_GESTION.includes(perfil.rol)) redirect("/sin-acceso")
 
-  const [{ data: subs }, { data: contratos }, { data: proyectos }, { data: actividades }, { data: asignaciones }] =
+  const [{ data: subs }, { data: contratos }, { data: proyectos }, { data: actividades }, { data: asignaciones }, { data: documentos }] =
     await Promise.all([
       supabase.from("subcontratistas").select("*").eq("empresa_id", perfil.empresa_id).order("nombre_compania"),
       supabase
@@ -43,6 +44,10 @@ export default async function SubcontratistasPage() {
         .eq("activa", true)
         .order("codigo"),
       supabase.from("subcontrato_actividades").select("subcontrato_id, actividad_id"),
+      supabase
+        .from("subcontratista_documentos")
+        .select("id, subcontratista_id, tipo, nombre_archivo, storage_path, fecha_vence, notas, created_at")
+        .order("created_at", { ascending: false }),
     ])
 
   const actPorContrato = new Map<string, string[]>()
@@ -71,6 +76,8 @@ export default async function SubcontratistasPage() {
         contratos={contratosConActs}
         proyectos={(proyectos ?? []) as ProyectoOpcion[]}
         actividades={(actividades ?? []) as ActividadOpcion[]}
+        documentos={(documentos ?? []) as DocumentoSub[]}
+        empresaId={perfil.empresa_id}
         puedeBorrar={ROLES_BORRAN.includes(perfil.rol)}
       />
     </div>

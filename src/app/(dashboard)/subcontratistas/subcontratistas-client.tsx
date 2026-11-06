@@ -13,14 +13,37 @@ import {
   crearSubcontrato,
   actualizarSubcontrato,
   eliminarSubcontrato,
+  registrarDocumentoSubcontratista,
+  eliminarDocumentoSubcontratista,
   type SubcontratistaInput,
   type SubcontratoInput,
+  type TipoDocumento,
 } from "./actions"
+import { createClient } from "@/lib/supabase/client"
 
 export type Subcontratista = SubcontratistaInput & { id: string }
 export type Subcontrato = SubcontratoInput & { id: string; actividad_ids: string[] }
 export type ProyectoOpcion = { id: string; codigo: string | null; nombre: string }
 export type ActividadOpcion = { id: string; proyecto_id: string; codigo: string; nombre: string }
+export type DocumentoSub = {
+  id: string
+  subcontratista_id: string
+  tipo: TipoDocumento
+  nombre_archivo: string
+  storage_path: string
+  fecha_vence: string | null
+  notas: string | null
+  created_at: string
+}
+
+const TIPOS_DOC: Record<TipoDocumento, string> = {
+  seguro: "Seguro",
+  licencia: "Licencia",
+  w9: "W-9",
+  workers_comp: "Workers' comp",
+  contrato: "Contrato firmado",
+  otro: "Otro",
+}
 
 const ESTADOS: Record<Subcontrato["estado"], { label: string; cls: string }> = {
   borrador: { label: "Borrador", cls: "bg-slate-100 text-slate-600" },
@@ -59,12 +82,16 @@ export function SubcontratistasClient({
   contratos,
   proyectos,
   actividades,
+  documentos,
+  empresaId,
   puedeBorrar,
 }: {
   subcontratistas: Subcontratista[]
   contratos: Subcontrato[]
   proyectos: ProyectoOpcion[]
   actividades: ActividadOpcion[]
+  documentos: DocumentoSub[]
+  empresaId: string
   puedeBorrar: boolean
 }) {
   const router = useRouter()
@@ -216,6 +243,16 @@ export function SubcontratistasClient({
                         </span>
                       )}
                       {!s.w9_recibido && <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">Sin W-9</span>}
+                      {documentos
+                        .filter((d) => d.subcontratista_id === s.id && estadoVencimiento(d.fecha_vence))
+                        .map((d) => (
+                          <span
+                            key={d.id}
+                            className={cn("flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded", estadoVencimiento(d.fecha_vence) === "vencido" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700")}
+                          >
+                            <AlertTriangle className="h-3 w-3" /> {TIPOS_DOC[d.tipo]} {estadoVencimiento(d.fecha_vence) === "vencido" ? "vencido" : "vence pronto"} ({formatoFecha(d.fecha_vence)})
+                          </span>
+                        ))}
                     </div>
                   </div>
 
@@ -274,6 +311,13 @@ export function SubcontratistasClient({
                     <Button variant="outline" onClick={() => setContratoModal({ subcontratistaId: s.id, contrato: null })}>
                       <Plus className="h-4 w-4 mr-1" /> Nuevo contrato
                     </Button>
+                    <DocumentosSub
+                      subcontratistaId={s.id}
+                      empresaId={empresaId}
+                      docs={documentos.filter((d) => d.subcontratista_id === s.id)}
+                      puedeBorrar={puedeBorrar}
+                      onCambio={() => router.refresh()}
+                    />
                   </div>
                 )}
               </div>
@@ -300,6 +344,126 @@ export function SubcontratistasClient({
           onGuardado={() => { setContratoModal(null); router.refresh() }}
         />
       )}
+    </div>
+  )
+}
+
+function DocumentosSub({
+  subcontratistaId,
+  empresaId,
+  docs,
+  puedeBorrar,
+  onCambio,
+}: {
+  subcontratistaId: string
+  empresaId: string
+  docs: DocumentoSub[]
+  puedeBorrar: boolean
+  onCambio: () => void
+}) {
+  const [tipo, setTipo] = useState<TipoDocumento>("seguro")
+  const [vence, setVence] = useState("")
+  const [notas, setNotas] = useState("")
+  const [subiendo, setSubiendo] = useState(false)
+  const [error, setError] = useState("")
+  const [, startTransition] = useTransition()
+
+  const subir = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setError("")
+    setSubiendo(true)
+    const supabase = createClient()
+    for (const file of Array.from(files)) {
+      const limpio = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")
+      const path = `${empresaId}/${subcontratistaId}/${Date.now()}_${limpio}`
+      const { error: errSubida } = await supabase.storage.from("subcontratistas-docs").upload(path, file)
+      if (errSubida) {
+        setError(`Error subiendo ${file.name}: ${errSubida.message}`)
+        continue
+      }
+      const res = await registrarDocumentoSubcontratista({
+        subcontratistaId,
+        tipo,
+        nombreArchivo: file.name,
+        storagePath: path,
+        fechaVence: vence || null,
+        notas: notas || null,
+      })
+      if (res.error) setError(res.error)
+    }
+    setSubiendo(false)
+    setVence("")
+    setNotas("")
+    onCambio()
+  }
+
+  const abrir = async (d: DocumentoSub) => {
+    const supabase = createClient()
+    const { data, error: errUrl } = await supabase.storage.from("subcontratistas-docs").createSignedUrl(d.storage_path, 60)
+    if (errUrl || !data) {
+      setError("No se pudo abrir el documento.")
+      return
+    }
+    window.open(data.signedUrl, "_blank")
+  }
+
+  const borrar = (d: DocumentoSub) => {
+    if (!confirm(`¿Borrar "${d.nombre_archivo}"?`)) return
+    startTransition(async () => {
+      const res = await eliminarDocumentoSubcontratista(d.id)
+      if (res.error) alert(res.error)
+      else onCambio()
+    })
+  }
+
+  return (
+    <div className="pt-3 mt-3 border-t border-slate-200 space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Documentos ({docs.length})</p>
+      {docs.length === 0 && <p className="text-xs text-slate-400 italic">Sin documentos todavía.</p>}
+      {docs.map((d) => {
+        const est = estadoVencimiento(d.fecha_vence)
+        return (
+          <div key={d.id} className="flex flex-wrap items-center gap-3 bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs">
+            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0">{TIPOS_DOC[d.tipo]}</span>
+            <button onClick={() => abrir(d)} className="text-blue-600 hover:underline truncate max-w-[280px] text-left" title="Abrir">
+              {d.nombre_archivo}
+            </button>
+            {d.fecha_vence && (
+              <span className={cn(est === "vencido" ? "text-red-600 font-medium" : est === "pronto" ? "text-amber-600 font-medium" : "text-slate-500")}>
+                vence {formatoFecha(d.fecha_vence)}
+              </span>
+            )}
+            {d.notas && <span className="text-slate-400 truncate max-w-[200px]">{d.notas}</span>}
+            {puedeBorrar && (
+              <button onClick={() => borrar(d)} className="ml-auto text-slate-300 hover:text-red-500">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )
+      })}
+
+      <div className="flex flex-wrap items-end gap-2 pt-1">
+        <div>
+          <label className="block text-[11px] text-slate-500 mb-0.5">Tipo</label>
+          <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoDocumento)} className="border border-slate-200 rounded-md px-2 py-1.5 text-xs bg-white">
+            {Object.entries(TIPOS_DOC).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[11px] text-slate-500 mb-0.5">Vence (opcional)</label>
+          <input type="date" value={vence} onChange={(e) => setVence(e.target.value)} className="border border-slate-200 rounded-md px-2 py-1 text-xs" />
+        </div>
+        <div className="flex-1 min-w-[140px]">
+          <label className="block text-[11px] text-slate-500 mb-0.5">Nota (opcional)</label>
+          <input value={notas} onChange={(e) => setNotas(e.target.value)} className="w-full border border-slate-200 rounded-md px-2 py-1.5 text-xs" />
+        </div>
+        <label className={cn("inline-flex items-center gap-1.5 text-xs font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white cursor-pointer hover:bg-slate-50", subiendo && "opacity-60 pointer-events-none")}>
+          <Upload className="h-3.5 w-3.5" /> {subiendo ? "Subiendo…" : "Subir archivo"}
+          <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.heic,.doc,.docx" className="hidden" onChange={(e) => { void subir(e.target.files); e.target.value = "" }} />
+        </label>
+      </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   )
 }
