@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Wallet,
   NotebookPen,
+  HardHat,
 } from "lucide-react"
 
 type NavItem = {
@@ -51,6 +52,7 @@ const navItems: { grupo: string; items: NavItem[] }[] = [
       { href: "/bitacora", label: "Bitácora de obra", icon: NotebookPen },
       { href: "/personal", label: "Personal", icon: UserCheck, ocultoPara: ["capataz", "project_manager"] },
       { href: "/recursos", label: "Recursos", icon: Users },
+      { href: "/subcontratistas", label: "Subcontratistas", icon: HardHat, ocultoPara: ["capataz"] },
       { href: "/materiales", label: "Materiales", icon: Package },
     ],
   },
