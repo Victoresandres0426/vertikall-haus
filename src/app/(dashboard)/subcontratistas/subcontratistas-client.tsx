@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, X, Search, Phone, Mail, Pencil, Trash2, HardHat, Star, AlertTriangle, FileSignature, ChevronDown, ChevronUp } from "lucide-react"
+import { Plus, X, Search, Phone, Mail, Pencil, Trash2, HardHat, Star, AlertTriangle, FileSignature, ChevronDown, ChevronUp, Download, Upload } from "lucide-react"
+import { leerFormulario, type FormularioLeido } from "./importar-formulario"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -72,6 +73,8 @@ export function SubcontratistasClient({
   const [editando, setEditando] = useState<Subcontratista | "nuevo" | null>(null)
   const [contratoModal, setContratoModal] = useState<{ subcontratistaId: string; contrato: Subcontrato | null } | null>(null)
   const [expandido, setExpandido] = useState<string | null>(null)
+  const [importados, setImportados] = useState<FormularioLeido[] | null>(null)
+  const [leyendo, setLeyendo] = useState(false)
   const [, startTransition] = useTransition()
 
   const nombreProyecto = (id: string) => {
@@ -126,10 +129,45 @@ export function SubcontratistasClient({
             Mostrar inactivos
           </label>
         </div>
-        <Button onClick={() => setEditando("nuevo")}>
-          <Plus className="h-4 w-4 mr-1" /> Agregar subcontratista
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href="/plantillas/Formulario_Subcontratista.xlsx"
+            download
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50"
+          >
+            <Download className="h-4 w-4" /> Descargar formulario
+          </a>
+          <label className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 cursor-pointer">
+            <Upload className="h-4 w-4" /> Importar formularios
+            <input
+              type="file"
+              accept=".xlsx"
+              multiple
+              className="hidden"
+              onChange={async (e) => {
+                const archivos = Array.from(e.target.files ?? [])
+                e.target.value = ""
+                if (archivos.length === 0) return
+                setLeyendo(true)
+                setImportados(await Promise.all(archivos.map(leerFormulario)))
+                setLeyendo(false)
+              }}
+            />
+          </label>
+          <Button onClick={() => setEditando("nuevo")}>
+            <Plus className="h-4 w-4 mr-1" /> Agregar subcontratista
+          </Button>
+        </div>
       </div>
+      {leyendo && <p className="text-xs text-slate-400">Leyendo archivos…</p>}
+      {importados && (
+        <ModalImportar
+          leidos={importados}
+          existentes={subcontratistas}
+          onClose={() => setImportados(null)}
+          onTerminado={() => { setImportados(null); router.refresh() }}
+        />
+      )}
 
       {filtrados.length === 0 ? (
         <div className="text-center py-16 border border-dashed border-slate-200 rounded-xl text-slate-400">
@@ -263,6 +301,90 @@ export function SubcontratistasClient({
         />
       )}
     </div>
+  )
+}
+
+function ModalImportar({
+  leidos,
+  existentes,
+  onClose,
+  onTerminado,
+}: {
+  leidos: FormularioLeido[]
+  existentes: Subcontratista[]
+  onClose: () => void
+  onTerminado: () => void
+}) {
+  const norm = (s: string | null | undefined) => (s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "")
+
+  // Un formulario es duplicado si ya hay un subcontratista con el mismo nombre
+  // o el mismo EIN, o si aparece dos veces en los archivos elegidos.
+  const filas = useMemo(() => {
+    const vistos = new Set<string>()
+    return leidos.map((l) => {
+      if (!l.datos) return { ...l, duplicado: false }
+      const nombre = norm(l.datos.nombre_compania)
+      const ein = norm(l.datos.ein)
+      const dup =
+        existentes.some((e) => norm(e.nombre_compania) === nombre || (ein && norm(e.ein) === ein)) ||
+        vistos.has(nombre)
+      vistos.add(nombre)
+      return { ...l, duplicado: dup }
+    })
+  }, [leidos, existentes])
+
+  const importables = filas.filter((f) => f.datos && !f.duplicado)
+  const [isPending, startTransition] = useTransition()
+  const [errores, setErrores] = useState<string[]>([])
+
+  const importar = () => {
+    startTransition(async () => {
+      const fallos: string[] = []
+      for (const f of importables) {
+        const res = await crearSubcontratista(f.datos!)
+        if (res.error) fallos.push(`${f.datos!.nombre_compania}: ${res.error}`)
+      }
+      if (fallos.length > 0) setErrores(fallos)
+      else onTerminado()
+    })
+  }
+
+  return (
+    <Modal titulo="Importar formularios" onClose={onClose} ancho="max-w-xl">
+      <div className="space-y-2">
+        {filas.map((f, i) => (
+          <div key={i} className="flex items-start justify-between gap-3 border border-slate-200 rounded-lg p-3 text-sm">
+            <div className="min-w-0">
+              <p className="font-medium text-slate-800 truncate">{f.datos?.nombre_compania ?? f.archivo}</p>
+              <p className="text-xs text-slate-400 truncate">{f.archivo}</p>
+              {f.datos && (
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {[f.datos.especialidad, f.datos.telefono, f.datos.email].filter(Boolean).join(" · ") || "Sin más datos"}
+                </p>
+              )}
+            </div>
+            {f.error ? (
+              <span className="text-xs text-red-600 text-right max-w-[200px]">{f.error}</span>
+            ) : f.duplicado ? (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 shrink-0">Ya existe — se omite</span>
+            ) : (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 shrink-0">Nuevo</span>
+            )}
+          </div>
+        ))}
+      </div>
+      {errores.length > 0 && (
+        <div className="mt-3 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-600 space-y-1">
+          {errores.map((e, i) => <p key={i}>{e}</p>)}
+        </div>
+      )}
+      <div className="flex gap-3 mt-5">
+        <Button type="button" variant="outline" className="flex-1" onClick={onClose} disabled={isPending}>Cancelar</Button>
+        <Button type="button" className="flex-1" onClick={importar} isLoading={isPending} disabled={importables.length === 0}>
+          Importar {importables.length} subcontratista(s)
+        </Button>
+      </div>
+    </Modal>
   )
 }
 
