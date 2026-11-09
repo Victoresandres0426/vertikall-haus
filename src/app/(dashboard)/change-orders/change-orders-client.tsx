@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { GitMerge, DollarSign, Clock, CheckCircle, XCircle, AlertCircle, Plus, X, Pencil, Send, ShieldCheck, ChevronDown, RotateCcw } from "lucide-react"
+import { GitMerge, DollarSign, Clock, CheckCircle, XCircle, AlertCircle, Plus, X, Pencil, Send, ShieldCheck, ChevronDown, RotateCcw, Upload } from "lucide-react"
+import { leerExcelCO, type LecturaExcelCO } from "./importar-excel"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { crearChangeOrder, actualizarChangeOrder, validarChangeOrder, enviarChangeOrderCliente, reabrirChangeOrder, corregirChangeOrderAprobado } from "./actions"
@@ -378,6 +379,54 @@ function ModalRegistrarChangeOrder({
       { proceso_id: procesos[0]?.id ?? "", nombre: "", costo_material: 0, costo_mano_obra: 0, duracion_dias: 1, cantidad_objetivo: null, unidad: "" },
     ])
   }
+  // ── Importar actividades desde Excel ──
+  const [lectura, setLectura] = useState<LecturaExcelCO | null>(null)
+  const [hojaSel, setHojaSel] = useState("")
+  const [divDefecto, setDivDefecto] = useState("")
+  const [errorExcel, setErrorExcel] = useState("")
+
+  const alElegirExcel = async (archivo: File | undefined) => {
+    if (!archivo) return
+    setErrorExcel("")
+    try {
+      const l = await leerExcelCO(archivo)
+      if (l.hojas.length === 0) {
+        setLectura(null)
+        setErrorExcel("No encontré una tabla con columnas de Material y Mano de obra en ese archivo.")
+        return
+      }
+      setLectura(l)
+      setHojaSel(l.hojaSugerida ?? l.hojas[0].nombre)
+      setDivDefecto("")
+    } catch (err) {
+      console.error("leerExcelCO:", err)
+      setLectura(null)
+      setErrorExcel("No se pudo leer el archivo (¿es un .xlsx válido?).")
+    }
+  }
+
+  const hojaActual = lectura?.hojas.find((h) => h.nombre === hojaSel) ?? null
+  const totalImport = hojaActual?.filas.reduce((s, f) => s + f.costo_material + f.costo_mano_obra, 0) ?? 0
+
+  const confirmarImportacion = () => {
+    if (!hojaActual || !divDefecto) return
+    const nuevos: RenglonCO[] = hojaActual.filas.map((f) => ({
+      proceso_id: divDefecto,
+      nombre: f.nombre,
+      costo_material: f.costo_material,
+      costo_mano_obra: f.costo_mano_obra,
+      duracion_dias: f.duracion_dias ?? 1,
+      cantidad_objetivo: null,
+      unidad: "",
+    }))
+    const todos = [...renglones, ...nuevos]
+    setRenglones(todos)
+    // El costo directo debe cuadrar con el desglose para poder guardar
+    const suma = todos.reduce((s, r) => s + (r.costo_material || 0) + (r.costo_mano_obra || 0), 0)
+    setCostoDirecto(String(Math.round(suma * 100) / 100))
+    setLectura(null)
+  }
+
   const quitarRenglon = (i: number) => setRenglones((prev) => prev.filter((_, idx) => idx !== i))
   const actualizarRenglon = (i: number, patch: Partial<RenglonCO>) => {
     setRenglones((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
@@ -527,15 +576,75 @@ function ModalRegistrarChangeOrder({
                 <label className="block text-xs font-medium text-slate-700">
                   Desglose interno por actividad (no lo ve el cliente)
                 </label>
-                <button
-                  type="button"
-                  onClick={agregarRenglon}
-                  disabled={procesos.length === 0}
-                  className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900 disabled:opacity-40"
-                >
-                  <Plus className="h-3 w-3" /> Agregar renglón
-                </button>
+                <div className="flex items-center gap-3">
+                  <label
+                    className={cn(
+                      "inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900 cursor-pointer",
+                      procesos.length === 0 && "opacity-40 pointer-events-none"
+                    )}
+                  >
+                    <Upload className="h-3 w-3" /> Importar de Excel
+                    <input
+                      type="file"
+                      accept=".xlsx"
+                      className="hidden"
+                      onChange={(e) => { void alElegirExcel(e.target.files?.[0]); e.target.value = "" }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={agregarRenglon}
+                    disabled={procesos.length === 0}
+                    className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900 disabled:opacity-40"
+                  >
+                    <Plus className="h-3 w-3" /> Agregar renglón
+                  </button>
+                </div>
               </div>
+
+              {errorExcel && <p className="text-[11px] text-red-600">{errorExcel}</p>}
+
+              {lectura && hojaActual && (
+                <div className="border border-sky-200 bg-sky-50 rounded-lg p-3 space-y-2 text-xs text-sky-900">
+                  {lectura.hojas.length > 1 && (
+                    <div className="flex items-center gap-2">
+                      <span>Hoja:</span>
+                      <select
+                        value={hojaSel}
+                        onChange={(e) => setHojaSel(e.target.value)}
+                        className="flex-1 border border-sky-200 rounded px-2 py-1 bg-white"
+                      >
+                        {lectura.hojas.map((h) => <option key={h.nombre} value={h.nombre}>{h.nombre} ({h.filas.length})</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <p>
+                    Se leyeron <b>{hojaActual.filas.length} actividades</b> por <b>{formatMonto(totalImport)}</b> (material + mano de obra).
+                    {hojaActual.filas.some((f) => f.equipo_sumado) && " El equipo, si lo hay, se suma al material."}
+                    {" "}El costo directo del CO se ajustará a lo que sume el desglose.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span>División para todas:</span>
+                    <select
+                      value={divDefecto}
+                      onChange={(e) => setDivDefecto(e.target.value)}
+                      className="flex-1 border border-sky-200 rounded px-2 py-1 bg-white"
+                    >
+                      <option value="">Selecciona una división…</option>
+                      {procesos.map((p) => <option key={p.id} value={p.id}>{p.codigo} — {p.nombre}</option>)}
+                    </select>
+                  </div>
+                  <p className="text-[11px] text-sky-700">
+                    Los números del Excel (16.1, 16.2…) no se usan para elegir la división. Después puedes cambiar la de cada renglón. Los días quedan en 1; ajústalos abajo.
+                  </p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setLectura(null)} className="px-3 py-1 rounded border border-sky-200 bg-white">Cancelar</button>
+                    <button type="button" onClick={confirmarImportacion} disabled={!divDefecto} className="px-3 py-1 rounded bg-sky-600 text-white font-medium disabled:opacity-50">
+                      Agregar {hojaActual.filas.length} renglones
+                    </button>
+                  </div>
+                </div>
+              )}
               <p className="text-[11px] text-slate-400">
                 Opcional, pero recomendado: reparte el costo directo en las actividades/divisiones reales.
                 Al aprobarse, cada renglón entra al presupuesto y al cronograma (inicio = mañana) en su
