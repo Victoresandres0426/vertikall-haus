@@ -392,7 +392,7 @@ function ModalRegistrarChangeOrder({
       const l = await leerExcelCO(archivo)
       if (l.hojas.length === 0) {
         setLectura(null)
-        setErrorExcel("No encontré una tabla con columnas de Material y Mano de obra en ese archivo.")
+        setErrorExcel("El archivo no tiene hojas.")
         return
       }
       setLectura(l)
@@ -606,23 +606,31 @@ function ModalRegistrarChangeOrder({
 
               {lectura && hojaActual && (
                 <div className="border border-sky-200 bg-sky-50 rounded-lg p-3 space-y-2 text-xs text-sky-900">
-                  {lectura.hojas.length > 1 && (
-                    <div className="flex items-center gap-2">
-                      <span>Hoja:</span>
-                      <select
-                        value={hojaSel}
-                        onChange={(e) => setHojaSel(e.target.value)}
-                        className="flex-1 border border-sky-200 rounded px-2 py-1 bg-white"
-                      >
-                        {lectura.hojas.map((h) => <option key={h.nombre} value={h.nombre}>{h.nombre} ({h.filas.length})</option>)}
-                      </select>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <span>Hoja de donde leer:</span>
+                    <select
+                      value={hojaSel}
+                      onChange={(e) => setHojaSel(e.target.value)}
+                      className="flex-1 border border-sky-200 rounded px-2 py-1 bg-white"
+                    >
+                      {lectura.hojas.map((h) => (
+                        <option key={h.nombre} value={h.nombre}>
+                          {h.nombre} — {h.filas.length > 0 ? `${h.filas.length} actividades` : "sin tabla reconocible"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {hojaActual.filas.length === 0 ? (
+                    <p className="text-red-600">
+                      En esta hoja no encontré columnas de Material y Mano de obra con datos. Prueba con otra hoja.
+                    </p>
+                  ) : (
+                    <p>
+                      Se leyeron <b>{hojaActual.filas.length} actividades</b> por <b>{formatMonto(totalImport)}</b> (material + mano de obra).
+                      {hojaActual.filas.some((f) => f.equipo_sumado) && " El equipo, si lo hay, se suma al material."}
+                      {" "}El costo directo del CO se ajustará a lo que sume el desglose.
+                    </p>
                   )}
-                  <p>
-                    Se leyeron <b>{hojaActual.filas.length} actividades</b> por <b>{formatMonto(totalImport)}</b> (material + mano de obra).
-                    {hojaActual.filas.some((f) => f.equipo_sumado) && " El equipo, si lo hay, se suma al material."}
-                    {" "}El costo directo del CO se ajustará a lo que sume el desglose.
-                  </p>
                   <div className="flex items-center gap-2">
                     <span>División para todas:</span>
                     <select
@@ -639,7 +647,7 @@ function ModalRegistrarChangeOrder({
                   </p>
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setLectura(null)} className="px-3 py-1 rounded border border-sky-200 bg-white">Cancelar</button>
-                    <button type="button" onClick={confirmarImportacion} disabled={!divDefecto} className="px-3 py-1 rounded bg-sky-600 text-white font-medium disabled:opacity-50">
+                    <button type="button" onClick={confirmarImportacion} disabled={!divDefecto || hojaActual.filas.length === 0} className="px-3 py-1 rounded bg-sky-600 text-white font-medium disabled:opacity-50">
                       Agregar {hojaActual.filas.length} renglones
                     </button>
                   </div>

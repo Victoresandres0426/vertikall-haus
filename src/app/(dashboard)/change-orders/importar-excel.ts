@@ -99,12 +99,15 @@ export async function leerExcelCO(archivo: File): Promise<LecturaExcelCO> {
     const ws = libro.Sheets[nombre]
     if (!ws) continue
     const filas = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: null })
-    const leidas = leerHoja(filas)
-    if (leidas.length > 0) hojas.push({ nombre, filas: leidas })
+    // Se listan TODAS las hojas (aunque no se reconozca una tabla en alguna),
+    // para que el usuario pueda escoger de cuál leer.
+    hojas.push({ nombre, filas: leerHoja(filas) })
   }
+  const conDatos = hojas.filter((h) => h.filas.length > 0)
   const sugerida =
-    hojas.find((h) => /MAESTRO/i.test(h.nombre))?.nombre ??
-    hojas.find((h) => /INTERNO|DESGLOSE/i.test(h.nombre))?.nombre ??
+    conDatos.find((h) => /MAESTRO/i.test(h.nombre))?.nombre ??
+    conDatos.find((h) => /INTERNO|DESGLOSE/i.test(h.nombre))?.nombre ??
+    conDatos[0]?.nombre ??
     hojas[0]?.nombre ??
     null
   return { hojas, hojaSugerida: sugerida }
