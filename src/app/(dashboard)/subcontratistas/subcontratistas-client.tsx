@@ -263,8 +263,11 @@ export function SubcontratistasClient({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setEditando(s)} className="text-slate-400 hover:text-slate-700" title="Editar">
-                      <Pencil className="h-4 w-4" />
+                    <button
+                      onClick={() => setEditando(s)}
+                      className="flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg px-2.5 py-1.5"
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Editar
                     </button>
                     {puedeBorrar && (
                       <button onClick={() => handleEliminar(s)} className="text-slate-300 hover:text-red-500" title="Borrar">

@@ -97,7 +97,7 @@ export async function crearSubcontratista(input: SubcontratistaInput): Promise<{
     .single()
   if (error || !data) {
     console.error("crearSubcontratista:", error)
-    return { error: "No se pudo guardar el subcontratista." }
+    return { error: `No se pudo guardar el subcontratista.${error?.message ? ` (${error.message})` : ""}` }
   }
   revalidar()
   return { id: data.id }
@@ -111,7 +111,7 @@ export async function actualizarSubcontratista(id: string, input: Subcontratista
   const { error } = await a.supabase.from("subcontratistas").update(limpiar(input)).eq("id", id)
   if (error) {
     console.error("actualizarSubcontratista:", error)
-    return { error: "No se pudo actualizar el subcontratista." }
+    return { error: `No se pudo actualizar el subcontratista. (${error.message})` }
   }
   revalidar()
   return {}
