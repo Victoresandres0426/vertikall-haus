@@ -9,8 +9,13 @@ const ROLES_BORRAN = ["administrador", "dueno", "superadmin"]
 export type SubcontratistaInput = {
   nombre_compania: string
   contacto_nombre: string | null
+  contacto_cargo: string | null
   telefono: string | null
   email: string | null
+  contacto2_nombre: string | null
+  contacto2_cargo: string | null
+  contacto2_telefono: string | null
+  contacto2_email: string | null
   direccion: string | null
   sitio_web: string | null
   especialidad: string | null
@@ -60,6 +65,11 @@ function limpiar(i: SubcontratistaInput): SubcontratistaInput {
   return {
     nombre_compania: i.nombre_compania.trim(),
     contacto_nombre: t(i.contacto_nombre),
+    contacto_cargo: t(i.contacto_cargo),
+    contacto2_nombre: t(i.contacto2_nombre),
+    contacto2_cargo: t(i.contacto2_cargo),
+    contacto2_telefono: t(i.contacto2_telefono),
+    contacto2_email: t(i.contacto2_email),
     telefono: t(i.telefono),
     email: t(i.email),
     direccion: t(i.direccion),

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, X, Search, Phone, Mail, Pencil, Trash2, HardHat, Star, AlertTriangle, FileSignature, ChevronDown, ChevronUp, Download, Upload } from "lucide-react"
+import { Plus, X, Search, Phone, Mail, Pencil, Trash2, HardHat, Star, AlertTriangle, FileSignature, ChevronDown, ChevronUp, Download, Upload, Eye } from "lucide-react"
 import { leerFormulario, type FormularioLeido } from "./importar-formulario"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -71,7 +71,9 @@ function estadoVencimiento(iso: string | null): "vencido" | "pronto" | null {
 }
 
 const vacio: SubcontratistaInput = {
-  nombre_compania: "", contacto_nombre: null, telefono: null, email: null, direccion: null, sitio_web: null,
+  nombre_compania: "", contacto_nombre: null, contacto_cargo: null, telefono: null, email: null,
+  contacto2_nombre: null, contacto2_cargo: null, contacto2_telefono: null, contacto2_email: null,
+  direccion: null, sitio_web: null,
   especialidad: null, ein: null, w9_recibido: false, licencia_numero: null, licencia_vence: null,
   seguro_aseguradora: null, seguro_poliza: null, seguro_vence: null, workers_comp: false,
   metodo_pago: null, datos_pago: null, calificacion: null, activo: true, notas: null,
@@ -98,6 +100,7 @@ export function SubcontratistasClient({
   const [busqueda, setBusqueda] = useState("")
   const [verInactivos, setVerInactivos] = useState(false)
   const [editando, setEditando] = useState<Subcontratista | "nuevo" | null>(null)
+  const [viendo, setViendo] = useState<Subcontratista | null>(null)
   const [contratoModal, setContratoModal] = useState<{ subcontratistaId: string; contrato: Subcontrato | null } | null>(null)
   const [expandido, setExpandido] = useState<string | null>(null)
   const [importados, setImportados] = useState<FormularioLeido[] | null>(null)
@@ -114,7 +117,7 @@ export function SubcontratistasClient({
     return subcontratistas.filter((s) => {
       if (!verInactivos && !s.activo) return false
       if (!q) return true
-      return `${s.nombre_compania} ${s.contacto_nombre ?? ""} ${s.especialidad ?? ""} ${s.telefono ?? ""} ${s.email ?? ""}`
+      return `${s.nombre_compania} ${s.contacto_nombre ?? ""} ${s.contacto2_nombre ?? ""} ${s.especialidad ?? ""} ${s.telefono ?? ""} ${s.email ?? ""}`
         .toLowerCase()
         .includes(q)
     })
@@ -217,7 +220,13 @@ export function SubcontratistasClient({
                 <div className="flex flex-wrap items-start gap-4 p-4">
                   <div className="flex-1 min-w-[240px]">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-sm font-semibold text-slate-900">{s.nombre_compania}</h3>
+                      <button
+                        onClick={() => setViendo(s)}
+                        className="text-sm font-semibold text-slate-900 hover:text-blue-600 hover:underline text-left"
+                        title="Ver detalles"
+                      >
+                        {s.nombre_compania}
+                      </button>
                       {s.especialidad && <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{s.especialidad}</span>}
                       {!s.activo && <span className="text-xs px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">Inactivo</span>}
                       {s.calificacion && (
@@ -226,11 +235,21 @@ export function SubcontratistasClient({
                         </span>
                       )}
                     </div>
-                    {s.contacto_nombre && <p className="text-xs text-slate-500 mt-0.5">{s.contacto_nombre}</p>}
+                    {s.contacto_nombre && (
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {s.contacto_nombre}{s.contacto_cargo ? ` · ${s.contacto_cargo}` : ""}
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-xs text-slate-500">
                       {s.telefono && <span className="flex items-center gap-1"><Phone className="h-3 w-3" /> {s.telefono}</span>}
                       {s.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" /> {s.email}</span>}
                     </div>
+                    {s.contacto2_nombre && (
+                      <p className="text-xs text-slate-500 mt-1.5">
+                        {s.contacto2_nombre}{s.contacto2_cargo ? ` · ${s.contacto2_cargo}` : ""}
+                        {s.contacto2_telefono ? ` · ${s.contacto2_telefono}` : ""}
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-2 mt-2">
                       {venceLic && (
                         <span className={cn("flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded", venceLic === "vencido" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700")}>
@@ -263,6 +282,12 @@ export function SubcontratistasClient({
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setViendo(s)}
+                      className="flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg px-2.5 py-1.5"
+                    >
+                      <Eye className="h-3.5 w-3.5" /> Detalles
+                    </button>
                     <button
                       onClick={() => setEditando(s)}
                       className="flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg px-2.5 py-1.5"
@@ -329,6 +354,14 @@ export function SubcontratistasClient({
         </div>
       )}
 
+      {viendo && (
+        <ModalDetalle
+          s={viendo}
+          documentos={documentos.filter((d) => d.subcontratista_id === viendo.id)}
+          onClose={() => setViendo(null)}
+          onEditar={() => { setEditando(viendo); setViendo(null) }}
+        />
+      )}
       {editando && (
         <ModalSubcontratista
           inicial={editando === "nuevo" ? null : editando}
@@ -468,6 +501,135 @@ function DocumentosSub({
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
+  )
+}
+
+function Dato({ label, valor }: { label: string; valor: React.ReactNode }) {
+  const vacio = valor === null || valor === undefined || valor === ""
+  return (
+    <div>
+      <p className="text-[11px] text-slate-400">{label}</p>
+      <p className={cn("text-sm break-words", vacio ? "text-slate-300" : "text-slate-800")}>{vacio ? "—" : valor}</p>
+    </div>
+  )
+}
+
+function ModalDetalle({
+  s,
+  documentos,
+  onClose,
+  onEditar,
+}: {
+  s: Subcontratista
+  documentos: DocumentoSub[]
+  onClose: () => void
+  onEditar: () => void
+}) {
+  const sec = "text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2"
+  const rejilla = "grid grid-cols-2 gap-x-4 gap-y-3"
+  const siNo = (v: boolean) => (v ? "Sí" : "No")
+  const venc = (iso: string | null) => {
+    const e = estadoVencimiento(iso)
+    return (
+      <span className={cn(e === "vencido" && "text-red-600 font-medium", e === "pronto" && "text-amber-600 font-medium")}>
+        {formatoFecha(iso)}{e === "vencido" ? " (vencido)" : e === "pronto" ? " (vence pronto)" : ""}
+      </span>
+    )
+  }
+
+  return (
+    <Modal titulo={s.nombre_compania} onClose={onClose}>
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center gap-2 -mt-3">
+          {s.especialidad && <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{s.especialidad}</span>}
+          <span className={cn("text-xs px-1.5 py-0.5 rounded", s.activo ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600")}>
+            {s.activo ? "Activo" : "Inactivo"}
+          </span>
+          {s.calificacion && (
+            <span className="flex items-center gap-0.5 text-xs text-amber-600"><Star className="h-3 w-3 fill-current" /> {s.calificacion}/5</span>
+          )}
+        </div>
+
+        <section>
+          <h4 className={sec}>Compañía</h4>
+          <div className={rejilla}>
+            <Dato label="Dirección" valor={s.direccion} />
+            <Dato label="Sitio web" valor={s.sitio_web} />
+          </div>
+        </section>
+
+        <section>
+          <h4 className={sec}>Persona de contacto 1</h4>
+          <div className={rejilla}>
+            <Dato label="Nombre" valor={s.contacto_nombre} />
+            <Dato label="Cargo / rol" valor={s.contacto_cargo} />
+            <Dato label="Teléfono" valor={s.telefono} />
+            <Dato label="Email" valor={s.email} />
+          </div>
+        </section>
+
+        <section>
+          <h4 className={sec}>Persona de contacto 2</h4>
+          <div className={rejilla}>
+            <Dato label="Nombre" valor={s.contacto2_nombre} />
+            <Dato label="Cargo / rol" valor={s.contacto2_cargo} />
+            <Dato label="Teléfono" valor={s.contacto2_telefono} />
+            <Dato label="Email" valor={s.contacto2_email} />
+          </div>
+        </section>
+
+        <section>
+          <h4 className={sec}>Legales y fiscales</h4>
+          <div className={rejilla}>
+            <Dato label="EIN / Tax ID" valor={s.ein} />
+            <Dato label="W-9 recibido" valor={siNo(s.w9_recibido)} />
+            <Dato label="Licencia (número)" valor={s.licencia_numero} />
+            <Dato label="Licencia vence" valor={s.licencia_vence ? venc(s.licencia_vence) : null} />
+            <Dato label="Seguro: aseguradora" valor={s.seguro_aseguradora} />
+            <Dato label="Seguro: póliza" valor={s.seguro_poliza} />
+            <Dato label="Seguro vence" valor={s.seguro_vence ? venc(s.seguro_vence) : null} />
+            <Dato label="Workers' comp" valor={siNo(s.workers_comp)} />
+          </div>
+        </section>
+
+        <section>
+          <h4 className={sec}>Datos de pago</h4>
+          <div className={rejilla}>
+            <Dato label="Método de pago" valor={s.metodo_pago} />
+            <Dato label="Datos" valor={s.datos_pago} />
+          </div>
+        </section>
+
+        {s.notas && (
+          <section>
+            <h4 className={sec}>Notas</h4>
+            <p className="text-sm text-slate-700 whitespace-pre-wrap">{s.notas}</p>
+          </section>
+        )}
+
+        <section>
+          <h4 className={sec}>Documentos ({documentos.length})</h4>
+          {documentos.length === 0 ? (
+            <p className="text-sm text-slate-300">—</p>
+          ) : (
+            <ul className="text-sm text-slate-700 space-y-1">
+              {documentos.map((d) => (
+                <li key={d.id}>
+                  {TIPOS_DOC[d.tipo]} · {d.nombre_archivo}
+                  {d.fecha_vence && <span className="text-slate-400"> · vence {formatoFecha(d.fecha_vence)}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-[11px] text-slate-400 mt-1">Para abrir o subir documentos usa el botón Contratos de la tarjeta.</p>
+        </section>
+
+        <div className="flex gap-3">
+          <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cerrar</Button>
+          <Button type="button" className="flex-1" onClick={onEditar}>Editar</Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -623,17 +785,34 @@ function ModalSubcontratista({
     <Modal titulo={inicial ? "Editar subcontratista" : "Agregar subcontratista"} onClose={onClose}>
       <form onSubmit={guardar} className="space-y-6">
         <section>
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Compañía y contacto</h4>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Compañía</h4>
           <div className="grid grid-cols-2 gap-3">
             <Campo label="Compañía *" span>
               <input required value={d.nombre_compania} onChange={(e) => set("nombre_compania", e.target.value)} className={inputCls} />
             </Campo>
-            <Campo label="Persona de contacto"><input {...t("contacto_nombre")} /></Campo>
             <Campo label="Especialidad / oficio"><input {...t("especialidad")} placeholder="Ej. Plomería, Electricidad" /></Campo>
+            <Campo label="Sitio web"><input {...t("sitio_web")} /></Campo>
+            <Campo label="Dirección" span><input {...t("direccion")} /></Campo>
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Persona de contacto 1</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <Campo label="Nombre"><input {...t("contacto_nombre")} /></Campo>
+            <Campo label="Cargo / rol"><input {...t("contacto_cargo")} placeholder="Ej. Dueño, Administración" /></Campo>
             <Campo label="Teléfono"><input {...t("telefono")} /></Campo>
             <Campo label="Email"><input type="email" {...t("email")} /></Campo>
-            <Campo label="Dirección" span><input {...t("direccion")} /></Campo>
-            <Campo label="Sitio web" span><input {...t("sitio_web")} /></Campo>
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Persona de contacto 2</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <Campo label="Nombre"><input {...t("contacto2_nombre")} /></Campo>
+            <Campo label="Cargo / rol"><input {...t("contacto2_cargo")} placeholder="Ej. Jefe de obra" /></Campo>
+            <Campo label="Teléfono"><input {...t("contacto2_telefono")} /></Campo>
+            <Campo label="Email"><input type="email" {...t("contacto2_email")} /></Campo>
           </div>
         </section>
 

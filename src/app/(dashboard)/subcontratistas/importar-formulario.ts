@@ -11,7 +11,9 @@ export type FormularioLeido = {
 }
 
 const CAMPOS_TEXTO = [
-  "nombre_compania", "contacto_nombre", "especialidad", "telefono", "email", "direccion", "sitio_web",
+  "nombre_compania", "contacto_nombre", "contacto_cargo", "telefono", "email",
+  "contacto2_nombre", "contacto2_cargo", "contacto2_telefono", "contacto2_email",
+  "especialidad", "direccion", "sitio_web",
   "ein", "licencia_numero", "seguro_aseguradora", "seguro_poliza", "metodo_pago", "datos_pago",
 ] as const
 
@@ -59,7 +61,9 @@ export async function leerFormulario(archivo: File): Promise<FormularioLeido> {
 
     const datos: SubcontratistaInput = {
       nombre_compania: nombre,
-      contacto_nombre: null, telefono: null, email: null, direccion: null, sitio_web: null,
+      contacto_nombre: null, contacto_cargo: null, telefono: null, email: null,
+      contacto2_nombre: null, contacto2_cargo: null, contacto2_telefono: null, contacto2_email: null,
+      direccion: null, sitio_web: null,
       especialidad: null, ein: null, licencia_numero: null, seguro_aseguradora: null,
       seguro_poliza: null, metodo_pago: null, datos_pago: null,
       w9_recibido: siNo(mapa.get("w9_recibido")),
