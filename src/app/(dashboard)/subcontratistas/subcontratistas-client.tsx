@@ -381,6 +381,10 @@ export function SubcontratistasClient({
       {editando && (
         <ModalSubcontratista
           inicial={editando === "nuevo" ? null : editando}
+          empresaId={empresaId}
+          docs={editando === "nuevo" ? [] : documentos.filter((d) => d.subcontratista_id === editando.id)}
+          puedeBorrar={puedeBorrar}
+          onCambioDocs={() => router.refresh()}
           onClose={() => setEditando(null)}
           onGuardado={() => { setEditando(null); router.refresh() }}
         />
@@ -406,12 +410,14 @@ function DocumentosSub({
   docs,
   puedeBorrar,
   onCambio,
+  sinTitulo,
 }: {
   subcontratistaId: string
   empresaId: string
   docs: DocumentoSub[]
   puedeBorrar: boolean
   onCambio: () => void
+  sinTitulo?: boolean
 }) {
   const [tipo, setTipo] = useState<TipoDocumento>("seguro")
   const [vence, setVence] = useState("")
@@ -469,15 +475,15 @@ function DocumentosSub({
   }
 
   return (
-    <div className="pt-3 mt-3 border-t border-slate-200 space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Documentos ({docs.length})</p>
+    <div className={cn("space-y-2", !sinTitulo && "pt-3 mt-3 border-t border-slate-200")}>
+      {!sinTitulo && <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Documentos ({docs.length})</p>}
       {docs.length === 0 && <p className="text-xs text-slate-400 italic">Sin documentos todavía.</p>}
       {docs.map((d) => {
         const est = estadoVencimiento(d.fecha_vence)
         return (
           <div key={d.id} className="flex flex-wrap items-center gap-3 bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs">
             <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0">{TIPOS_DOC[d.tipo]}</span>
-            <button onClick={() => abrir(d)} className="text-blue-600 hover:underline truncate max-w-[280px] text-left" title="Abrir">
+            <button type="button" onClick={() => abrir(d)} className="text-blue-600 hover:underline truncate max-w-[280px] text-left" title="Abrir">
               {d.nombre_archivo}
             </button>
             {d.fecha_vence && (
@@ -487,7 +493,7 @@ function DocumentosSub({
             )}
             {d.notas && <span className="text-slate-400 truncate max-w-[200px]">{d.notas}</span>}
             {puedeBorrar && (
-              <button onClick={() => borrar(d)} className="ml-auto text-slate-300 hover:text-red-500">
+              <button type="button" onClick={() => borrar(d)} className="ml-auto text-slate-300 hover:text-red-500">
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             )}
@@ -637,7 +643,7 @@ function ModalDetalle({
               ))}
             </ul>
           )}
-          <p className="text-[11px] text-slate-400 mt-1">Para abrir o subir documentos usa el botón Contratos de la tarjeta.</p>
+          <p className="text-[11px] text-slate-400 mt-1">Para abrir o subir documentos usa Editar (sección Documentos) o el botón Contratos de la tarjeta.</p>
         </section>
 
         <div className="flex gap-3">
@@ -801,10 +807,18 @@ function Modal({ titulo, onClose, children, ancho = "max-w-2xl" }: { titulo: str
 
 function ModalSubcontratista({
   inicial,
+  empresaId,
+  docs,
+  puedeBorrar,
+  onCambioDocs,
   onClose,
   onGuardado,
 }: {
   inicial: Subcontratista | null
+  empresaId: string
+  docs: DocumentoSub[]
+  puedeBorrar: boolean
+  onCambioDocs: () => void
   onClose: () => void
   onGuardado: () => void
 }) {
@@ -931,6 +945,22 @@ function ModalSubcontratista({
               <textarea rows={2} {...t("notas")} className={cn(inputCls, "resize-none")} />
             </Campo>
           </div>
+        </section>
+
+        <section>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Documentos (licencia, seguro, W-9…)</h4>
+          {inicial ? (
+            <DocumentosSub
+              subcontratistaId={inicial.id}
+              empresaId={empresaId}
+              docs={docs}
+              puedeBorrar={puedeBorrar}
+              onCambio={onCambioDocs}
+              sinTitulo
+            />
+          ) : (
+            <p className="text-xs text-slate-400 italic">Guarda primero al subcontratista; después podrás subir sus documentos desde Editar.</p>
+          )}
         </section>
 
         {error && <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-600">{error}</div>}
