@@ -102,6 +102,7 @@ export function SubcontratistasClient({
   const [verInactivos, setVerInactivos] = useState(false)
   const [editando, setEditando] = useState<Subcontratista | "nuevo" | null>(null)
   const [viendo, setViendo] = useState<Subcontratista | null>(null)
+  const [docsDe, setDocsDe] = useState<Subcontratista | null>(null)
   const [contratoModal, setContratoModal] = useState<{ subcontratistaId: string; contrato: Subcontrato | null } | null>(null)
   const [expandido, setExpandido] = useState<string | null>(null)
   const [importados, setImportados] = useState<FormularioLeido[] | null>(null)
@@ -299,6 +300,12 @@ export function SubcontratistasClient({
 
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={() => setDocsDe(s)}
+                      className="flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg px-2.5 py-1.5"
+                    >
+                      <Upload className="h-3.5 w-3.5" /> Documentos ({documentos.filter((d) => d.subcontratista_id === s.id).length})
+                    </button>
+                    <button
                       onClick={() => setViendo(s)}
                       className="flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg px-2.5 py-1.5"
                     >
@@ -370,6 +377,18 @@ export function SubcontratistasClient({
         </div>
       )}
 
+      {docsDe && (
+        <Modal titulo={`Documentos — ${docsDe.nombre_compania}`} onClose={() => setDocsDe(null)} ancho="max-w-xl">
+          <DocumentosSub
+            subcontratistaId={docsDe.id}
+            empresaId={empresaId}
+            docs={documentos.filter((d) => d.subcontratista_id === docsDe.id)}
+            puedeBorrar={puedeBorrar}
+            onCambio={() => router.refresh()}
+            sinTitulo
+          />
+        </Modal>
+      )}
       {viendo && (
         <ModalDetalle
           s={viendo}
