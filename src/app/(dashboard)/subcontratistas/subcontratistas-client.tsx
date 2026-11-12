@@ -663,30 +663,57 @@ function ModalImportar({
   const norm = (s: string | null | undefined) => (s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "")
 
   // Un formulario es duplicado si ya hay un subcontratista con el mismo nombre
-  // o el mismo EIN, o si aparece dos veces en los archivos elegidos.
+  // o el mismo EIN (guardamos cuál es, para poder sustituirlo), o si aparece
+  // dos veces en los archivos elegidos (ese segundo solo se puede omitir).
   const filas = useMemo(() => {
     const vistos = new Set<string>()
     return leidos.map((l) => {
-      if (!l.datos) return { ...l, duplicado: false }
+      if (!l.datos) return { ...l, duplicado: false, existente: null as Subcontratista | null }
       const nombre = norm(l.datos.nombre_compania)
       const ein = norm(l.datos.ein)
-      const dup =
-        existentes.some((e) => norm(e.nombre_compania) === nombre || (ein && norm(e.ein) === ein)) ||
-        vistos.has(nombre)
+      const existente = existentes.find((e) => norm(e.nombre_compania) === nombre || (ein && norm(e.ein) === ein)) ?? null
+      const repetidoEnLote = vistos.has(nombre)
       vistos.add(nombre)
-      return { ...l, duplicado: dup }
+      return { ...l, duplicado: !!existente || repetidoEnLote, existente }
     })
   }, [leidos, existentes])
 
-  const importables = filas.filter((f) => f.datos && !f.duplicado)
+  // Para cada duplicado: omitir (por defecto) o sustituir los datos del existente
+  const [acciones, setAcciones] = useState<Record<number, "omitir" | "sustituir">>({})
+  const accionDe = (i: number) => acciones[i] ?? "omitir"
+
+  const aImportar = filas
+    .map((f, i) => ({ f, i }))
+    .filter(({ f, i }) => f.datos && (!f.duplicado || (f.existente && accionDe(i) === "sustituir")))
   const [isPending, startTransition] = useTransition()
   const [errores, setErrores] = useState<string[]>([])
+
+  // Sustituir = los datos del formulario reemplazan a los guardados; lo que el
+  // formulario trae vacío NO borra lo que ya había (ni calificación, estado o notas).
+  const fusionar = (actual: Subcontratista, nuevo: SubcontratistaInput): SubcontratistaInput => {
+    const { id: _id, ...base } = actual
+    void _id
+    const resultado: SubcontratistaInput = { ...base }
+    const r = resultado as unknown as Record<string, unknown>
+    for (const k of Object.keys(nuevo) as (keyof SubcontratistaInput)[]) {
+      if (k === "calificacion" || k === "activo" || k === "notas") continue
+      const v = nuevo[k]
+      if (typeof v === "boolean") {
+        if (v) r[k] = true
+      } else if (v !== null && v !== "") {
+        r[k] = v
+      }
+    }
+    return resultado
+  }
 
   const importar = () => {
     startTransition(async () => {
       const fallos: string[] = []
-      for (const f of importables) {
-        const res = await crearSubcontratista(f.datos!)
+      for (const { f } of aImportar) {
+        const res = f.duplicado && f.existente
+          ? await actualizarSubcontratista(f.existente.id, fusionar(f.existente, f.datos!))
+          : await crearSubcontratista(f.datos!)
         if (res.error) fallos.push(`${f.datos!.nombre_compania}: ${res.error}`)
       }
       if (fallos.length > 0) setErrores(fallos)
@@ -711,7 +738,20 @@ function ModalImportar({
             {f.error ? (
               <span className="text-xs text-red-600 text-right max-w-[200px]">{f.error}</span>
             ) : f.duplicado ? (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 shrink-0">Ya existe — se omite</span>
+              <div className="shrink-0 text-right space-y-1">
+                <span className="block text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                  {f.existente ? "Ya existe" : "Repetido en los archivos"}
+                </span>
+                <select
+                  value={f.existente ? accionDe(i) : "omitir"}
+                  disabled={!f.existente}
+                  onChange={(e) => setAcciones((p) => ({ ...p, [i]: e.target.value as "omitir" | "sustituir" }))}
+                  className="text-xs border border-slate-200 rounded-md px-1.5 py-1 bg-white"
+                >
+                  <option value="omitir">Omitir</option>
+                  <option value="sustituir">Sustituir datos</option>
+                </select>
+              </div>
             ) : (
               <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 shrink-0">Nuevo</span>
             )}
@@ -725,8 +765,8 @@ function ModalImportar({
       )}
       <div className="flex gap-3 mt-5">
         <Button type="button" variant="outline" className="flex-1" onClick={onClose} disabled={isPending}>Cancelar</Button>
-        <Button type="button" className="flex-1" onClick={importar} isLoading={isPending} disabled={importables.length === 0}>
-          Importar {importables.length} subcontratista(s)
+        <Button type="button" className="flex-1" onClick={importar} isLoading={isPending} disabled={aImportar.length === 0}>
+          Importar {aImportar.length} subcontratista(s)
         </Button>
       </div>
     </Modal>
