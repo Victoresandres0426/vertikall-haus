@@ -10,7 +10,10 @@ import {
   type DocumentoSub,
 } from "./subcontratistas-client"
 
-const ROLES_GESTION = ["project_manager", "administrador", "dueno", "superadmin"]
+// La lectura de formularios PDF con IA puede tardar más que el límite por defecto
+export const maxDuration = 60
+
+const ROLES_GESTION =["project_manager", "administrador", "dueno", "superadmin"]
 const ROLES_BORRAN = ["administrador", "dueno", "superadmin"]
 
 export default async function SubcontratistasPage() {

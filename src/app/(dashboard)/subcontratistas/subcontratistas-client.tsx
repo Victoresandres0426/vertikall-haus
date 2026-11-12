@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, X, Search, Phone, Mail, Pencil, Trash2, HardHat, Star, AlertTriangle, FileSignature, ChevronDown, ChevronUp, Download, Upload, Eye } from "lucide-react"
 import { leerFormulario, type FormularioLeido } from "./importar-formulario"
+import { leerFormularioConIA } from "./importar-pdf-actions"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -168,10 +169,10 @@ export function SubcontratistasClient({
             <Download className="h-4 w-4" /> Descargar formulario
           </a>
           <label className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 cursor-pointer">
-            <Upload className="h-4 w-4" /> Importar formularios
+            <Upload className="h-4 w-4" /> Importar formularios (Excel, PDF o foto)
             <input
               type="file"
-              accept=".xlsx"
+              accept=".xlsx,.pdf,.png,.jpg,.jpeg"
               multiple
               className="hidden"
               onChange={async (e) => {
@@ -179,7 +180,22 @@ export function SubcontratistasClient({
                 e.target.value = ""
                 if (archivos.length === 0) return
                 setLeyendo(true)
-                setImportados(await Promise.all(archivos.map(leerFormulario)))
+                // Excel: lectura local. PDF/foto: la IA extrae los datos (uno por uno).
+                const leidos: FormularioLeido[] = []
+                for (const archivo of archivos) {
+                  if (/\.xlsx$/i.test(archivo.name)) {
+                    leidos.push(await leerFormulario(archivo))
+                  } else {
+                    const fd = new FormData()
+                    fd.set("archivo", archivo)
+                    try {
+                      leidos.push(await leerFormularioConIA(fd))
+                    } catch {
+                      leidos.push({ archivo: archivo.name, datos: null, error: "No se pudo leer el archivo." })
+                    }
+                  }
+                }
+                setImportados(leidos)
                 setLeyendo(false)
               }}
             />
@@ -189,7 +205,7 @@ export function SubcontratistasClient({
           </Button>
         </div>
       </div>
-      {leyendo && <p className="text-xs text-slate-400">Leyendo archivos…</p>}
+      {leyendo && <p className="text-xs text-slate-400">Leyendo archivos… (los PDF y fotos los lee la IA, puede tardar unos segundos por archivo)</p>}
       {importados && (
         <ModalImportar
           leidos={importados}
