@@ -16,6 +16,10 @@ import {
   actualizarFacturaGasto,
   descartarAvisoDuplicado,
   dividirLineaGasto,
+  sugerirActividadesFactura,
+  aceptarSugerenciaActividad,
+  aceptarTodasSugerenciasActividad,
+  descartarSugerenciaActividad,
   type LineaGastoInput,
   type FacturaActualizada,
   type SplitActividad,
@@ -92,6 +96,8 @@ export type LineaCostoReal = {
   partida_id?: string | null
   material_presupuestado_id?: string | null
   material_sugerido?: boolean | null
+  actividad_sugerida_id?: string | null
+  actividad_sugerida_motivo?: string | null
   tipo_recurso: string
   descripcion: string
   unidad: string | null
@@ -328,6 +334,73 @@ export function GastosClient({
     )
     startTransition(async () => {
       const res = await asignarPartidaLinea(lineaId, valor)
+      if (res.error) alert(res.error)
+    })
+  }
+
+  // ── Sugerencias de actividad (según los Reportes Diarios de los días siguientes a la compra) ──
+  const [sugiriendo, setSugiriendo] = useState<string | null>(null)
+
+  const aplicarActividadLocal = (lineaId: string) => {
+    setFacturas((prev) =>
+      prev.map((f) => ({
+        ...f,
+        lineas: f.lineas.map((l) => {
+          if (l.id !== lineaId || !l.actividad_sugerida_id) return l
+          const act = actividadesOpciones.find((a) => a.id === l.actividad_sugerida_id)
+          return {
+            ...l,
+            actividad_id: l.actividad_sugerida_id,
+            partida_id: null,
+            actividades: act ? { codigo: act.codigo, nombre: act.nombre } : l.actividades,
+            actividad_sugerida_id: null,
+            actividad_sugerida_motivo: null,
+          }
+        }),
+      }))
+    )
+  }
+
+  const handleSugerirActividades = (facturaId: string) => {
+    setSugiriendo(facturaId)
+    startTransition(async () => {
+      const res = await sugerirActividadesFactura(facturaId)
+      setSugiriendo(null)
+      if (res.error) {
+        alert(res.error)
+        return
+      }
+      if (!res.sugeridas) alert("No encontré actividades que encajen con lo comprado en los Reportes Diarios de los 5 días siguientes.")
+      window.location.reload()
+    })
+  }
+
+  const handleAceptarSugerencia = (lineaId: string) => {
+    aplicarActividadLocal(lineaId)
+    startTransition(async () => {
+      const res = await aceptarSugerenciaActividad(lineaId)
+      if (res.error) alert(res.error)
+    })
+  }
+
+  const handleDescartarSugerencia = (lineaId: string) => {
+    setFacturas((prev) =>
+      prev.map((f) => ({
+        ...f,
+        lineas: f.lineas.map((l) => (l.id === lineaId ? { ...l, actividad_sugerida_id: null, actividad_sugerida_motivo: null } : l)),
+      }))
+    )
+    startTransition(async () => {
+      const res = await descartarSugerenciaActividad(lineaId)
+      if (res.error) alert(res.error)
+    })
+  }
+
+  const handleAceptarTodasActividades = (facturaId: string) => {
+    const f = facturas.find((x) => x.id === facturaId)
+    f?.lineas.filter((l) => !l.actividad_id && l.actividad_sugerida_id).forEach((l) => aplicarActividadLocal(l.id))
+    startTransition(async () => {
+      const res = await aceptarTodasSugerenciasActividad(facturaId)
       if (res.error) alert(res.error)
     })
   }
@@ -616,12 +689,25 @@ export function GastosClient({
                             </div>
                           </div>
                         ) : (
-                          <button
-                            onClick={() => iniciarEdicionHeader(f)}
-                            className="text-xs text-slate-400 hover:text-slate-700 flex items-center gap-1"
-                          >
-                            <Pencil className="h-3 w-3" /> Editar lugar / fecha / referencia
-                          </button>
+                          <div className="flex flex-wrap items-center gap-4">
+                            <button
+                              onClick={() => iniciarEdicionHeader(f)}
+                              className="text-xs text-slate-400 hover:text-slate-700 flex items-center gap-1"
+                            >
+                              <Pencil className="h-3 w-3" /> Editar lugar / fecha / referencia
+                            </button>
+                            {f.lineas.some((l) => !l.actividad_id && !l.partida_id) && (
+                              <button
+                                onClick={() => handleSugerirActividades(f.id)}
+                                disabled={sugiriendo === f.id}
+                                title="Busca en los Reportes Diarios de los 5 días siguientes a la compra en qué actividad se usó cada artículo"
+                                className="text-xs text-sky-600 hover:text-sky-800 flex items-center gap-1 disabled:opacity-60"
+                              >
+                                <RefreshCw className={cn("h-3 w-3", sugiriendo === f.id && "animate-spin")} />
+                                {sugiriendo === f.id ? "Buscando…" : "Sugerir actividades"}
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
@@ -663,6 +749,21 @@ export function GastosClient({
                           )}
                         >
                           <RefreshCw className={cn("h-3.5 w-3.5", reintentando === f.id && "animate-spin")} /> Reintentar
+                        </button>
+                      </div>
+                    )}
+
+                    {puedeCrear && f.lineas.some((l) => !l.actividad_id && l.actividad_sugerida_id) && (
+                      <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800">
+                        <span>
+                          {f.lineas.filter((l) => !l.actividad_id && l.actividad_sugerida_id).length} artículo(s) con actividad sugerida según
+                          los Reportes Diarios de los {5} días siguientes a la compra. No afectan costos hasta que los aceptes.
+                        </span>
+                        <button
+                          onClick={() => handleAceptarTodasActividades(f.id)}
+                          className="shrink-0 rounded-md bg-violet-600 px-2.5 py-1 font-medium text-white hover:bg-violet-700"
+                        >
+                          Aceptar todas
                         </button>
                       </div>
                     )}
@@ -809,6 +910,19 @@ export function GastosClient({
                                                 </optgroup>
                                               ))}
                                             </select>
+                                            {!l.actividad_id && l.actividad_sugerida_id && (() => {
+                                              const a = actividadesOpciones.find((x) => x.id === l.actividad_sugerida_id)
+                                              return a ? (
+                                                <div className="rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] text-violet-800 space-y-0.5">
+                                                  <p className="font-medium">Sugerida: {a.codigo} — {a.nombre}</p>
+                                                  {l.actividad_sugerida_motivo && <p className="text-violet-600">{l.actividad_sugerida_motivo}</p>}
+                                                  <div className="flex gap-3 pt-0.5">
+                                                    <button onClick={() => handleAceptarSugerencia(l.id)} className="font-medium text-violet-700 hover:underline">Aceptar</button>
+                                                    <button onClick={() => handleDescartarSugerencia(l.id)} className="text-slate-400 hover:text-slate-600">Descartar</button>
+                                                  </div>
+                                                </div>
+                                              ) : null
+                                            })()}
                                             {/* Solo tiene sentido elegir una partida general cuando NO hay
                                                 actividad -- para gastos que no corresponden a ninguna tarea
                                                 puntual (herramienta menor, agua, etc.). */}

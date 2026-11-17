@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import { sugerirMaterialesParaFactura } from "@/lib/materiales/sugerir"
+import { sugerirActividadesParaFactura } from "@/lib/materiales/sugerir-actividad"
 
 const ROLES_GESTION = ["project_manager", "administrador", "dueno", "superadmin"]
 
@@ -163,6 +164,7 @@ export async function crearFacturaGasto(input: FacturaGastoInput): Promise<{ err
   // Propone a qué material presupuestado corresponde cada línea de material
   // (queda como "sugerido" hasta que el usuario lo confirme).
   await sugerirMaterialesParaFactura(supabase, input.proyectoId, factura.id)
+  await sugerirActividadesParaFactura(supabase, input.proyectoId, factura.id)
 
   revalidarTodo()
   return { id: factura.id }
@@ -371,6 +373,91 @@ export async function asignarActividadLinea(lineaId: string, actividadId: string
     return { error: "No se pudo asignar la actividad." }
   }
 
+  revalidarTodo()
+  return {}
+}
+
+// ── Sugerencias de actividad (según los Reportes Diarios de los días siguientes a la compra) ──
+
+// Vuelve a calcular las sugerencias de una factura (útil cuando los reportes
+// diarios se llenaron DESPUÉS de registrar la compra).
+export async function sugerirActividadesFactura(facturaId: string): Promise<{ error?: string; sugeridas?: number }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  const { data: factura } = await supabase.from("facturas_gasto").select("proyecto_id").eq("id", facturaId).single()
+  if (!factura) return { error: "No se encontró la factura." }
+
+  // Limpia sugerencias viejas de líneas aún sin clasificar para recalcular
+  await supabase
+    .from("costos_reales")
+    .update({ actividad_sugerida_id: null, actividad_sugerida_motivo: null })
+    .eq("factura_id", facturaId)
+    .is("actividad_id", null)
+
+  const n = await sugerirActividadesParaFactura(supabase, factura.proyecto_id, facturaId)
+  revalidarTodo()
+  return { sugeridas: n }
+}
+
+// Acepta la actividad sugerida de una línea (o de todas las de la factura).
+export async function aceptarSugerenciaActividad(lineaId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  const { data: linea } = await supabase.from("costos_reales").select("actividad_sugerida_id").eq("id", lineaId).single()
+  if (!linea?.actividad_sugerida_id) return { error: "Esta línea no tiene sugerencia." }
+
+  const { error } = await supabase
+    .from("costos_reales")
+    .update({ actividad_id: linea.actividad_sugerida_id, partida_id: null, actividad_sugerida_id: null, actividad_sugerida_motivo: null })
+    .eq("id", lineaId)
+  if (error) {
+    console.error("aceptarSugerenciaActividad:", error)
+    return { error: "No se pudo asignar la actividad." }
+  }
+  revalidarTodo()
+  return {}
+}
+
+export async function aceptarTodasSugerenciasActividad(facturaId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  const { data: lineas } = await supabase
+    .from("costos_reales")
+    .select("id, actividad_sugerida_id")
+    .eq("factura_id", facturaId)
+    .is("actividad_id", null)
+    .not("actividad_sugerida_id", "is", null)
+
+  for (const l of (lineas ?? []) as { id: string; actividad_sugerida_id: string }[]) {
+    const { error } = await supabase
+      .from("costos_reales")
+      .update({ actividad_id: l.actividad_sugerida_id, partida_id: null, actividad_sugerida_id: null, actividad_sugerida_motivo: null })
+      .eq("id", l.id)
+    if (error) {
+      console.error("aceptarTodasSugerenciasActividad:", error)
+      return { error: "No se pudieron asignar todas las actividades." }
+    }
+  }
+  revalidarTodo()
+  return {}
+}
+
+export async function descartarSugerenciaActividad(lineaId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const acceso = await verificarAcceso(supabase)
+  if (!acceso.ok) return { error: acceso.error }
+
+  const { error } = await supabase
+    .from("costos_reales")
+    .update({ actividad_sugerida_id: null, actividad_sugerida_motivo: null })
+    .eq("id", lineaId)
+  if (error) return { error: "No se pudo descartar la sugerencia." }
   revalidarTodo()
   return {}
 }
@@ -630,6 +717,7 @@ async function aplicarAnalisisAFactura(
         .eq("id", facturaId)
 
       await sugerirMaterialesParaFactura(supabase, proyectoId, facturaId)
+      await sugerirActividadesParaFactura(supabase, proyectoId, facturaId)
 
       // ── Aviso de posible duplicado por CONTENIDO ──
       // El hash de la foto (077) solo detecta cuando se sube el MISMO
@@ -804,6 +892,8 @@ export type LineaFacturaActualizada = {
   partida_id: string | null
   material_presupuestado_id: string | null
   material_sugerido: boolean | null
+  actividad_sugerida_id: string | null
+  actividad_sugerida_motivo: string | null
   tipo_recurso: string
   descripcion: string
   unidad: string | null
@@ -880,7 +970,7 @@ export async function reintentarAnalisisFactura(facturaId: string): Promise<{ er
 
   const { data: lineasFinal } = await supabase
     .from("costos_reales")
-    .select("id, factura_id, actividad_id, partida_id, material_presupuestado_id, material_sugerido, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, actividades ( codigo, nombre )")
+    .select("id, factura_id, actividad_id, partida_id, material_presupuestado_id, material_sugerido, actividad_sugerida_id, actividad_sugerida_motivo, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, actividades ( codigo, nombre )")
     .eq("factura_id", facturaId)
 
   revalidarTodo()
