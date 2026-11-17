@@ -970,7 +970,7 @@ export async function reintentarAnalisisFactura(facturaId: string): Promise<{ er
 
   const { data: lineasFinal } = await supabase
     .from("costos_reales")
-    .select("id, factura_id, actividad_id, partida_id, material_presupuestado_id, material_sugerido, actividad_sugerida_id, actividad_sugerida_motivo, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, actividades ( codigo, nombre )")
+    .select("id, factura_id, actividad_id, partida_id, material_presupuestado_id, material_sugerido, actividad_sugerida_id, actividad_sugerida_motivo, tipo_recurso, descripcion, unidad, cantidad, precio_unitario, tax, monto, actividades!actividad_id ( codigo, nombre )")
     .eq("factura_id", facturaId)
 
   revalidarTodo()
