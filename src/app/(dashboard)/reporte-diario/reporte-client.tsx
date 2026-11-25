@@ -782,6 +782,33 @@ export function ReporteClient({
     })
   }
 
+  // IMPORTANTE: este useMemo debe estar ANTES de los `return` anticipados de más abajo
+  // (sin proyectos / reporte enviado). Un hook después de un return condicional hace que
+  // React falle con "Rendered fewer hooks than expected" justo al enviar el reporte.
+  // El resumen de Avance (Paso 2) solo cuenta lo que cada trabajador puso
+  // en el campo "Avance" de su split -- las horas no suman nada ahí. Si a
+  // alguien se le queda un split con horas cargadas pero sin avance, ese
+  // trabajo "desaparece" del progreso de la actividad aunque las horas sí
+  // quedaron registradas (para nómina). Se avisa para no confundir "nadie
+  // trabajó en esto" con "se les olvidó anotar cuánto avanzaron".
+  // Se excluye el split base (i===0) de un capataz vinculado con más de
+  // un split: ese es "resto del día" de supervisión, sin unidad que medir.
+  const splitsSinAvance = useMemo(() => {
+    const actividadesActivas = actividadesPorProyecto[proyectoId] ?? []
+    const avisos: { trabajador: string; actividad: string }[] = []
+    for (const t of trabajadores) {
+      if (t.asistencia === "ausente") continue
+      t.splits.forEach((s, i) => {
+        if (i === 0 && t.requiere_qr && t.splits.length > 1) return
+        if (!s.actividadId || !(s.horas > 0)) return
+        if (s.avance > 0) return
+        const actividad = actividadesActivas.find((a) => a.id === s.actividadId)
+        avisos.push({ trabajador: t.nombre_completo, actividad: actividad?.nombre ?? "actividad seleccionada" })
+      })
+    }
+    return avisos
+  }, [trabajadores, actividadesPorProyecto, proyectoId])
+
   const pasos = [
     { num: 1, label: "Asistencia" },
     { num: 2, label: "Avance" },
@@ -855,30 +882,6 @@ export function ReporteClient({
 
   const presentes = trabajadores.filter((t) => t.asistencia === "presente").length
   const totalHoras = trabajadores.reduce((s, t) => s + t.horas + t.extra, 0)
-
-  // El resumen de Avance (Paso 2) solo cuenta lo que cada trabajador puso
-  // en el campo "Avance" de su split -- las horas no suman nada ahí. Si a
-  // alguien se le queda un split con horas cargadas pero sin avance, ese
-  // trabajo "desaparece" del progreso de la actividad aunque las horas sí
-  // quedaron registradas (para nómina). Se avisa para no confundir "nadie
-  // trabajó en esto" con "se les olvidó anotar cuánto avanzaron".
-  // Se excluye el split base (i===0) de un capataz vinculado con más de
-  // un split: ese es "resto del día" de supervisión, sin unidad que medir.
-  const splitsSinAvance = useMemo(() => {
-    const actividadesActivas = actividadesPorProyecto[proyectoId] ?? []
-    const avisos: { trabajador: string; actividad: string }[] = []
-    for (const t of trabajadores) {
-      if (t.asistencia === "ausente") continue
-      t.splits.forEach((s, i) => {
-        if (i === 0 && t.requiere_qr && t.splits.length > 1) return
-        if (!s.actividadId || !(s.horas > 0)) return
-        if (s.avance > 0) return
-        const actividad = actividadesActivas.find((a) => a.id === s.actividadId)
-        avisos.push({ trabajador: t.nombre_completo, actividad: actividad?.nombre ?? "actividad seleccionada" })
-      })
-    }
-    return avisos
-  }, [trabajadores, actividadesPorProyecto, proyectoId])
 
   return (
     <div>
