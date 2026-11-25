@@ -1,7 +1,9 @@
 "use client"
 
+import { useState, useTransition } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
+import { iniciarVistaPrevia, terminarVistaPrevia } from "@/app/vista-previa-actions"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -25,6 +27,8 @@ import {
   Wallet,
   NotebookPen,
   HardHat,
+  Eye,
+  ChevronDown,
 } from "lucide-react"
 
 type NavItem = {
@@ -80,9 +84,125 @@ export interface SidebarProps {
   usuarioNombre?: string
   usuarioRol?: string
   onNavigate?: () => void
+  esDueno?: boolean
+  vistaPreviaRol?: string | null
+  vistaPreviaProyectoId?: string | null
+  proyectosVistaPrevia?: { id: string; nombre: string }[]
 }
 
-export function Sidebar({ empresaNombre = "Vertikall Haus", usuarioNombre, usuarioRol, onNavigate }: SidebarProps) {
+const VISTAS: { rol: string; label: string }[] = [
+  { rol: "cliente", label: "Portal del cliente" },
+  { rol: "colaborador_externo", label: "Colaborador externo" },
+  { rol: "subcontratista", label: "Subcontratista" },
+  { rol: "project_manager", label: "Project Manager" },
+  { rol: "capataz", label: "Capataz" },
+]
+
+function VerComo({
+  vistaPreviaRol,
+  vistaPreviaProyectoId,
+  proyectos,
+  onNavigate,
+}: {
+  vistaPreviaRol: string | null
+  vistaPreviaProyectoId: string | null
+  proyectos: { id: string; nombre: string }[]
+  onNavigate?: () => void
+}) {
+  const router = useRouter()
+  const [abierto, setAbierto] = useState(!!vistaPreviaRol)
+  const [proyectoId, setProyectoId] = useState(vistaPreviaProyectoId ?? proyectos[0]?.id ?? "")
+  const [pending, start] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+
+  const elegir = (rol: string) => {
+    setError(null)
+    start(async () => {
+      const r = await iniciarVistaPrevia(rol, proyectoId || null)
+      if (r.error) {
+        setError(r.error)
+        return
+      }
+      onNavigate?.()
+      router.push(r.destino ?? "/dashboard")
+      router.refresh()
+    })
+  }
+
+  const salir = () => {
+    start(async () => {
+      await terminarVistaPrevia()
+      onNavigate?.()
+      router.push("/dashboard")
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="mb-2">
+      <button
+        onClick={() => setAbierto((v) => !v)}
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-white/5 hover:text-white transition-colors"
+      >
+        <Eye className="h-4 w-4 flex-shrink-0" />
+        <span className="flex-1 text-left">Ver como</span>
+        <ChevronDown className={cn("h-3 w-3 transition-transform", abierto && "rotate-180")} />
+      </button>
+      {abierto && (
+        <div className="mt-1 ml-3 pl-3 border-l border-slate-700 space-y-1">
+          <select
+            value={proyectoId}
+            onChange={(e) => setProyectoId(e.target.value)}
+            className="w-full rounded-md bg-slate-800 border border-slate-700 text-xs text-slate-200 px-2 py-1.5"
+          >
+            {proyectos.length === 0 && <option value="">Sin proyectos</option>}
+            {proyectos.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nombre}
+              </option>
+            ))}
+          </select>
+          {VISTAS.map((v) => (
+            <button
+              key={v.rol}
+              disabled={pending}
+              onClick={() => elegir(v.rol)}
+              className={cn(
+                "block w-full text-left rounded-md px-2 py-1.5 text-xs transition-colors disabled:opacity-60",
+                vistaPreviaRol === v.rol
+                  ? "bg-amber-500/20 text-amber-300 font-medium"
+                  : "text-slate-400 hover:bg-white/5 hover:text-white"
+              )}
+            >
+              {v.label}
+            </button>
+          ))}
+          {vistaPreviaRol && (
+            <button
+              disabled={pending}
+              onClick={salir}
+              className="block w-full text-left rounded-md px-2 py-1.5 text-xs text-white bg-white/10 hover:bg-white/20 transition-colors"
+            >
+              ← Volver a dueño
+            </button>
+          )}
+          {error && <p className="text-[11px] text-red-400 px-1">{error}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function Sidebar({
+  empresaNombre = "Vertikall Haus",
+  usuarioNombre,
+  usuarioRol,
+  onNavigate,
+  esDueno,
+  vistaPreviaRol = null,
+  vistaPreviaProyectoId = null,
+  proyectosVistaPrevia = [],
+}: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -144,6 +264,14 @@ export function Sidebar({ empresaNombre = "Vertikall Haus", usuarioNombre, usuar
 
       {/* Footer con usuario */}
       <div className="border-t border-slate-800 p-3 space-y-1">
+        {(esDueno || vistaPreviaRol) && (
+          <VerComo
+            vistaPreviaRol={vistaPreviaRol}
+            vistaPreviaProyectoId={vistaPreviaProyectoId}
+            proyectos={proyectosVistaPrevia}
+            onNavigate={onNavigate}
+          />
+        )}
         <Link
           href="/configuracion"
           className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-white/5 hover:text-white transition-colors"

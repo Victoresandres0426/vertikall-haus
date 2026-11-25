@@ -472,13 +472,22 @@ export async function cargarSesionCliente() {
 
   if (!perfil) redirect("/login")
   const ROLES_PORTAL = ["cliente", "colaborador_externo", "subcontratista"]
-  if (!ROLES_PORTAL.includes(perfil.rol)) redirect("/dashboard")
+
+  // "Ver como": el dueño/superadmin puede ver el portal como uno de estos
+  // roles (migración 158). Se usa el rol simulado en lugar del real.
+  let rolEfectivo: string = perfil.rol
+  if (["dueno", "superadmin"].includes(perfil.rol)) {
+    const { data: vp } = await supabase.rpc("vista_previa_actual")
+    const rolVp = (vp as { rol?: string } | null)?.rol
+    if (rolVp && ROLES_PORTAL.includes(rolVp)) rolEfectivo = rolVp
+  }
+  if (!ROLES_PORTAL.includes(rolEfectivo)) redirect("/dashboard")
 
   return {
     supabase,
-    perfil,
-    esColaborador: perfil.rol === "colaborador_externo",
-    esSubcontratista: perfil.rol === "subcontratista",
+    perfil: { ...perfil, rol: rolEfectivo },
+    esColaborador: rolEfectivo === "colaborador_externo",
+    esSubcontratista: rolEfectivo === "subcontratista",
   }
 }
 
