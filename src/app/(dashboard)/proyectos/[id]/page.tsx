@@ -20,6 +20,7 @@ import { ZonaHoraria } from "./zona-horaria"
 import { MargenCO } from "./margen-co"
 import { ArchivosProyecto, type ArchivoProyecto } from "./archivos-proyecto"
 import { EstadoProyecto } from "./estado-proyecto"
+import { SalvaProyecto } from "./salva-proyecto"
 import { SeccionDesplegable } from "./seccion-desplegable"
 import { scoreProductividad } from "@/lib/engine/iidp"
 import { pesosDesdeConfig } from "@/lib/engine/types"
@@ -218,6 +219,21 @@ async function getData(id: string) {
   const ROLES_CLIENTE = ['project_manager', 'administrador', 'dueno', 'superadmin']
   const puedeEditarCliente = !!perfil && ROLES_CLIENTE.includes(perfil.rol)
   const esDueno = !!perfil && perfil.rol === 'dueno'
+
+  // Salva del proyecto (migración 159) -- consulta aparte para no romper
+  // la página si esa migración todavía no se corrió.
+  const puedeSalvar = !!perfil && ['dueno', 'superadmin'].includes(perfil.rol)
+  let salvaDescargadaAt: string | null = null
+  if (puedeSalvar) {
+    try {
+      const { data: s } = await supabase
+        .from("proyectos")
+        .select("salva_descargada_at")
+        .eq("id", id)
+        .single()
+      salvaDescargadaAt = (s as { salva_descargada_at?: string | null } | null)?.salva_descargada_at ?? null
+    } catch { /* migración no aplicada aún */ }
+  }
 
   const ROLES_GESTION_ACCESO = ['dueno', 'superadmin', 'administrador']
   const puedeGestionarAcceso = !!perfil && ROLES_GESTION_ACCESO.includes(perfil.rol)
@@ -893,6 +909,17 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
           usuarioId={usuarioId}
           esDueno={esDueno}
         />
+
+        {/* ── Salva y cierre (solo dueño) ── */}
+        {puedeSalvar && (
+          <SalvaProyecto
+            proyectoId={proyecto.id}
+            proyectoNombre={proyecto.nombre}
+            proyectoCodigo={proyecto.codigo}
+            estado={proyecto.estado}
+            salvaDescargadaAt={salvaDescargadaAt}
+          />
+        )}
 
         {/* ── QR Asistencia ── */}
         {qrToken && (
