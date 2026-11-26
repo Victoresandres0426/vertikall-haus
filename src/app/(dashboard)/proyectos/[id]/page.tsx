@@ -408,6 +408,8 @@ async function getData(id: string) {
     usuariosAsignados,
     usuariosDisponibles,
     puedeGestionarAcceso,
+    puedeSalvar,
+    salvaDescargadaAt,
   }
 }
 
@@ -468,7 +470,7 @@ function TendIcon({ t }: { t: string | null }) {
 
 export default async function ProyectoDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { proyecto, historico, archivos, usuarioId, procesos, iidp, alertas, changeOrders, costos, presupuestoPorTipo, qrToken, asistenciaHoy, esDueno, equipoAuth, equipoDisponibles, puedeGestionarEquipo, puedeEditarCliente, usuariosAsignados, usuariosDisponibles, puedeGestionarAcceso } = await getData(id)
+  const { proyecto, historico, archivos, usuarioId, procesos, iidp, alertas, changeOrders, costos, presupuestoPorTipo, qrToken, asistenciaHoy, esDueno, equipoAuth, equipoDisponibles, puedeGestionarEquipo, puedeEditarCliente, usuariosAsignados, usuariosDisponibles, puedeGestionarAcceso, puedeSalvar, salvaDescargadaAt } = await getData(id)
 
   const ultimoIIDP = iidp[0] ?? null
 
